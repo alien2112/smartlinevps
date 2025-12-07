@@ -1,0 +1,3309 @@
+{
+    "info": {
+        "_postman_id": "rateel-api-complete-collection",
+        "name": "Rateel API Complete Collection",
+        "description": "Complete API collection for Rateel ride-sharing application. Includes all endpoints for Customer, Driver, and Admin modules.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "token",
+                "value": "{{access_token}}",
+                "type": "string"
+            }
+        ]
+    },
+    "item": [
+        {
+            "name": "Auth Management",
+            "item": [
+                {
+                    "name": "Customer",
+                    "item": [
+                        {
+                            "name": "Register",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "// Auto-login after successful registration",
+                                            "if (pm.response.code === 200) {",
+                                            "    var jsonData = pm.response.json();",
+                                            "    if (jsonData.response_code === 'registration_200') {",
+                                            "        // Store registration credentials for auto-login",
+                                            "        var phoneOrEmail = pm.request.body.formdata.find(item => item.key === 'phone')?.value || pm.request.body.formdata.find(item => item.key === 'email')?.value;",
+                                            "        var password = pm.request.body.formdata.find(item => item.key === 'password')?.value;",
+                                            "        ",
+                                            "        // Auto-login request",
+                                            "        pm.sendRequest({",
+                                            "            url: pm.environment.get('base_url') + '/api/customer/auth/login',",
+                                            "            method: 'POST',",
+                                            "            header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+                                            "            body: {",
+                                            "                mode: 'urlencoded',",
+                                            "                urlencoded: [",
+                                            "                    { key: 'phone_or_email', value: phoneOrEmail },",
+                                            "                    { key: 'password', value: password }",
+                                            "                ]",
+                                            "            }",
+                                            "        }, function (err, res) {",
+                                            "            if (!err && res.json().data && res.json().data.token) {",
+                                            "                pm.environment.set('customer_token', res.json().data.token);",
+                                            "                pm.environment.set('access_token', res.json().data.token);",
+                                            "                console.log('Auto-login successful! Token saved.');",
+                                            "            }",
+                                            "        });",
+                                            "    }",
+                                            "}",
+                                            "",
+                                            "// Check for level error",
+                                            "if (pm.response.code === 403) {",
+                                            "    var jsonData = pm.response.json();",
+                                            "    if (jsonData.response_code === 'level_403') {",
+                                            "        pm.test('⚠️ User Level Required', function () {",
+                                            "            pm.expect.fail('User level must be created first. Run: php artisan db:seed --class=UserLevelSeeder or create level via admin panel');",
+                                            "        });",
+                                            "    }",
+                                            "}"
+                                        ],
+                                        "type": "text/javascript"
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "first_name",
+                                            "value": "John",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "last_name",
+                                            "value": "Doe",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "email",
+                                            "value": "customer@example.com",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "phone",
+                                            "value": "+201234567890",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password",
+                                            "value": "password123",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password_confirmation",
+                                            "value": "password123",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/auth/registration",
+                                "description": "⚠️ IMPORTANT:\n1. User levels must be created first (sequence 1 for customer/driver)\n2. Registration doesn't return a token - you need to login separately\n3. This request will auto-login after successful registration"
+                            }
+                        },
+                        {
+                            "name": "Login",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "var jsonData = pm.response.json();",
+                                            "",
+                                            "// Check if login was successful",
+                                            "if (pm.response.code === 200 && jsonData.data && jsonData.data.token) {",
+                                            "    // Save tokens to environment",
+                                            "    pm.environment.set('customer_token', jsonData.data.token);",
+                                            "    pm.environment.set('access_token', jsonData.data.token);",
+                                            "    ",
+                                            "    // Success message",
+                                            "    pm.test('✅ Login Successful', function () {",
+                                            "        pm.response.to.have.status(200);",
+                                            "    });",
+                                            "    ",
+                                            "    pm.test('✅ Token Saved to Environment', function () {",
+                                            "        pm.expect(pm.environment.get('customer_token')).to.not.be.empty;",
+                                            "    });",
+                                            "    ",
+                                            "    console.log('✅ Customer token saved successfully!');",
+                                            "    console.log('Token preview: ' + jsonData.data.token.substring(0, 20) + '...');",
+                                            "    console.log('You can now test authenticated customer endpoints.');",
+                                            "} else {",
+                                            "    // Login failed",
+                                            "    pm.test('❌ Login Failed', function () {",
+                                            "        pm.expect.fail('Login failed: ' + (jsonData.message || 'Unknown error'));",
+                                            "    });",
+                                            "    ",
+                                            "    console.error('❌ Login failed:', jsonData.message);",
+                                            "    ",
+                                            "    // Check for specific errors",
+                                            "    if (jsonData.response_code === 'auth_login_404') {",
+                                            "        console.error('User not found. Check phone number and user type.');",
+                                            "    } else if (jsonData.response_code === 'auth_login_401') {",
+                                            "        console.error('Incorrect password.');",
+                                            "    }",
+                                            "}"
+                                        ],
+                                        "type": "text/javascript"
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "1234567890",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password",
+                                            "value": "password123",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/auth/login"
+                            }
+                        },
+                        {
+                            "name": "Social Login",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "token",
+                                            "value": "",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "unique_id",
+                                            "value": "",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "email",
+                                            "value": "",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "medium",
+                                            "value": "google",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/auth/social-login"
+                            }
+                        },
+                        {
+                            "name": "OTP Login",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567890",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "otp",
+                                            "value": "1234",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/auth/otp-login"
+                            }
+                        },
+                        {
+                            "name": "Check User Exists",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567890",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/auth/check"
+                            }
+                        },
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567890",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/auth/send-otp"
+                            }
+                        },
+                        {
+                            "name": "OTP Verification",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567890",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "otp",
+                                            "value": "1234",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/auth/otp-verification"
+                            }
+                        },
+                        {
+                            "name": "Firebase OTP Verification",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567890",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "session_info",
+                                            "value": "",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/auth/firebase-otp-verification"
+                            }
+                        },
+                        {
+                            "name": "Forget Password",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567890",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/auth/forget-password"
+                            }
+                        },
+                        {
+                            "name": "Reset Password",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567890",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password",
+                                            "value": "newpassword123",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password_confirmation",
+                                            "value": "newpassword123",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/auth/reset-password"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Driver",
+                    "item": [
+                        {
+                            "name": "Register",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "// Auto-login after successful registration",
+                                            "if (pm.response.code === 200) {",
+                                            "    var jsonData = pm.response.json();",
+                                            "    if (jsonData.response_code === 'registration_200') {",
+                                            "        // Store registration credentials for auto-login",
+                                            "        var phoneOrEmail = pm.request.body.formdata.find(item => item.key === 'phone')?.value || pm.request.body.formdata.find(item => item.key === 'email')?.value;",
+                                            "        var password = pm.request.body.formdata.find(item => item.key === 'password')?.value;",
+                                            "        ",
+                                            "        // Auto-login request",
+                                            "        pm.sendRequest({",
+                                            "            url: pm.environment.get('base_url') + '/api/driver/auth/login',",
+                                            "            method: 'POST',",
+                                            "            header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+                                            "            body: {",
+                                            "                mode: 'urlencoded',",
+                                            "                urlencoded: [",
+                                            "                    { key: 'phone_or_email', value: phoneOrEmail },",
+                                            "                    { key: 'password', value: password }",
+                                            "                ]",
+                                            "            }",
+                                            "        }, function (err, res) {",
+                                            "            if (!err && res.json().data && res.json().data.token) {",
+                                            "                pm.environment.set('driver_token', res.json().data.token);",
+                                            "                pm.environment.set('access_token', res.json().data.token);",
+                                            "                console.log('Auto-login successful! Token saved.');",
+                                            "            }",
+                                            "        });",
+                                            "    }",
+                                            "}",
+                                            "",
+                                            "// Check for level error",
+                                            "if (pm.response.code === 403) {",
+                                            "    var jsonData = pm.response.json();",
+                                            "    if (jsonData.response_code === 'level_403') {",
+                                            "        pm.test('⚠️ User Level Required', function () {",
+                                            "            pm.expect.fail('User level must be created first. Run: php artisan db:seed --class=UserLevelSeeder or create level via admin panel');",
+                                            "        });",
+                                            "    }",
+                                            "}"
+                                        ],
+                                        "type": "text/javascript"
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "first_name",
+                                            "value": "Driver",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "last_name",
+                                            "value": "Test",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "email",
+                                            "value": "driver@example.com",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "phone",
+                                            "value": "+201234567891",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password",
+                                            "value": "password123",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password_confirmation",
+                                            "value": "password123",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "service",
+                                            "value": "ride",
+                                            "type": "text",
+                                            "description": "Required for driver registration"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/auth/registration",
+                                "description": "⚠️ IMPORTANT:\n1. User levels must be created first (sequence 1 for customer/driver)\n2. Registration doesn't return a token - you need to login separately\n3. This request will auto-login after successful registration\n4. 'service' field is required for driver registration"
+                            }
+                        },
+                        {
+                            "name": "Login",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "var jsonData = pm.response.json();",
+                                            "",
+                                            "// Check if login was successful",
+                                            "if (pm.response.code === 200 && jsonData.data && jsonData.data.token) {",
+                                            "    // Save tokens to environment",
+                                            "    pm.environment.set('driver_token', jsonData.data.token);",
+                                            "    pm.environment.set('access_token', jsonData.data.token);",
+                                            "    ",
+                                            "    // Success message",
+                                            "    pm.test('✅ Login Successful', function () {",
+                                            "        pm.response.to.have.status(200);",
+                                            "    });",
+                                            "    ",
+                                            "    pm.test('✅ Token Saved to Environment', function () {",
+                                            "        pm.expect(pm.environment.get('driver_token')).to.not.be.empty;",
+                                            "    });",
+                                            "    ",
+                                            "    console.log('✅ Driver token saved successfully!');",
+                                            "    console.log('Token preview: ' + jsonData.data.token.substring(0, 20) + '...');",
+                                            "    console.log('You can now test authenticated driver endpoints.');",
+                                            "} else {",
+                                            "    // Login failed",
+                                            "    pm.test('❌ Login Failed', function () {",
+                                            "        pm.expect.fail('Login failed: ' + (jsonData.message || 'Unknown error'));",
+                                            "    });",
+                                            "    ",
+                                            "    console.error('❌ Login failed:', jsonData.message);",
+                                            "    ",
+                                            "    // Check for specific errors",
+                                            "    if (jsonData.response_code === 'auth_login_404') {",
+                                            "        console.error('User not found. Check phone number and user type.');",
+                                            "    } else if (jsonData.response_code === 'auth_login_401') {",
+                                            "        console.error('Incorrect password.');",
+                                            "    }",
+                                            "}"
+                                        ],
+                                        "type": "text/javascript"
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "0987654321",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password",
+                                            "value": "password123",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/auth/login"
+                            }
+                        },
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567891",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/auth/send-otp"
+                            }
+                        },
+                        {
+                            "name": "Check User Exists",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567891",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/auth/check"
+                            }
+                        },
+                        {
+                            "name": "Forget Password",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567891",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/auth/forget-password"
+                            }
+                        },
+                        {
+                            "name": "Reset Password",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567891",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password",
+                                            "value": "newpassword123",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password_confirmation",
+                                            "value": "newpassword123",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/auth/reset-password"
+                            }
+                        },
+                        {
+                            "name": "OTP Verification",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "phone_or_email",
+                                            "value": "+201234567891",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "otp",
+                                            "value": "1234",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/auth/otp-verification"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "User (Authenticated)",
+                    "item": [
+                        {
+                            "name": "Logout",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "url": "{{base_url}}/api/user/logout"
+                            }
+                        },
+                        {
+                            "name": "Delete Account",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "url": "{{base_url}}/api/user/delete"
+                            }
+                        },
+                        {
+                            "name": "Change Password",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "old_password",
+                                            "value": "password123",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password",
+                                            "value": "newpassword123",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "password_confirmation",
+                                            "value": "newpassword123",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/user/change-password"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Business Management",
+            "item": [
+                {
+                    "name": "Configuration",
+                    "item": [
+                        {
+                            "name": "Get Configurations",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/configurations"
+                            }
+                        },
+                        {
+                            "name": "Get External Configurations",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/get-external-configurations"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Customer Config",
+                    "item": [
+                        {
+                            "name": "Get Configuration",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/configuration"
+                            }
+                        },
+                        {
+                            "name": "Get Pages",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/pages/about_us",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "pages",
+                                        "about_us"
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Get Zone ID",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/config/get-zone-id?lat={{latitude}}&lng={{longitude}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "config",
+                                        "get-zone-id"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "lat",
+                                            "value": "{{latitude}}"
+                                        },
+                                        {
+                                            "key": "lng",
+                                            "value": "{{longitude}}"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Place API Autocomplete",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/config/place-api-autocomplete?search_text=Cairo, Egypt",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "config",
+                                        "place-api-autocomplete"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "search_text",
+                                            "value": "Cairo, Egypt"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Distance API",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/config/distance_api?origin_lat={{origin_lat}}&origin_lng={{origin_lng}}&destination_lat={{destination_lat}}&destination_lng={{destination_lng}}&mode=driving&key={{geolink_api_key}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "config",
+                                        "distance_api"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "origin_lat",
+                                            "value": "{{origin_lat}}"
+                                        },
+                                        {
+                                            "key": "origin_lng",
+                                            "value": "{{origin_lng}}"
+                                        },
+                                        {
+                                            "key": "destination_lat",
+                                            "value": "{{destination_lat}}"
+                                        },
+                                        {
+                                            "key": "destination_lng",
+                                            "value": "{{destination_lng}}"
+                                        },
+                                        {
+                                            "key": "mode",
+                                            "value": "driving"
+                                        },
+                                        {
+                                            "key": "key",
+                                            "value": "{{geolink_api_key}}",
+                                            "description": "Optional: Override API key for testing. If not provided, uses the key from admin settings."
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Place API Details",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/config/place-api-details?placeid={{place_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "config",
+                                        "place-api-details"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "placeid",
+                                            "value": "{{place_id}}"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Geocode API (Reverse Geocode)",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/config/geocode-api?lat={{latitude}}&lng={{longitude}}&key={{geolink_api_key}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "config",
+                                        "geocode-api"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "lat",
+                                            "value": "{{latitude}}"
+                                        },
+                                        {
+                                            "key": "lng",
+                                            "value": "{{longitude}}"
+                                        },
+                                        {
+                                            "key": "key",
+                                            "value": "{{geolink_api_key}}",
+                                            "description": "Optional: Override API key for testing. If not provided, uses the key from admin settings."
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Get Routes",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "origin_lat",
+                                            "value": "{{origin_lat}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "origin_lng",
+                                            "value": "{{origin_lng}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "destination_lat",
+                                            "value": "{{destination_lat}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "destination_lng",
+                                            "value": "{{destination_lng}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/config/get-routes"
+                            }
+                        },
+                        {
+                            "name": "Get Payment Methods",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/config/get-payment-methods"
+                            }
+                        },
+                        {
+                            "name": "Cancellation Reason List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/config/cancellation-reason-list"
+                            }
+                        },
+                        {
+                            "name": "Parcel Cancellation Reason List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/config/parcel-cancellation-reason-list"
+                            }
+                        },
+                        {
+                            "name": "Parcel Refund Reason List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/config/parcel-refund-reason-list"
+                            }
+                        },
+                        {
+                            "name": "Other Emergency Contact List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/config/other-emergency-contact-list"
+                            }
+                        },
+                        {
+                            "name": "Safety Alert Reason List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/config/safety-alert-reason-list"
+                            }
+                        },
+                        {
+                            "name": "Safety Precaution List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/config/safety-precaution-list"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Driver Config",
+                    "item": [
+                        {
+                            "name": "Get Configuration",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/configuration"
+                            }
+                        },
+                        {
+                            "name": "Get Zone ID",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/config/get-zone-id?lat={{latitude}}&lng={{longitude}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "config",
+                                        "get-zone-id"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "lat",
+                                            "value": "{{latitude}}"
+                                        },
+                                        {
+                                            "key": "lng",
+                                            "value": "{{longitude}}"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Place API Autocomplete",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/config/place-api-autocomplete?search_text=Cairo, Egypt",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "config",
+                                        "place-api-autocomplete"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "search_text",
+                                            "value": "Cairo, Egypt"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Distance API",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/config/distance_api?origin_lat={{origin_lat}}&origin_lng={{origin_lng}}&destination_lat={{destination_lat}}&destination_lng={{destination_lng}}&mode=driving&key={{geolink_api_key}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "config",
+                                        "distance_api"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "origin_lat",
+                                            "value": "{{origin_lat}}"
+                                        },
+                                        {
+                                            "key": "origin_lng",
+                                            "value": "{{origin_lng}}"
+                                        },
+                                        {
+                                            "key": "destination_lat",
+                                            "value": "{{destination_lat}}"
+                                        },
+                                        {
+                                            "key": "destination_lng",
+                                            "value": "{{destination_lng}}"
+                                        },
+                                        {
+                                            "key": "mode",
+                                            "value": "driving"
+                                        },
+                                        {
+                                            "key": "key",
+                                            "value": "{{geolink_api_key}}",
+                                            "description": "Optional: Override API key for testing. If not provided, uses the key from admin settings."
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Place API Details",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/config/place-api-details?placeid={{place_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "config",
+                                        "place-api-details"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "placeid",
+                                            "value": "{{place_id}}"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Geocode API (Reverse Geocode)",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/config/geocode-api?lat={{latitude}}&lng={{longitude}}&key={{geolink_api_key}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "config",
+                                        "geocode-api"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "lat",
+                                            "value": "{{latitude}}"
+                                        },
+                                        {
+                                            "key": "lng",
+                                            "value": "{{longitude}}"
+                                        },
+                                        {
+                                            "key": "key",
+                                            "value": "{{geolink_api_key}}",
+                                            "description": "Optional: Override API key for testing. If not provided, uses the key from admin settings."
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Cancellation Reason List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/config/cancellation-reason-list"
+                            }
+                        },
+                        {
+                            "name": "Predefined Question Answer List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/config/predefined-question-answer-list"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Location",
+                    "item": [
+                        {
+                            "name": "Save User Last Location",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "latitude",
+                                            "value": "{{latitude}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "longitude",
+                                            "value": "{{longitude}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/location/save"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "User Management",
+            "item": [
+                {
+                    "name": "Customer",
+                    "item": [
+                        {
+                            "name": "Get Profile Info",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/info"
+                            }
+                        },
+                        {
+                            "name": "Update Profile",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "first_name",
+                                            "value": "John",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "last_name",
+                                            "value": "Doe",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "email",
+                                            "value": "customer@example.com",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/update/profile"
+                            }
+                        },
+                        {
+                            "name": "Update FCM Token",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "fcm_token",
+                                            "value": "your-fcm-token-here",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/update/fcm-token"
+                            }
+                        },
+                        {
+                            "name": "Notification List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/notification-list"
+                            }
+                        },
+                        {
+                            "name": "Change Language",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "language",
+                                            "value": "en",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/change-language"
+                            }
+                        },
+                        {
+                            "name": "Referral Details",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/referral-details"
+                            }
+                        },
+                        {
+                            "name": "Loyalty Points List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/loyalty-points/list"
+                            }
+                        },
+                        {
+                            "name": "Convert Loyalty Points",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "points",
+                                            "value": "100",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/loyalty-points/convert"
+                            }
+                        },
+                        {
+                            "name": "Get Customer Level",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/level/"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Customer Address",
+                    "item": [
+                        {
+                            "name": "Get All Addresses",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/address/all-address"
+                            }
+                        },
+                        {
+                            "name": "Add Address",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "address",
+                                            "value": "123 Main St, Cairo",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "address_label",
+                                            "value": "home",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "latitude",
+                                            "value": "{{latitude}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "longitude",
+                                            "value": "{{longitude}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/address/add"
+                            }
+                        },
+                        {
+                            "name": "Edit Address",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/address/edit/{{address_id}}"
+                            }
+                        },
+                        {
+                            "name": "Update Address",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "id",
+                                            "value": "{{address_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "address",
+                                            "value": "456 New St, Cairo",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "address_label",
+                                            "value": "work",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "latitude",
+                                            "value": "{{latitude}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "longitude",
+                                            "value": "{{longitude}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/address/update"
+                            }
+                        },
+                        {
+                            "name": "Delete Address",
+                            "request": {
+                                "method": "DELETE",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "id",
+                                            "value": "{{address_id}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/address/delete"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Driver",
+                    "item": [
+                        {
+                            "name": "Get Profile Info",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/info"
+                            }
+                        },
+                        {
+                            "name": "Update Profile",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "first_name",
+                                            "value": "Driver",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "last_name",
+                                            "value": "Name",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/update/profile"
+                            }
+                        },
+                        {
+                            "name": "Update FCM Token",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "fcm_token",
+                                            "value": "your-fcm-token-here",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/update/fcm-token"
+                            }
+                        },
+                        {
+                            "name": "Notification List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/notification-list"
+                            }
+                        },
+                        {
+                            "name": "Time Tracking",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/time-tracking"
+                            }
+                        },
+                        {
+                            "name": "Update Online Status",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "status",
+                                            "value": "online",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/update-online-status"
+                            }
+                        },
+                        {
+                            "name": "My Activity",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/my-activity"
+                            }
+                        },
+                        {
+                            "name": "Income Statement",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/income-statement"
+                            }
+                        },
+                        {
+                            "name": "Referral Details",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/referral-details"
+                            }
+                        },
+                        {
+                            "name": "Get Driver Level",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/level/"
+                            }
+                        },
+                        {
+                            "name": "Leaderboard",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/activity/leaderboard"
+                            }
+                        },
+                        {
+                            "name": "Daily Income",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/activity/daily-income"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Driver Withdraw",
+                    "item": [
+                        {
+                            "name": "Get Withdraw Methods",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/withdraw/methods"
+                            }
+                        },
+                        {
+                            "name": "Create Withdraw Request",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "amount",
+                                            "value": "100",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "method_id",
+                                            "value": "1",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/withdraw/request"
+                            }
+                        },
+                        {
+                            "name": "Pending Withdraw Requests",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/withdraw/pending-request"
+                            }
+                        },
+                        {
+                            "name": "Settled Withdraw Requests",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/withdraw/settled-request"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Live Location",
+                    "item": [
+                        {
+                            "name": "Store Live Location",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "user_id",
+                                            "value": "{{user_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "latitude",
+                                            "value": "{{latitude}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "longitude",
+                                            "value": "{{longitude}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/user/store-live-location"
+                            }
+                        },
+                        {
+                            "name": "Get Live Location",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "user_id",
+                                            "value": "{{user_id}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/user/get-live-location"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Trip Management",
+            "item": [
+                {
+                    "name": "Customer Rides",
+                    "auth": {
+                        "type": "bearer",
+                        "bearer": [
+                            {
+                                "key": "token",
+                                "value": "{{customer_token}}",
+                                "type": "string"
+                            }
+                        ]
+                    },
+                    "item": [
+                        {
+                            "name": "🔧 Test Authentication (Manual)",
+                            "request": {
+                                "auth": {
+                                    "type": "bearer",
+                                    "bearer": [
+                                        {
+                                            "key": "token",
+                                            "value": "PASTE_YOUR_TOKEN_HERE",
+                                            "type": "string"
+                                        }
+                                    ]
+                                },
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "zoneId",
+                                        "value": "PASTE_ZONE_UUID_HERE",
+                                        "type": "text",
+                                        "description": "Get zone UUID from database"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/drivers-near-me?latitude=30.0444&longitude=31.2357",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "drivers-near-me"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "latitude",
+                                            "value": "30.0444"
+                                        },
+                                        {
+                                            "key": "longitude",
+                                            "value": "31.2357"
+                                        }
+                                    ]
+                                },
+                                "description": "**MANUAL TEST REQUEST**\n\nUse this to test authentication manually:\n\n1. Login via Customer Login endpoint\n2. Copy the token from the response\n3. Paste it in the Authorization tab (replace PASTE_YOUR_TOKEN_HERE)\n4. Get a zone UUID from database: `SELECT id FROM zones LIMIT 1;`\n5. Paste zone UUID in the zoneId header\n6. Send request\n\nIf you get:\n- ✅ 200 OK → Authentication works!\n- ❌ 401 Credential does not match → Token is invalid or missing\n- ❌ 404 Zone not found → Zone ID is invalid"
+                            }
+                        },
+                        {
+                            "name": "Drivers Near Me",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "zoneId",
+                                        "value": "{{zone_id}}",
+                                        "type": "text"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/drivers-near-me?latitude={{latitude}}&longitude={{longitude}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "drivers-near-me"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "latitude",
+                                            "value": "{{latitude}}"
+                                        },
+                                        {
+                                            "key": "longitude",
+                                            "value": "{{longitude}}"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Get Estimated Fare",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "pickup_coordinates[lat]",
+                                            "value": "{{origin_lat}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "pickup_coordinates[lng]",
+                                            "value": "{{origin_lng}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "destination_coordinates[lat]",
+                                            "value": "{{destination_lat}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "destination_coordinates[lng]",
+                                            "value": "{{destination_lng}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "type",
+                                            "value": "ride_request",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "zone_id",
+                                            "value": "{{zone_id}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/ride/get-estimated-fare"
+                            }
+                        },
+                        {
+                            "name": "Create Ride Request",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "pickup_coordinates[lat]",
+                                            "value": "{{origin_lat}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "pickup_coordinates[lng]",
+                                            "value": "{{origin_lng}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "destination_coordinates[lat]",
+                                            "value": "{{destination_lat}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "destination_coordinates[lng]",
+                                            "value": "{{destination_lng}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "pickup_address",
+                                            "value": "Pickup Address",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "destination_address",
+                                            "value": "Destination Address",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "vehicle_category_id",
+                                            "value": "1",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "payment_method",
+                                            "value": "cash",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "zone_id",
+                                            "value": "{{zone_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "type",
+                                            "value": "ride_request",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/ride/create"
+                            }
+                        },
+                        {
+                            "name": "Ride List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/ride/list?limit=10&offset=1",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "ride",
+                                        "list"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "limit",
+                                            "value": "10"
+                                        },
+                                        {
+                                            "key": "offset",
+                                            "value": "1"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Ride Details",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/ride/details/{{trip_request_id}}"
+                            }
+                        },
+                        {
+                            "name": "Update Ride Status",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "status",
+                                            "value": "cancelled",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/ride/update-status/{{trip_request_id}}"
+                            }
+                        },
+                        {
+                            "name": "Bidding List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/ride/bidding-list/{{trip_request_id}}"
+                            }
+                        },
+                        {
+                            "name": "Trip Action",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "action",
+                                            "value": "accept",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/ride/trip-action"
+                            }
+                        },
+                        {
+                            "name": "Ride Resume Status",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/ride/ride-resume-status"
+                            }
+                        },
+                        {
+                            "name": "Apply Coupon",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "coupon_code",
+                                            "value": "DISCOUNT10",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/ride/apply-coupon"
+                            }
+                        },
+                        {
+                            "name": "Cancel Coupon",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/ride/cancel-coupon"
+                            }
+                        },
+                        {
+                            "name": "Track Location",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/ride/track-location"
+                            }
+                        },
+                        {
+                            "name": "Payment",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/ride/payment?trip_request_id={{trip_request_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "ride",
+                                        "payment"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Driver Rides",
+                    "auth": {
+                        "type": "bearer",
+                        "bearer": [
+                            {
+                                "key": "token",
+                                "value": "{{driver_token}}",
+                                "type": "string"
+                            }
+                        ]
+                    },
+                    "item": [
+                        {
+                            "name": "Pending Ride List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/ride/pending-ride-list"
+                            }
+                        },
+                        {
+                            "name": "Ride List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/ride/list?limit=10&offset=1",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "ride",
+                                        "list"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "limit",
+                                            "value": "10"
+                                        },
+                                        {
+                                            "key": "offset",
+                                            "value": "1"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Ride Details",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/ride/details/{{trip_request_id}}"
+                            }
+                        },
+                        {
+                            "name": "Bid on Ride",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "bid_fare",
+                                            "value": "50",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/ride/bid"
+                            }
+                        },
+                        {
+                            "name": "Trip Action",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "action",
+                                            "value": "accept",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/ride/trip-action"
+                            }
+                        },
+                        {
+                            "name": "Update Ride Status",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "status",
+                                            "value": "accepted",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/ride/update-status"
+                            }
+                        },
+                        {
+                            "name": "Match OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "otp",
+                                            "value": "1234",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/ride/match-otp"
+                            }
+                        },
+                        {
+                            "name": "Track Location",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "latitude",
+                                            "value": "{{latitude}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "longitude",
+                                            "value": "{{longitude}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/ride/track-location"
+                            }
+                        },
+                        {
+                            "name": "Current Ride Status",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/ride/current-ride-status"
+                            }
+                        },
+                        {
+                            "name": "Trip Overview",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/ride/overview"
+                            }
+                        },
+                        {
+                            "name": "Arrival Time",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "arrival_time",
+                                            "value": "10",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/ride/arrival-time"
+                            }
+                        },
+                        {
+                            "name": "Last Ride Details",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": []
+                                },
+                                "url": "{{base_url}}/api/driver/last-ride-details"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Safety Alerts",
+                    "item": [
+                        {
+                            "name": "Customer - Store Safety Alert",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "reason",
+                                            "value": "Emergency",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/safety-alert/store"
+                            }
+                        },
+                        {
+                            "name": "Customer - Show Safety Alert",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/safety-alert/show/{{trip_request_id}}"
+                            }
+                        },
+                        {
+                            "name": "Driver - Store Safety Alert",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "reason",
+                                            "value": "Emergency",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/safety-alert/store"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Chatting Management",
+            "item": [
+                {
+                    "name": "Customer",
+                    "item": [
+                        {
+                            "name": "Find Channel",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/chat/find-channel?trip_request_id={{trip_request_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "chat",
+                                        "find-channel"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Create Channel",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/chat/create-channel"
+                            }
+                        },
+                        {
+                            "name": "Send Message",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "channel_id",
+                                            "value": "{{channel_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "message",
+                                            "value": "Hello!",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/chat/send-message"
+                            }
+                        },
+                        {
+                            "name": "Conversation",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/chat/conversation?channel_id={{channel_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "chat",
+                                        "conversation"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "channel_id",
+                                            "value": "{{channel_id}}"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Channel List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/chat/channel-list"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Driver",
+                    "item": [
+                        {
+                            "name": "Find Channel",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/chat/find-channel?trip_request_id={{trip_request_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "chat",
+                                        "find-channel"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Create Channel",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/chat/create-channel"
+                            }
+                        },
+                        {
+                            "name": "Send Message",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "channel_id",
+                                            "value": "{{channel_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "message",
+                                            "value": "Hello!",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/chat/send-message"
+                            }
+                        },
+                        {
+                            "name": "Conversation",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/chat/conversation?channel_id={{channel_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "chat",
+                                        "conversation"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "channel_id",
+                                            "value": "{{channel_id}}"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Channel List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/chat/channel-list"
+                            }
+                        },
+                        {
+                            "name": "Create Channel With Admin",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": []
+                                },
+                                "url": "{{base_url}}/api/driver/chat/create-channel-with-admin"
+                            }
+                        },
+                        {
+                            "name": "Send Message To Admin",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "channel_id",
+                                            "value": "{{channel_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "message",
+                                            "value": "Hello Admin!",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/chat/send-message-to-admin"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Vehicle Management",
+            "item": [
+                {
+                    "name": "Customer",
+                    "item": [
+                        {
+                            "name": "Vehicle Category List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/vehicle/category/"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Driver",
+                    "item": [
+                        {
+                            "name": "Store Vehicle",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "brand_id",
+                                            "value": "1",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "model_id",
+                                            "value": "1",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "category_id",
+                                            "value": "1",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "licence_plate_number",
+                                            "value": "ABC123",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "licence_expire_date",
+                                            "value": "2025-12-31",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "vin_number",
+                                            "value": "VIN123456",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/vehicle/store"
+                            }
+                        },
+                        {
+                            "name": "Update Vehicle",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "brand_id",
+                                            "value": "1",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "model_id",
+                                            "value": "1",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "category_id",
+                                            "value": "1",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "licence_plate_number",
+                                            "value": "ABC123",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/vehicle/update/{{vehicle_id}}"
+                            }
+                        },
+                        {
+                            "name": "Category List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/vehicle/category/list"
+                            }
+                        },
+                        {
+                            "name": "Brand List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/vehicle/brand/list"
+                            }
+                        },
+                        {
+                            "name": "Model List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/driver/vehicle/model/list?brand_id=1",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "vehicle",
+                                        "model",
+                                        "list"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "brand_id",
+                                            "value": "1"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Parcel Management",
+            "item": [
+                {
+                    "name": "Customer",
+                    "item": [
+                        {
+                            "name": "Parcel Category List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/parcel/category"
+                            }
+                        },
+                        {
+                            "name": "Vehicle List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/parcel/vehicle"
+                            }
+                        },
+                        {
+                            "name": "Create Parcel",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "pickup_coordinates[lat]",
+                                            "value": "{{origin_lat}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "pickup_coordinates[lng]",
+                                            "value": "{{origin_lng}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "destination_coordinates[lat]",
+                                            "value": "{{destination_lat}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "destination_coordinates[lng]",
+                                            "value": "{{destination_lng}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "pickup_address",
+                                            "value": "Pickup Address",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "destination_address",
+                                            "value": "Destination Address",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "vehicle_category_id",
+                                            "value": "1",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "parcel_category_id",
+                                            "value": "1",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "payment_method",
+                                            "value": "cash",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "zone_id",
+                                            "value": "{{zone_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "type",
+                                            "value": "parcel",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "sender_name",
+                                            "value": "Sender Name",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "sender_phone",
+                                            "value": "+201234567890",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "receiver_name",
+                                            "value": "Receiver Name",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "receiver_phone",
+                                            "value": "+201234567891",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/parcel/create"
+                            }
+                        },
+                        {
+                            "name": "Parcel List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/parcel/list?limit=10&offset=1",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "parcel",
+                                        "list"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "limit",
+                                            "value": "10"
+                                        },
+                                        {
+                                            "key": "offset",
+                                            "value": "1"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Parcel Details",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/parcel/details/{{trip_request_id}}"
+                            }
+                        },
+                        {
+                            "name": "Track Driver",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/parcel/track-driver?trip_request_id={{trip_request_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "parcel",
+                                        "track-driver"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}"
+                                        }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "name": "Suggested Vehicle Category",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/customer/parcel/suggested-vehicle-category?weight=10",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "customer",
+                                        "parcel",
+                                        "suggested-vehicle-category"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "weight",
+                                            "value": "10"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Promotion Management",
+            "item": [
+                {
+                    "name": "Customer",
+                    "item": [
+                        {
+                            "name": "Banner List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/banner/list"
+                            }
+                        },
+                        {
+                            "name": "Coupon List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/coupon/list"
+                            }
+                        },
+                        {
+                            "name": "Apply Coupon",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "coupon_code",
+                                            "value": "DISCOUNT10",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/coupon/apply"
+                            }
+                        },
+                        {
+                            "name": "Discount List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/discount/list"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Driver",
+                    "item": [
+                        {
+                            "name": "Banner List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/banner/list"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Transaction Management",
+            "item": [
+                {
+                    "name": "Customer",
+                    "item": [
+                        {
+                            "name": "Transaction List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/transaction/list"
+                            }
+                        },
+                        {
+                            "name": "Referral Earning List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/transaction/referral-earning-list"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Driver",
+                    "item": [
+                        {
+                            "name": "Transaction List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/transaction/list"
+                            }
+                        },
+                        {
+                            "name": "Referral Earning List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/transaction/referral-earning-list"
+                            }
+                        },
+                        {
+                            "name": "Payable List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/transaction/payable-list"
+                            }
+                        },
+                        {
+                            "name": "Cash Collect List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/transaction/cash-collect-list"
+                            }
+                        },
+                        {
+                            "name": "Wallet List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/transaction/wallet-list"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Review Module",
+            "item": [
+                {
+                    "name": "Customer",
+                    "item": [
+                        {
+                            "name": "Review List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/customer/review/list"
+                            }
+                        },
+                        {
+                            "name": "Submit Review",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "rating",
+                                            "value": "5",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "feedback",
+                                            "value": "Great service!",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/review/store"
+                            }
+                        },
+                        {
+                            "name": "Check Submission",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/customer/review/check-submission"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Driver",
+                    "item": [
+                        {
+                            "name": "Review List",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": "{{base_url}}/api/driver/review/list"
+                            }
+                        },
+                        {
+                            "name": "Submit Review",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "trip_request_id",
+                                            "value": "{{trip_request_id}}",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "rating",
+                                            "value": "5",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "feedback",
+                                            "value": "Good customer!",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                "url": "{{base_url}}/api/driver/review/store"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Zone Management",
+            "item": [
+                {
+                    "name": "Driver Zone List",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": "{{base_url}}/api/driver/zone/list"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Gateways",
+            "item": [
+                {
+                    "name": "Payment Config",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": "{{base_url}}/api/v1/payment-config"
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000"
+        },
+        {
+            "key": "access_token",
+            "value": ""
+        },
+        {
+            "key": "customer_token",
+            "value": ""
+        },
+        {
+            "key": "driver_token",
+            "value": ""
+        },
+        {
+            "key": "latitude",
+            "value": "30.0444"
+        },
+        {
+            "key": "longitude",
+            "value": "31.2357"
+        },
+        {
+            "key": "origin_lat",
+            "value": "30.0444"
+        },
+        {
+            "key": "origin_lng",
+            "value": "31.2357"
+        },
+        {
+            "key": "destination_lat",
+            "value": "31.2001"
+        },
+        {
+            "key": "destination_lng",
+            "value": "29.9187"
+        },
+        {
+            "key": "trip_request_id",
+            "value": ""
+        },
+        {
+            "key": "zone_id",
+            "value": "1"
+        },
+        {
+            "key": "place_id",
+            "value": ""
+        },
+        {
+            "key": "channel_id",
+            "value": ""
+        },
+        {
+            "key": "address_id",
+            "value": ""
+        },
+        {
+            "key": "vehicle_id",
+            "value": ""
+        },
+        {
+            "key": "user_id",
+            "value": ""
+        },
+        {
+            "key": "google_maps_api_key",
+            "value": "4a3eb528-befa-4300-860d-9442ae141310"
+        }
+    ]
+}

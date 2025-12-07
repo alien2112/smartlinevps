@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:geolink-eg.com)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(php artisan:*)",
+      "Bash(copy:*)",
+      "Bash(mysql:*)",
+      "Bash(find:*)",
+      "Bash(dir /s /b Modules*Providers*ServiceProvider.php)",
+      "Bash(findstr:*)",
+      "Bash(cp:*)",
+      "Bash(powershell -Command:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
