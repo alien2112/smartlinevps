@@ -160,3 +160,4 @@ To manually test with a token:
 3. Check if Authorization header is present
 4. Verify the token format (should start with "eyJ...")
 
+

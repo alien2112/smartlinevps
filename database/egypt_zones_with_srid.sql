@@ -394,3 +394,4 @@ WHERE name = 'Greater Cairo' AND deleted_at IS NULL;
 -- Show total count
 SELECT COUNT(*) as total_zones FROM zones WHERE deleted_at IS NULL;
 
+

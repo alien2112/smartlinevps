@@ -76,3 +76,4 @@ class UserLevelSeeder extends Seeder
     }
 }
 
+
