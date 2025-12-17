@@ -48,6 +48,7 @@ class User extends Authenticatable
         'password',
         'ref_code',
         'user_type',
+        'gender',
         'role_id',
         'remember_token',
         'is_active',

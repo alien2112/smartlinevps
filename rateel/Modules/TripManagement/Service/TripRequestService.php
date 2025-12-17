@@ -834,13 +834,22 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
         $save_trip = $this->storeTrip(attributes: $request->request->all());
 
         $search_radius = (float)get_cache('search_radius') ?? (float)5;
+
+        $customer = auth('api')->user();
+        $femaleOnly = false;
+
+        if ($customer->gender === 'female' && $request->input('female_driver_only', false)) {
+            $femaleOnly = true;
+        }
+
         // Find drivers list based on pickup locations
         $find_drivers = $this->findNearestDriver(
             latitude: $pickupCoordinates[0],
             longitude: $pickupCoordinates[1],
             zoneId: $request->header('zoneId'),
             radius: $search_radius,
-            vehicleCategoryId: $request->vehicle_category_id
+            vehicleCategoryId: $request->vehicle_category_id,
+            femaleOnly: $femaleOnly
         );
         //Send notifications to drivers
         if (!empty($find_drivers)) {
@@ -885,7 +894,7 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
     }
 
 
-    public function findNearestDriver($latitude, $longitude, $zoneId, $radius = 5, $vehicleCategoryId = null): mixed
+    public function findNearestDriver($latitude, $longitude, $zoneId, $radius = 5, $vehicleCategoryId = null, $femaleOnly = false): mixed
     {
         /*
          * replace 6371000 with 6371 for kilometer and 3956 for miles
@@ -899,7 +908,16 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
         if ($vehicleCategoryId) {
             $attributes['vehicle_category_id'] = $vehicleCategoryId;
         }
-        return $this->userLastLocation->getNearestDrivers($attributes);
+
+        $drivers = $this->userLastLocation->getNearestDrivers($attributes);
+
+        if ($femaleOnly) {
+            $drivers = $drivers->filter(function ($driver) {
+                return $driver->gender === 'female';
+            });
+        }
+
+        return $drivers;
     }
 
 

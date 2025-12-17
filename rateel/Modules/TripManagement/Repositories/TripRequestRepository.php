@@ -302,7 +302,7 @@ class TripRequestRepository implements TripRequestInterfaces
             ])
             ->whereHas('coordinate', fn($query) => $query->distanceSphere('pickup_coordinates', $attributes['driver_locations'], $attributes['distance']))
             ->whereDoesntHave('ignoredRequests', fn($query) => $query->where('user_id', auth()->id()))
-            ->where(fn($query) => $query->where('vehicle_category_id', $attributes['vehicle_category_id'])
+            ->where(fn($query) => $query->whereIn('vehicle_category_id', (array) $attributes['vehicle_category_id'])
                 ->orWhereNull('vehicle_category_id')
             )
             ->where('zone_id', $attributes['zone_id'])

@@ -21,4 +21,20 @@ yarn-error.log
 *.cache
 nul
 
+# Reference project - do not upload
+/smart-line.space/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

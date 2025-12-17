@@ -81,6 +81,7 @@ class AuthController extends Controller
             'email' => 'email|unique:users',
             'phone' => 'required|regex:/^([0-9\s\-\+\(\)]*)$/|min:8|max:17|unique:users',
             'password' => 'required|min:8',
+            'gender' => 'required|in:male,female',
             'profile_image' => 'image|mimes:jpeg,jpg,png,gif,webp|max:10000',
             'identification_type' => 'in:nid,passport,driving_license',
             'identification_number' => 'sometimes',

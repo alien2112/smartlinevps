@@ -13,11 +13,11 @@
         "doctrine/dbal": "^3.6",
         "gregwar/captcha": "1.*",
         "guzzlehttp/guzzle": "^7.0.1",
-        "illuminate/database": "*",
+        "illuminate/database": "^10.10",
         "iyzico/iyzipay-php": "^2.0",
         "kreait/firebase-php": "^7.0",
         "laravel/framework": "^10.10",
-        "laravel/passport": "*",
+        "laravel/passport": "^12.0",
         "laravel/reverb": "@beta",
         "laravel/sanctum": "^3.3",
         "laravel/tinker": "^2.8",
@@ -104,6 +104,6 @@
             "wikimedia/composer-merge-plugin": true
         }
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }

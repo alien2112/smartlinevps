@@ -51,20 +51,21 @@ class PaymentController extends Controller
 
         $tips = 0;
         DB::beginTransaction();
-        if (!is_null($request->tips) && $request->payment_method == 'wallet') {
-            $tips = $request->tips;
-        }
-        $feeAttributes['tips'] = $tips;
+        try {
+            if (!is_null($request->tips) && $request->payment_method == 'wallet') {
+                $tips = $request->tips;
+            }
+            $feeAttributes['tips'] = $tips;
 
-        $data = [
-            'tips' => $tips,
-            'payment_method' => $request->payment_method,
-            'paid_fare' => $trip->paid_fare + $tips,
-            'payment_status' => PAID
-        ];
-        $trip->fee()->update($feeAttributes);
-        $trip = $this->tripRequestservice->update(id: $request->trip_request_id, data: $data);
-        if ($request->payment_method == 'wallet') {
+            $data = [
+                'tips' => $tips,
+                'payment_method' => $request->payment_method,
+                'paid_fare' => $trip->paid_fare + $tips,
+                'payment_status' => PAID
+            ];
+            $trip->fee()->update($feeAttributes);
+            $trip = $this->tripRequestservice->update(id: $request->trip_request_id, data: $data);
+            if ($request->payment_method == 'wallet') {
             if ($trip->customer->userAccount->wallet_balance < ($trip->paid_fare)) {
 
                 return response()->json(responseFormatter(INSUFFICIENT_FUND_403), 403);
@@ -77,8 +78,12 @@ class PaymentController extends Controller
             $this->cashTransaction($trip);
         }
 
-        $this->amountChecker($trip->customer, $trip->paid_fare);
-        DB::commit();
+            $this->amountChecker($trip->customer, $trip->paid_fare);
+            DB::commit();
+        } catch (\Exception $exception) {
+            DB::rollBack();
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['code' => 'payment_error', 'message' => $exception->getMessage()]]), 400);
+        }
 
         $push = getNotification('payment_successful');
         sendDeviceNotification(
@@ -112,7 +117,7 @@ class PaymentController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'trip_request_id' => 'required',
-            'payment_method' => 'required|in:ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash,ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash'
+            'payment_method' => 'required|in:ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash,kashier'
         ]);
         if ($validator->fails()) {
 

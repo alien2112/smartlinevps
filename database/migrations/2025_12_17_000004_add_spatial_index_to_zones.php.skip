@@ -1,0 +1,30 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     *
+     * Priority 1 spatial index for zones table
+     * Expected impact: Point-in-polygon checks faster with many zones
+     */
+    public function up(): void
+    {
+        // Add spatial index on zones.coordinates for faster point-in-polygon checks
+        // Note: coordinates column should already be POLYGON/GEOMETRY type
+        DB::statement('ALTER TABLE zones ADD SPATIAL INDEX idx_zone_coordinates (coordinates)');
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        DB::statement('ALTER TABLE zones DROP INDEX idx_zone_coordinates');
+    }
+};

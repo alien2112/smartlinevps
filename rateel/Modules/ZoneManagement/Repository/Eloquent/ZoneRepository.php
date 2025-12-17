@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use MatanYadaev\EloquentSpatial\AxisOrder;
 use Modules\ZoneManagement\Entities\Zone;
 use Modules\ZoneManagement\Repository\ZoneRepositoryInterface;
 
@@ -20,7 +21,34 @@ class ZoneRepository extends BaseRepository implements ZoneRepositoryInterface
 
     public function getByPoints($point)
     {
-        return $this->model->whereContains('coordinates', $point);
+        // Some DBs parse SRID 4326 WKT in lat/long order by default, while the app (via laravel-eloquent-spatial)
+        // uses axis-order=long-lat. To keep zone lookup working regardless of how polygons were imported,
+        // try both axis orders when supported.
+        $wkt = method_exists($point, 'toWkt') ? $point->toWkt() : (string)$point;
+        $srid = property_exists($point, 'srid') ? (int)$point->srid : 4326;
+
+        $query = $this->model->newQuery();
+        $connection = $this->model->getConnection();
+
+        if (AxisOrder::supported($connection)) {
+            $query->whereRaw(
+                "ST_CONTAINS(`coordinates`, ST_GeomFromText(?, ?, 'axis-order=long-lat'))",
+                [$wkt, $srid]
+            )->orWhereRaw(
+                "ST_CONTAINS(`coordinates`, ST_GeomFromText(?, ?, 'axis-order=lat-long'))",
+                [$wkt, $srid]
+            )->orderByRaw(
+                "ST_CONTAINS(`coordinates`, ST_GeomFromText(?, ?, 'axis-order=long-lat')) DESC",
+                [$wkt, $srid]
+            );
+
+            return $query;
+        }
+
+        return $query->whereRaw(
+            "ST_CONTAINS(`coordinates`, ST_GeomFromText(?, ?))",
+            [$wkt, $srid]
+        );
     }
 
     public function findOne($id, array $relations = [], array $withAvgRelations = [],array $whereHasRelations = [], array $withCountQuery = [], bool $withTrashed = false, bool $onlyTrashed = false): ?Model

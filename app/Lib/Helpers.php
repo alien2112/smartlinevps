@@ -546,8 +546,59 @@ if (!function_exists('getRoutes')) {
     function getRoutes(array $originCoordinates, array $destinationCoordinates, array $intermediateCoordinates = [], array $drivingMode = ["DRIVE"])
     {
         $apiKey = businessConfig(GOOGLE_MAP_API)?->value['map_api_key_server'] ?? '';
-        $encoded_polyline = null;
         $responses = [];
+
+        $encodePolyline = function (array $points): string {
+            $result = '';
+            $prevLat = 0;
+            $prevLng = 0;
+
+            $encodeSigned = function (int $value) use (&$result) {
+                $value = ($value < 0) ? ~($value << 1) : ($value << 1);
+                while ($value >= 0x20) {
+                    $result .= chr((0x20 | ($value & 0x1f)) + 63);
+                    $value >>= 5;
+                }
+                $result .= chr($value + 63);
+            };
+
+            foreach ($points as $point) {
+                if (!is_array($point) || count($point) < 2) {
+                    continue;
+                }
+                $lat = (int) round(((float) $point[0]) * 1e5);
+                $lng = (int) round(((float) $point[1]) * 1e5);
+
+                $encodeSigned($lat - $prevLat);
+                $encodeSigned($lng - $prevLng);
+
+                $prevLat = $lat;
+                $prevLng = $lng;
+            }
+
+            return $result;
+        };
+
+        $extractGeoLinkRoutes = function ($result): array {
+            if (!is_array($result)) {
+                return [];
+            }
+
+            // Supported response shapes:
+            // 1) { data: { routes: [...] } }
+            // 2) { data: [ ... ] } (GeoLink v2 directions)
+            if (isset($result['data']['routes']) && is_array($result['data']['routes'])) {
+                return $result['data']['routes'];
+            }
+            if (isset($result['routes']) && is_array($result['routes'])) {
+                return $result['routes'];
+            }
+            if (isset($result['data']) && is_array($result['data'])) {
+                return $result['data'];
+            }
+
+            return [];
+        };
         
         // Build Geolink API parameters
         $params = [
@@ -572,55 +623,86 @@ if (!function_exists('getRoutes')) {
             }
         }
         
+        if (empty($apiKey)) {
+            $errorMessage = 'GeoLink API key not configured';
+            return [
+                0 => ['status' => 'ERROR', 'error_detail' => $errorMessage],
+                1 => ['status' => 'ERROR', 'error_detail' => $errorMessage]
+            ];
+        }
+
         $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/directions', $params);
         if ($response->successful()) {
             $result = $response->json();
-            
-            // Check if we have valid routes from Geolink API
-            if (!isset($result['data']['routes']) || empty($result['data']['routes'])) {
-                return $response->status();
+
+            $routes = $extractGeoLinkRoutes($result);
+            if (empty($routes)) {
+                $errorMessage = $result['message'] ?? 'No routes found between the specified locations';
+                return [
+                    0 => ['status' => 'ERROR', 'error_detail' => $errorMessage],
+                    1 => ['status' => 'ERROR', 'error_detail' => $errorMessage]
+                ];
             }
-            
-            // Get the first route (shortest by default)
-            $route = $result['data']['routes'][0];
-            $distance = $route['distance'] ?? 0; // meters
-            $duration = $route['duration'] ?? 0; // seconds
-            $encoded_polyline = $route['polyline'] ?? '';
-            
-            // Geolink doesn't provide duration_in_traffic, use regular duration
-            $durationInTraffic = $duration;
-            
-            $distance = str_replace(',', '', $distance);
+
+            $route = $routes[0];
+
+            $distanceMeters = 0;
+            if (isset($route['distance']['meters'])) {
+                $distanceMeters = (float) $route['distance']['meters'];
+            } elseif (isset($route['distance'])) {
+                $distanceMeters = (float) $route['distance'];
+            }
+
+            $durationSeconds = 0;
+            if (isset($route['duration']['seconds'])) {
+                $durationSeconds = (float) $route['duration']['seconds'];
+            } elseif (isset($route['duration'])) {
+                $durationSeconds = (float) $route['duration'];
+            }
+
+            $encodedPolyline = $route['polyline'] ?? ($route['overview_polyline'] ?? '');
+            if (empty($encodedPolyline) && isset($route['waypoints']) && is_array($route['waypoints'])) {
+                $encodedPolyline = $encodePolyline($route['waypoints']);
+            }
+
+            $durationInTraffic = $durationSeconds;
             $convert_to_bike = 1.2;
 
             $responses[0] = [
-                'distance' => (double)str_replace(',', '', number_format(($distance ?? 0) / 1000, 2)),
-                'distance_text' => number_format(($distance ?? 0) / 1000, 2) . ' ' . 'km',
-                'duration' => number_format((($duration / 60) / $convert_to_bike), 2) . ' ' . 'min',
-                'duration_sec' => (int)($duration / $convert_to_bike),
+                'distance' => (double) str_replace(',', '', number_format(($distanceMeters ?? 0) / 1000, 2)),
+                'distance_text' => number_format(($distanceMeters ?? 0) / 1000, 2) . ' ' . 'km',
+                'duration' => number_format((($durationSeconds / 60) / $convert_to_bike), 2) . ' ' . 'min',
+                'duration_sec' => (int) ($durationSeconds / $convert_to_bike),
                 'duration_in_traffic' => number_format((($durationInTraffic / 60) / $convert_to_bike), 2) . ' ' . 'min',
-                'duration_in_traffic_sec' => (int)($durationInTraffic / $convert_to_bike),
+                'duration_in_traffic_sec' => (int) ($durationInTraffic / $convert_to_bike),
                 'status' => "OK",
                 'drive_mode' => 'TWO_WHEELER',
-                'encoded_polyline' => $encoded_polyline,
+                'encoded_polyline' => $encodedPolyline,
             ];
 
             $responses[1] = [
-                'distance' => (double)str_replace(',', '', number_format(($distance ?? 0) / 1000, 2)),
-                'distance_text' => number_format(($distance ?? 0) / 1000, 2) . ' ' . 'km',
-                'duration' => number_format(($duration / 60), 2) . ' ' . 'min',
-                'duration_sec' => (int)$duration,
+                'distance' => (double) str_replace(',', '', number_format(($distanceMeters ?? 0) / 1000, 2)),
+                'distance_text' => number_format(($distanceMeters ?? 0) / 1000, 2) . ' ' . 'km',
+                'duration' => number_format(($durationSeconds / 60), 2) . ' ' . 'min',
+                'duration_sec' => (int) $durationSeconds,
                 'duration_in_traffic' => number_format(($durationInTraffic / 60), 2) . ' ' . 'min',
-                'duration_in_traffic_sec' => (int)$durationInTraffic,
+                'duration_in_traffic_sec' => (int) $durationInTraffic,
                 'status' => "OK",
                 'drive_mode' => 'DRIVE',
-                'encoded_polyline' => $encoded_polyline,
+                'encoded_polyline' => $encodedPolyline,
             ];
 
             return $responses;
         } else {
             // Handle the error if the request was not successful
-            return $response->status();
+            $errorMessage = 'GeoLink API request failed with status: ' . $response->status();
+            if ($response->json()) {
+                $errorMessage = $response->json()['message'] ?? $errorMessage;
+            }
+            return [
+                0 => ['status' => 'ERROR', 'error_detail' => $errorMessage],
+                1 => ['status' => 'ERROR', 'error_detail' => $errorMessage]
+            ];
         }
 
     }
@@ -1000,5 +1082,4 @@ if (!function_exists('convertTimeToSecond')) {
         };
     }
 }
-
 

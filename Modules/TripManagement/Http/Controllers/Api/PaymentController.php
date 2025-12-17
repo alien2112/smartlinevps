@@ -41,7 +41,7 @@ class PaymentController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'trip_request_id' => 'required',
-            'payment_method' => 'required|in:ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash,ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash,kashier'
+            'payment_method' => 'required|in:ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash,kashier'
         ]);
         if ($validator->fails()) {
 
@@ -122,22 +122,22 @@ class PaymentController extends Controller
 
         $tips = 0;
         DB::beginTransaction();
-        if (!is_null($request->tips) && $request->payment_method == 'wallet') {
-            $tips = $request->tips;
-        }
-        $attributes = [
-            'column' => 'id',
-            'tips' => $tips,
-            'payment_method' => $request->payment_method,
-            'paid_fare' => $trip->paid_fare + $tips,
-            'payment_status' => PAID
-        ];
-        $feeAttributes['tips'] = $tips;
-        $trip->fee()->update($feeAttributes);
-        $trip = $this->trip->update($attributes, $request->trip_request_id);
-        $trip->tips = 0;
-        $trip->save();
-        if ($request->payment_method == 'wallet') {
+        try {
+            if (!is_null($request->tips) && $request->payment_method == 'wallet') {
+                $tips = $request->tips;
+            }
+            $attributes = [
+                'column' => 'id',
+                'tips' => $tips,
+                'payment_method' => $request->payment_method,
+                'paid_fare' => $trip->paid_fare + $tips,
+                'payment_status' => PAID
+            ];
+            $feeAttributes['tips'] = $tips;
+            $trip->fee()->update($feeAttributes);
+            $trip = $this->trip->update($attributes, $request->trip_request_id);
+
+            if ($request->payment_method == 'wallet') {
             if ($trip->customer->userAccount->wallet_balance < ($trip->paid_fare)) {
 
                 return response()->json(responseFormatter(INSUFFICIENT_FUND_403), 403);
@@ -150,8 +150,12 @@ class PaymentController extends Controller
             $this->cashTransaction($trip);
         }
 
-        $this->customerLevelUpdateChecker($trip->customer);
-        DB::commit();
+            $this->customerLevelUpdateChecker($trip->customer);
+            DB::commit();
+        } catch (Exception $exception) {
+            DB::rollBack();
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['code' => 'payment_error', 'message' => $exception->getMessage()]]), 400);
+        }
 
         $push = getNotification('payment_successful');
         sendDeviceNotification(

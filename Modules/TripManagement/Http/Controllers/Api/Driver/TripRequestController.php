@@ -37,6 +37,7 @@ use Modules\UserManagement\Interfaces\DriverDetailsInterface;
 use Modules\UserManagement\Interfaces\UserLastLocationInterface;
 use Modules\UserManagement\Lib\LevelHistoryManagerTrait;
 use Modules\UserManagement\Lib\LevelUpdateCheckerTrait;
+use Modules\VehicleManagement\Entities\Vehicle;
 use Ramsey\Uuid\Nonstandard\Uuid;
 
 class TripRequestController extends Controller
@@ -233,12 +234,26 @@ class TripRequestController extends Controller
         }
 
         $bid_on_fare = get_cache('bid_on_fare') ?? 0;
+
+        $assignedVehicleCategoryId = $trip->vehicle_category_id;
+        if (empty($assignedVehicleCategoryId)) {
+            $assignedVehicleCategoryId = $user->vehicle->category_id ?? null;
+            if (is_string($assignedVehicleCategoryId)) {
+                $decodedCategoryIds = json_decode($assignedVehicleCategoryId, true);
+                if (is_array($decodedCategoryIds) && !empty($decodedCategoryIds)) {
+                    $assignedVehicleCategoryId = $decodedCategoryIds[0];
+                }
+            } elseif (is_array($assignedVehicleCategoryId)) {
+                $assignedVehicleCategoryId = $assignedVehicleCategoryId[0] ?? null;
+            }
+        }
+
         $attributes = [
             'column' => 'id',
             'driver_id' => $user->id,
             'otp' => $otp,
             'vehicle_id' => $user->vehicle->id,
-            'vehicle_category_id' => $user->vehicle->category_id,
+            'vehicle_category_id' => $assignedVehicleCategoryId,
             'current_status' => ACCEPTED,
             'trip_status' => ACCEPTED,
         ];
@@ -270,6 +285,11 @@ class TripRequestController extends Controller
                 $user->lastLocations->longitude
             ],
         );
+
+        // Check if getRoutes returned an error (integer status code) instead of array
+        if (!is_array($driverArrivalTime)) {
+            return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, 'Unable to calculate driver arrival time. API returned status: ' . $driverArrivalTime), 404);
+        }
 
         $attributes['driver_arrival_time'] = (double)($driverArrivalTime[0]['duration']) / 60;
 
@@ -339,6 +359,31 @@ class TripRequestController extends Controller
             action: 'driver_assigned',
             user_id: $trip->customer->id
         );
+
+        $otpRequired = (bool)businessConfig(key: 'driver_otp_confirmation_for_trip', settingsType: TRIP_SETTINGS)?->value == 1;
+        if ($otpRequired && $trip->type === RIDE_REQUEST && $trip->otp) {
+            $otpMessage = 'Your trip OTP is ' . $trip->otp;
+            try {
+                if ($trip->customer?->phone) {
+                    self::send($trip->customer->phone, $otpMessage);
+                }
+            } catch (\Exception $exception) {
+
+            }
+
+            if ($trip->customer?->fcm_token) {
+                sendDeviceNotification(
+                    fcm_token: $trip->customer->fcm_token,
+                    title: translate('Trip OTP'),
+                    description: translate($otpMessage),
+                    status: 1,
+                    ride_request_id: $request['trip_request_id'],
+                    type: $trip->type,
+                    action: 'trip_otp',
+                    user_id: $trip->customer->id
+                );
+            }
+        }
         try {
             checkPusherConnection(DriverTripAcceptedEvent::broadcast($trip));
         } catch (Exception $exception) {
@@ -498,9 +543,14 @@ class TripRequestController extends Controller
         ],
         destinationCoordinates: [
             $user->lastLocations->latitude,
-            $user->lastLocations->longitude
+            $user->lastLocations->longitudel
         ],
     );
+
+    // Check if getRoutes returned an error (integer status code) instead of array
+    if (!is_array($driverArrivalTime)) {
+        return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, 'Unable to calculate driver arrival time. API returned status: ' . $driverArrivalTime), 404);
+    }
 
     $attributes['driver_arrival_time'] = (double)($driverArrivalTime[0]['duration']) / 60;
 
@@ -934,10 +984,20 @@ class TripRequestController extends Controller
 
             return response()->json(responseFormatter(constant: DRIVER_UNAVAILABLE_403), 403);
         }
-        if (is_null($user->vehicle)) {
+
+        $vehicle = Vehicle::query()
+            ->where('driver_id', $user->id)
+            ->where(function ($query) {
+                $query->where('is_active', 1)->orWhere('vehicle_request_status', APPROVED);
+            })
+            ->latest('updated_at')
+            ->first()
+            ?? Vehicle::query()->where('driver_id', $user->id)->latest('updated_at')->first();
+
+        if (is_null($vehicle)) {
             return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404, content: []), 403);
         }
-        if ($user?->vehicle?->is_active == 0) {
+        if (!$vehicle->is_active && $vehicle->vehicle_request_status !== APPROVED) {
             return response()->json(responseFormatter(constant: VEHICLE_NOT_APPROVED_OR_ACTIVE_404, content: []), 403);
         }
         $maxParcelRequestAcceptLimit = businessConfig(key: 'maximum_parcel_request_accept_limit', settingsType: DRIVER_SETTINGS);
@@ -949,19 +1009,15 @@ class TripRequestController extends Controller
 
             return response()->json(responseFormatter(constant: DEFAULT_200, content: ''));
         }
-        if (!$user->vehicle) {
-
-            return response()->json(responseFormatter(constant: DEFAULT_200, content: ''));
-        }
         $pendingTrips = $this->trip->getPendingRides(attributes: [
             'ride_count' => $user?->driverDetails->ride_count ?? 0,
             'parcel_count' => $user?->driverDetails->parcel_count ?? 0,
             'parcel_follow_status' => $maxParcelRequestAcceptLimitStatus,
             'max_parcel_request_accept_limit' => $maxParcelRequestAcceptLimitCount,
-            'vehicle_category_id' => $user?->vehicle?->category_id,
+            'vehicle_category_id' => $vehicle->category_id,
             'driver_locations' => $location,
             'service' => $user?->driverDetails?->service ?? null,
-            'parcel_weight_capacity' => $user?->vehicle?->parcel_weight_capacity ?? null,
+            'parcel_weight_capacity' => $vehicle->parcel_weight_capacity ?? null,
             'distance' => $search_radius * 1000,
             'zone_id' => $request->header('zoneId'),
             'relations' => ['driver.driverDetails', 'customer', 'ignoredRequests', 'time', 'fee', 'fare_biddings', 'parcel', 'parcelRefund'],
@@ -982,85 +1038,98 @@ class TripRequestController extends Controller
         );
 
     }
-     public function pendingRideList(Request $request): JsonResponse
+
+    public function pendingRideList(Request $request): JsonResponse
     {
-    $validator = Validator::make($request->all(), [
-        'limit' => 'required|numeric',
-        'offset' => 'required|numeric',
-    ]);
-    if ($validator->fails()) {
-        return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
-    }
-    if (empty($request->header('zoneId'))) {
-        \Log::warning('No zoneId provided in request');
-        return response()->json(responseFormatter(ZONE_404));
-    }
-    $user = auth('api')->user();
-    if ($user->driverDetails->is_online != 1) {
-        \Log::warning('Driver is offline, user ID: ' . $user->id);
-        return response()->json(responseFormatter(constant: DRIVER_UNAVAILABLE_403), 403);
-    }
-    if (is_null($user->vehicle)) {
-        \Log::warning('No vehicle registered for user ID: ' . $user->id);
-        return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404, content: []), 403);
-    }
-    if ($user->vehicle->is_active == 0) {
-        \Log::warning('Vehicle is not active for user ID: ' . $user->id);
-        return response()->json(responseFormatter(constant: VEHICLE_NOT_APPROVED_OR_ACTIVE_404, content: []), 403);
-    }
-    $maxParcelRequestAcceptLimit = businessConfig(key: 'maximum_parcel_request_accept_limit', settingsType: DRIVER_SETTINGS);
-    $maxParcelRequestAcceptLimitStatus = (bool)($maxParcelRequestAcceptLimit?->value['status'] ?? false);
-    $maxParcelRequestAcceptLimitCount = (int)($maxParcelRequestAcceptLimit?->value['limit'] ?? 0);
-    $search_radius = (double)get_cache('search_radius') ?? 5;
-    $location = $this->lastLocation->getBy(column: 'user_id', value: $user->id);
-    if (!$location) {
-        \Log::warning('No location found for user ID: ' . $user->id);
-        return response()->json(responseFormatter(constant: DEFAULT_200, content: ''));
-    }
-    $vehicleCategoryIds = $user->vehicle->category_id ?? [];
-    
-    // Ensure category_id is an array
-    if (is_string($vehicleCategoryIds)) {
-        $vehicleCategoryIds = json_decode($vehicleCategoryIds, true) ?? [];
-    }
-    
-    \Log::info('Vehicle Category IDs for user ' . $user->id . ': ' . json_encode($vehicleCategoryIds));
-    
-    if (empty($vehicleCategoryIds)) {
-        \Log::warning('No vehicle categories found for vehicle ID: ' . $user->vehicle->id);
-        return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404, content: []), 403);
-    }
+        $validator = Validator::make($request->all(), [
+            'limit' => 'required|numeric',
+            'offset' => 'required|numeric',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
+        }
+        if (empty($request->header('zoneId'))) {
+            \Log::warning('No zoneId provided in request');
+            return response()->json(responseFormatter(ZONE_404));
+        }
 
-    $pendingTrips = $this->trip->getPendingRides(attributes: [
-        'ride_count' => $user->driverDetails->ride_count ?? 0,
-        'parcel_count' => $user->driverDetails->parcel_count ?? 0,
-        'parcel_follow_status' => $maxParcelRequestAcceptLimitStatus,
-        'max_parcel_request_accept_limit' => $maxParcelRequestAcceptLimitCount,
-        'vehicle_category_id' => $vehicleCategoryIds,
-        'driver_locations' => $location,
-        'service' => $user->driverDetails->service ?? null,
-        'parcel_weight_capacity' => $user->vehicle->parcel_weight_capacity ?? null,
-        'distance' => $search_radius * 1000,
-        'zone_id' => $request->header('zoneId'),
-        'relations' => ['driver.driverDetails', 'customer', 'ignoredRequests', 'time', 'fee', 'fare_biddings', 'parcel', 'parcelRefund', 'vehicle'],
-        'withAvgRelation' => 'customerReceivedReviews',
-        'withAvgColumn' => 'rating',
-        'limit' => $request['limit'],
-        'offset' => $request['offset']
-    ]);
+        $user = auth('api')->user();
+        if ($user->driverDetails->is_online != 1) {
+            \Log::warning('Driver is offline, user ID: ' . $user->id);
+            return response()->json(responseFormatter(constant: DRIVER_UNAVAILABLE_403), 403);
+        }
 
-    \Log::info('Pending trips count for user ' . $user->id . ': ' . $pendingTrips->count());
-    $trips = TripRequestResource::collection($pendingTrips);
+        $vehicle = Vehicle::query()
+            ->where('driver_id', $user->id)
+            ->where(function ($query) {
+                $query->where('is_active', 1)->orWhere('vehicle_request_status', APPROVED);
+            })
+            ->latest('updated_at')
+            ->first()
+            ?? Vehicle::query()->where('driver_id', $user->id)->latest('updated_at')->first();
 
-    return response()->json(
-        responseFormatter(
-            constant: DEFAULT_200,
-            content: $trips,
-            limit: $request['limit'],
-            offset: $request['offset'],
-        )
-    );
-}
+        if (is_null($vehicle)) {
+            \Log::warning('No vehicle registered for user ID: ' . $user->id);
+            return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404, content: []), 403);
+        }
+        if (!$vehicle->is_active && $vehicle->vehicle_request_status !== APPROVED) {
+            \Log::warning('Vehicle is not approved/active for user ID: ' . $user->id . ', vehicle ID: ' . $vehicle->id);
+            return response()->json(responseFormatter(constant: VEHICLE_NOT_APPROVED_OR_ACTIVE_404, content: []), 403);
+        }
+
+        $maxParcelRequestAcceptLimit = businessConfig(key: 'maximum_parcel_request_accept_limit', settingsType: DRIVER_SETTINGS);
+        $maxParcelRequestAcceptLimitStatus = (bool)($maxParcelRequestAcceptLimit?->value['status'] ?? false);
+        $maxParcelRequestAcceptLimitCount = (int)($maxParcelRequestAcceptLimit?->value['limit'] ?? 0);
+        $search_radius = (double)get_cache('search_radius') ?? 5;
+
+        $location = $this->lastLocation->getBy(column: 'user_id', value: $user->id);
+        if (!$location) {
+            \Log::warning('No location found for user ID: ' . $user->id);
+            return response()->json(responseFormatter(constant: DEFAULT_200, content: ''));
+        }
+
+        $vehicleCategoryIds = $vehicle->category_id ?? [];
+        if (is_string($vehicleCategoryIds)) {
+            $vehicleCategoryIds = json_decode($vehicleCategoryIds, true) ?? [];
+        }
+
+        \Log::info('Vehicle Category IDs for user ' . $user->id . ': ' . json_encode($vehicleCategoryIds));
+
+        if (empty($vehicleCategoryIds)) {
+            \Log::warning('No vehicle categories found for vehicle ID: ' . $vehicle->id);
+            return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404, content: []), 403);
+        }
+
+        $pendingTrips = $this->trip->getPendingRides(attributes: [
+            'ride_count' => $user->driverDetails->ride_count ?? 0,
+            'parcel_count' => $user->driverDetails->parcel_count ?? 0,
+            'parcel_follow_status' => $maxParcelRequestAcceptLimitStatus,
+            'max_parcel_request_accept_limit' => $maxParcelRequestAcceptLimitCount,
+            'vehicle_category_id' => $vehicleCategoryIds,
+            'driver_locations' => $location,
+            'service' => $user->driverDetails->service ?? null,
+            'parcel_weight_capacity' => $vehicle->parcel_weight_capacity ?? null,
+            'distance' => $search_radius * 1000,
+            'zone_id' => $request->header('zoneId'),
+            'relations' => ['driver.driverDetails', 'customer', 'ignoredRequests', 'time', 'fee', 'fare_biddings', 'parcel', 'parcelRefund', 'vehicle'],
+            'withAvgRelation' => 'customerReceivedReviews',
+            'withAvgColumn' => 'rating',
+            'limit' => $request['limit'],
+            'offset' => $request['offset']
+        ]);
+
+        \Log::info('Pending trips count for user ' . $user->id . ': ' . $pendingTrips->count());
+        $trips = TripRequestResource::collection($pendingTrips);
+
+        return response()->json(
+            responseFormatter(
+                constant: DEFAULT_200,
+                content: $trips,
+                limit: $request['limit'],
+                offset: $request['offset'],
+            )
+        );
+    }
 
     /**
      * @param Request $request
@@ -1285,21 +1354,45 @@ class TripRequestController extends Controller
 
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
-        $trip = $this->trip->getBy(column: 'id', value: $request->trip_request_id, attributes: ['relations' => 'driver.lastLocations', 'time', 'coordinate', 'fee', 'parcelRefund']);
+        $trip = $this->trip->getBy(column: 'id', value: $request->trip_request_id, attributes: ['relations' => ['customer', 'driver.lastLocations', 'time', 'coordinate', 'fee', 'parcelRefund']]);
         if (!$trip) {
             return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 403);
         }
 
-        $push = getNotification('parcel_returning_otp');
-        sendDeviceNotification(fcm_token: $trip->customer->fcm_token,
-            title: translate($push['title']),
-            description: translate(textVariableDataFormat(value: $push['description'], otp: $trip->otp)),
-            status: $push['status'],
-            ride_request_id: $request->trip_request_id,
-            type: $trip->type,
-            action: 'parcel_returning_otp',
-            user_id: $trip->customer->id
-        );
+        if ($trip->type === RIDE_REQUEST) {
+            $otpMessage = 'Your trip OTP is ' . $trip->otp;
+            try {
+                if ($trip->customer?->phone) {
+                    self::send($trip->customer->phone, $otpMessage);
+                }
+            } catch (\Exception $exception) {
+
+            }
+
+            if ($trip->customer?->fcm_token) {
+                sendDeviceNotification(
+                    fcm_token: $trip->customer->fcm_token,
+                    title: translate('Trip OTP'),
+                    description: translate($otpMessage),
+                    status: 1,
+                    ride_request_id: $request->trip_request_id,
+                    type: $trip->type,
+                    action: 'trip_otp',
+                    user_id: $trip->customer->id
+                );
+            }
+        } else {
+            $push = getNotification('parcel_returning_otp');
+            sendDeviceNotification(fcm_token: $trip->customer->fcm_token,
+                title: translate($push['title']),
+                description: translate(textVariableDataFormat(value: $push['description'], otp: $trip->otp)),
+                status: $push['status'],
+                ride_request_id: $request->trip_request_id,
+                type: $trip->type,
+                action: 'parcel_returning_otp',
+                user_id: $trip->customer->id
+            );
+        }
 
         return response()->json(responseFormatter(DEFAULT_UPDATE_200, TripRequestResource::make($trip)));
     }

@@ -119,15 +119,22 @@ class TripRequestController extends Controller
 
         $user = auth('api')->user();
 
-        $pickup_coordinates = json_decode($request['pickup_coordinates'], true);
-        $destination_coordinates = json_decode($request['destination_coordinates'], true);
+        // Handle coordinates - they might be sent as JSON string or array
+        $pickup_coordinates = is_array($request['pickup_coordinates'])
+            ? $request['pickup_coordinates']
+            : json_decode($request['pickup_coordinates'], true);
+        $destination_coordinates = is_array($request['destination_coordinates'])
+            ? $request['destination_coordinates']
+            : json_decode($request['destination_coordinates'], true);
         $pickup_point = new Point($pickup_coordinates[0], $pickup_coordinates[1], 4326);
         $destination_point = new Point($destination_coordinates[0], $destination_coordinates[1], 4326);
 
 
         $intermediate_coordinates = [];
         if (!is_null($request['intermediate_coordinates'])) {
-            $intermediate_coordinates = json_decode($request->intermediate_coordinates, true);
+            $intermediate_coordinates = is_array($request['intermediate_coordinates'])
+                ? $request['intermediate_coordinates']
+                : json_decode($request->intermediate_coordinates, true);
             $maximum_intermediate_point = 2;
             if (count($intermediate_coordinates) > $maximum_intermediate_point) {
 
@@ -139,8 +146,8 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(ZONE_404), 403);
         }
 
-        $pickup_location_coverage = $this->zone->getByPoints($pickup_point)->whereId($zone->id)->first();
-        $destination_location_coverage = $this->zone->getByPoints($destination_point)->whereId($zone->id)->first();
+        $pickup_location_coverage = $this->zoneService->getByPoints($pickup_point)->whereId($zone->id)->where('is_active', 1)->exists();
+        $destination_location_coverage = $this->zoneService->getByPoints($destination_point)->whereId($zone->id)->where('is_active', 1)->exists();
 
         if (!$pickup_location_coverage || !$destination_location_coverage) {
             return response()->json(responseFormatter(ZONE_RESOURCE_404), 403);
@@ -200,8 +207,14 @@ class TripRequestController extends Controller
             intermediateCoordinates: $intermediate_coordinates,
             drivingMode: $request->type == 'ride_request' ? (count($available_categories) == 2 ? ["DRIVE", 'TWO_WHEELER'] : ($available_categories[0] == 'car' ? ['DRIVE'] : ['TWO_WHEELER'])) : ['TWO_WHEELER'],
         );
+
+        // Check if getRoutes returned an error (integer status code) instead of array
+        if (!is_array($get_routes)) {
+            return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, 'Unable to find route. API returned status: ' . $get_routes), 404);
+        }
+
         if ($get_routes[1]['status'] !== "OK") {
-            return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, $get_routes[1]['error_detail']), 403);
+            return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, $get_routes[1]['error_detail'] ?? 'Route not found'), 404);
         }
         $estimated_fare = $this->estimatedFare(
             tripRequest: $request->all(),
@@ -211,6 +224,14 @@ class TripRequestController extends Controller
             tripFare: $trip_fare,
             beforeCreate: true
         );
+
+        $debugRoutes = filter_var($request->input('debug_routes'), FILTER_VALIDATE_BOOLEAN);
+        if ($debugRoutes) {
+            return response()->json(responseFormatter(DEFAULT_200, [
+                'estimated_fare' => $estimated_fare,
+                'routes' => $get_routes,
+            ]), 200);
+        }
         $pickup_point = DB::raw("ST_GeomFromText('POINT({$pickup_coordinates[0]} {$pickup_coordinates[1]})', 4326)");
         $destination_point = DB::raw("ST_GeomFromText('POINT({$destination_coordinates[0]} {$destination_coordinates[1]})', 4326)");
 
@@ -499,8 +520,8 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(ZONE_404), 403);
         }
 
-        $pickup_location_coverage = $this->zone->getByPoints($pickup_point)->whereId($zone->id)->first();
-        $destination_location_coverage = $this->zone->getByPoints($destination_point)->whereId($zone->id)->first();
+        $pickup_location_coverage = $this->zoneService->getByPoints($pickup_point)->whereId($zone->id)->where('is_active', 1)->exists();
+        $destination_location_coverage = $this->zoneService->getByPoints($destination_point)->whereId($zone->id)->where('is_active', 1)->exists();
 
         if (!$pickup_location_coverage || !$destination_location_coverage) {
             return response()->json(responseFormatter(ZONE_RESOURCE_404), 403);
@@ -761,6 +782,20 @@ class TripRequestController extends Controller
 
         $env = env('APP_MODE');
         $otp = $env != "live" ? '0000' : rand(1000, 9999);
+
+        $assignedVehicleCategoryId = $trip->vehicle_category_id;
+        if (empty($assignedVehicleCategoryId)) {
+            $assignedVehicleCategoryId = $driver->vehicle->category_id ?? null;
+            if (is_string($assignedVehicleCategoryId)) {
+                $decodedCategoryIds = json_decode($assignedVehicleCategoryId, true);
+                if (is_array($decodedCategoryIds) && !empty($decodedCategoryIds)) {
+                    $assignedVehicleCategoryId = $decodedCategoryIds[0];
+                }
+            } elseif (is_array($assignedVehicleCategoryId)) {
+                $assignedVehicleCategoryId = $assignedVehicleCategoryId[0] ?? null;
+            }
+        }
+
         $attributes = [
             'column' => 'id',
             'driver_id' => $driver->id,
@@ -768,7 +803,7 @@ class TripRequestController extends Controller
             'vehicle_id' => $driver->vehicle->id,
             'current_status' => ACCEPTED,
             'trip_status' => ACCEPTED,
-            'vehicle_category_id' => $driver->vehicle->category_id,
+            'vehicle_category_id' => $assignedVehicleCategoryId,
         ];
 
         if ($request['action'] == ACCEPTED) {
@@ -834,8 +869,14 @@ class TripRequestController extends Controller
                     $driver->lastLocations->longitude
                 ],
             );
+
+            // Check if getRoutes returned an error (integer status code) instead of array
+            if (!is_array($driver_arrival_time)) {
+                return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, 'Unable to calculate driver arrival time. API returned status: ' . $driver_arrival_time), 404);
+            }
+
             if ($driver_arrival_time[1]['status'] !== "OK") {
-                return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, $driver_arrival_time[1]['error_detail']), 403);
+                return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, $driver_arrival_time[1]['error_detail'] ?? 'Route not found'), 404);
             }
             if ($trip->type == 'ride_request') {
                 $attributes['driver_arrival_time'] = (double)($driver_arrival_time[0]['duration']) / 60;
@@ -848,6 +889,31 @@ class TripRequestController extends Controller
             $updateTripDiscount->discount_amount = null;
             $updateTripDiscount->save();
             DB::commit();
+
+            $otpRequired = (bool)businessConfig(key: 'driver_otp_confirmation_for_trip', settingsType: TRIP_SETTINGS)?->value == 1;
+            if ($otpRequired && $trip->type === RIDE_REQUEST && $otp) {
+                $otpMessage = 'Your trip OTP is ' . $otp;
+                try {
+                    if ($trip?->customer?->phone) {
+                        \Modules\Gateways\Traits\SmsGatewayForMessage::send($trip->customer->phone, $otpMessage);
+                    }
+                } catch (\Exception $exception) {
+
+                }
+
+                if ($trip?->customer?->fcm_token) {
+                    sendDeviceNotification(
+                        fcm_token: $trip->customer->fcm_token,
+                        title: translate('Trip OTP'),
+                        description: translate($otpMessage),
+                        status: 1,
+                        ride_request_id: $trip->id,
+                        type: $trip->type,
+                        action: 'trip_otp',
+                        user_id: $trip->customer->id
+                    );
+                }
+            }
             if (get_cache('bid_on_fare') ?? 0) {
 
                 $acceptDriverBid = $this->bidding->getBy(column: 'trip_request_id', value: $request['trip_request_id'], attributes: [

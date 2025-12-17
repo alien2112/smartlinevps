@@ -30,9 +30,37 @@ use Modules\VehicleManagement\Entities\Vehicle;
 class User extends Authenticatable
 {
 
-    use HasFactory, HasUuid, Notifiable, SoftDeletes, HasApiTokens, HasFactory;
+    use HasFactory, HasUuid, Notifiable, SoftDeletes, HasApiTokens;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'user_level_id',
+        'first_name',
+        'last_name',
+        'full_name',
+        'email',
+        'phone',
+        'identification_number',
+        'identification_type',
+        'identification_image',
+        'old_identification_image',
+        'other_documents',
+        'profile_image',
+        'driving_license',
+        'fcm_token',
+        'phone_verified_at',
+        'email_verified_at',
+        'loyalty_points',
+        'password',
+        'user_type',
+        'role_id',
+        'is_active',
+        'failed_attempt',
+        'is_temp_blocked',
+        'blocked_at',
+        'ref_code',
+        'current_language_key',
+        'remember_token',
+    ];
 
     protected $casts = [
         'identification_image' => 'array',
@@ -176,7 +204,7 @@ class User extends Authenticatable
     }
     public function isProfileVerified()
     {
-        return $this?->first_name && $this?->first_name == null?   0 :  1;
+        return (bool) ($this?->first_name && $this?->last_name && $this?->phone_verified_at);
     }
 
     public function vehicleStatus()
@@ -208,7 +236,7 @@ class User extends Authenticatable
 
         static::updated(function ($item) {
             $log = new ActivityLog();
-            $log->edited_by = auth()->user()->id ?? 'user_update';
+            $log->edited_by = optional(auth()->user())->id ?? 'user_update';
             $log->before = $item->original;
             $log->after = $item;
             $item->logs()->save($log);
@@ -216,7 +244,7 @@ class User extends Authenticatable
 
         static::deleted(function ($item) {
             $log = new ActivityLog();
-            $log->edited_by = auth()->user()->id;
+            $log->edited_by = optional(auth()->user())->id ?? 'user_delete';
             $log->before = $item->original;
             $item->logs()->save($log);
         });

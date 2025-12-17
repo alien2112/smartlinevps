@@ -61,6 +61,7 @@ class TripRequest extends Model
         'otp',
         'rise_request_count',
         'type',
+        'female_driver_only',
         'current_status',
         'trip_cancellation_reason',
         'checked',
@@ -95,6 +96,7 @@ class TripRequest extends Model
         "discount_amount" => 'float',
         "total_fare" => 'float',
         "is_paused" => 'boolean',
+        "female_driver_only" => 'boolean',
         "rise_request_count" => 'integer'
     ];
 

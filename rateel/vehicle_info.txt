@@ -1,0 +1,4 @@
+Driver Found: سلمي سامي
+Category ID (raw): ["5d48c2f7-194a-41e4-bd1c-b1188beb885b"]
+Category Name: سيارة سمارت برو
+Category Type: car

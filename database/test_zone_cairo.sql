@@ -31,3 +31,16 @@ SELECT id, name, is_active, coordinates FROM zones WHERE name = 'Cairo Test Zone
 -- These should now be within the zone boundaries
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+

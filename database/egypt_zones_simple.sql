@@ -64,3 +64,16 @@ INSERT INTO zones (id, name, readable_id, coordinates, is_active, extra_fare_sta
 INSERT INTO zones (id, name, readable_id, coordinates, is_active, extra_fare_status, extra_fare_fee, created_at, updated_at) VALUES (UUID(), 'New Administrative Capital', 20, ST_GeomFromText('POLYGON((31.7000 30.1000, 31.9500 30.1000, 31.9500 29.9000, 31.7000 29.9000, 31.7000 30.1000))', 4326), 1, 0, 0, NOW(), NOW());
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -30,4 +30,9 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'realtime' => [
+        'url' => env('NODEJS_REALTIME_URL', 'http://localhost:3000'),
+        'api_key' => env('NODEJS_REALTIME_API_KEY'),
+    ],
+
 ];

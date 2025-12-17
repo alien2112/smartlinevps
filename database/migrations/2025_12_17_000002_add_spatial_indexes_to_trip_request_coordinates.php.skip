@@ -1,0 +1,41 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     *
+     * Priority 1 spatial indexes for trip_request_coordinates table
+     * Expected impact: Coordinate-based queries dramatically faster
+     */
+    public function up(): void
+    {
+        // Add spatial indexes for pickup and dropoff coordinates
+        // Note: These columns should already be POINT type from MatanYadaev/Laravel-Eloquent-Spatial
+        DB::statement('ALTER TABLE trip_request_coordinates ADD SPATIAL INDEX idx_pickup_coords (pickup_coordinates)');
+        DB::statement('ALTER TABLE trip_request_coordinates ADD SPATIAL INDEX idx_dropoff_coords (dropoff_coordinates)');
+
+        Schema::table('trip_request_coordinates', function (Blueprint $table) {
+            // Regular index for trip lookups
+            $table->index('trip_request_id', 'idx_coordinates_trip');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        DB::statement('ALTER TABLE trip_request_coordinates DROP INDEX idx_pickup_coords');
+        DB::statement('ALTER TABLE trip_request_coordinates DROP INDEX idx_dropoff_coords');
+
+        Schema::table('trip_request_coordinates', function (Blueprint $table) {
+            $table->dropIndex('idx_coordinates_trip');
+        });
+    }
+};

@@ -4,6 +4,7 @@ namespace App\Http;
 
 use App\Http\Middleware\GlobalMiddleware;
 use App\Http\Middleware\LocalizationMiddleware;
+use App\Http\Middleware\LogContext;
 use App\Http\Middleware\MaintenanceModeMiddleware;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Modules\AdminModule\Http\Middleware\AdminMiddleware;
@@ -19,6 +20,7 @@ class Kernel extends HttpKernel
      */
     protected $middleware = [
         \App\Http\Middleware\TrustProxies::class,
+        LogContext::class, // Correlation ID and request context injection
         //\Fruitcake\Cors\HandleCors::class,
         \App\Http\Middleware\PreventRequestsDuringMaintenance::class,
         \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
@@ -44,7 +46,7 @@ class Kernel extends HttpKernel
         ],
 
         'api' => [
-            'throttle:1000,1',
+            'throttle:60,1',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             LocalizationMiddleware::class
         ],

@@ -2784,4 +2784,9 @@
   'The destination address field is required.' => 'The destination address field is required.',
   'The user id field is required.' => 'The user id field is required.',
   'The placeid field is required.' => 'The placeid field is required.',
+  'The gender field is required.' => 'The gender field is required.',
+  'The pickup coordinates field is required.' => 'The pickup coordinates field is required.',
+  'The destination coordinates field is required.' => 'The destination coordinates field is required.',
+  'Route not found your selected pickup & destination address' => 'Route not found your selected pickup & destination address',
+  'The bid field is required.' => 'The bid field is required.',
 );

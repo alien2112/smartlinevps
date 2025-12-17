@@ -55,7 +55,7 @@ class TripRequestCoordinate extends Model
 
     public function scopeDistanceSphere($query, $column, $location, $distance)
     {
-        return $query->whereRaw("ST_Distance_Sphere($column, POINT($location->longitude, $location->latitude)) < $distance");
+        return $query->whereRaw("ST_Distance_Sphere(ST_SRID($column, 4326), ST_SRID(POINT($location->longitude, $location->latitude), 4326)) < $distance");
     }
 
     protected static function newFactory()

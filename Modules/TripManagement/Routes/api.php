@@ -34,7 +34,7 @@ Route::group(['prefix' => 'customer', 'middleware' => ['auth:api', 'maintenance_
         });
         Route::post('track-location', [DriverTripController::class, 'trackLocation']);
         Route::get('payment', [PaymentController::class, 'payment']);
-        Route::get('digital-payment', [PaymentController::class, 'digitalPayment'])->withoutMiddleware('auth:api');
+        Route::get('digital-payment', [PaymentController::class, 'digitalPayment']);
     });
     Route::group(['prefix' => 'parcel'], function () {
         Route::controller(ParcelRefundController::class)->group(function () {
@@ -85,6 +85,12 @@ Route::group(['prefix' => 'driver', 'middleware' => ['auth:api', 'maintenance_mo
 
         Route::controller(\Modules\TripManagement\Http\Controllers\Api\New\Driver\TripRequestController::class)->group(function () {
             Route::get('current-ride-status', 'currentRideStatus');
+        });
+
+        // Location tracking routes
+        Route::controller(\Modules\TripManagement\Http\Controllers\Api\Driver\LocationController::class)->group(function () {
+            Route::post('location', 'store');
+            Route::get('location/history', 'history');
         });
     });
     Route::get('pending-ride-list-test', [DriverTripController::class, 'test']);

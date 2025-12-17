@@ -2,6 +2,7 @@
 
 namespace Modules\TripManagement\Service;
 
+use App\Services\LogService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -54,7 +55,16 @@ class GeoLinkService
             }
 
             // Make API request
+            $startTime = microtime(true);
             $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/directions', $params);
+            $duration = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
+
+            LogService::externalApiCall('geolink', '/api/v2/directions', [
+                'status' => $response->status(),
+                'duration_ms' => round($duration, 2),
+                'has_alternatives' => $alternatives,
+                'waypoints_count' => count($intermediateCoordinates),
+            ]);
 
             if (!$response->successful()) {
                 Log::error('GeoLink API request failed', [

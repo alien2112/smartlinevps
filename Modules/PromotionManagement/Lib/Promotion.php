@@ -7,6 +7,7 @@ use Modules\UserManagement\Entities\AppNotification;
 if (!function_exists('sendDeviceNotification')) {
     function sendDeviceNotification($fcm_token, $title, $description, $status, $image = null, $ride_request_id = null, $type = null, $action = null, $user_id = null, $user_name = null, array $notificationData = []): bool|string
     {
+        $notification = null;
         if ($user_id) {
             $notification = new AppNotification();
             $notification->user_id = $user_id;
@@ -18,9 +19,9 @@ if (!function_exists('sendDeviceNotification')) {
             $notification->save();
         }
         $image = asset('storage/app/public/push-notification') . '/' . $image;
-        $rewardType = $notification && array_key_exists('reward_type', $notificationData) ? $notificationData['reward_type'] : null;
-        $rewardAmount = $notification && array_key_exists('reward_amount', $notificationData) ? $notificationData['reward_amount'] : 0;
-        $nextLevel = $notification && array_key_exists('next_level', $notificationData) ? $notificationData['next_level'] : null;
+        $rewardType = array_key_exists('reward_type', $notificationData) ? $notificationData['reward_type'] : null;
+        $rewardAmount = array_key_exists('reward_amount', $notificationData) ? $notificationData['reward_amount'] : 0;
+        $nextLevel = array_key_exists('next_level', $notificationData) ? $notificationData['next_level'] : null;
 
         $postData = [
             'message' => [
@@ -146,11 +147,39 @@ function sendCurlRequest(string $url, string $postdata, array $header): string|b
 
 function sendNotificationToHttp(array|null $data): bool|string|null
 {
-    $key = json_decode(businessConfig('server_key')->value);
-    if (getAccessToken($key)['status']) {
-        $url = 'https://fcm.googleapis.com/v1/projects/' . $key->project_id . '/messages:send';
+    $serverKey = businessConfig('server_key')?->value ?? null;
+    if (empty($serverKey) || !is_string($serverKey)) {
+        if (config('app.debug')) {
+            \Log::warning('FCM server_key not configured; skipping push notification');
+        }
+        return false;
+    }
+
+    $key = json_decode($serverKey);
+    if (!is_object($key) || empty($key->project_id) || empty($key->client_email) || empty($key->private_key)) {
+        if (config('app.debug')) {
+            \Log::warning('FCM server_key invalid JSON or missing required fields; skipping push notification', [
+                'has_project_id' => is_object($key) && isset($key->project_id),
+                'has_client_email' => is_object($key) && isset($key->client_email),
+                'has_private_key' => is_object($key) && isset($key->private_key),
+            ]);
+        }
+        return false;
+    }
+
+    $access = getAccessToken($key);
+    if (!is_array($access) || empty($access['status']) || empty($access['data'])) {
+        if (config('app.debug')) {
+            \Log::warning('Unable to obtain FCM access token; skipping push notification', [
+                'error' => is_array($access) ? ($access['data'] ?? null) : $access,
+            ]);
+        }
+        return false;
+    }
+
+    $url = 'https://fcm.googleapis.com/v1/projects/' . $key->project_id . '/messages:send';
         $headers = [
-            'Authorization' => 'Bearer ' . getAccessToken($key)['data'],
+            'Authorization' => 'Bearer ' . $access['data'],
             'Content-Type' => 'application/json',
         ];
         try {
@@ -158,14 +187,17 @@ function sendNotificationToHttp(array|null $data): bool|string|null
         } catch (\Exception $exception) {
             return false;
         }
-    } else {
-        return false;
-    }
-
 }
 
 function getAccessToken($key): array|string
 {
+    if (!is_object($key) || empty($key->client_email) || empty($key->private_key)) {
+        return [
+            'status' => false,
+            'data' => ['message' => 'Invalid server_key credentials']
+        ];
+    }
+
     $jwtToken = [
         'iss' => $key->client_email,
         'scope' => 'https://www.googleapis.com/auth/firebase.messaging',

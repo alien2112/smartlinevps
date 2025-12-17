@@ -27,6 +27,7 @@ class RideRequestCreate extends FormRequest
             'destination_address' => 'required',
             'customer_request_coordinates' => 'required',
             'type' => 'required|in:parcel,ride_request',
+            'female_driver_only' => 'sometimes|boolean',
             'sender_name' => 'required_if:type,==,parcel',
             'sender_phone' => 'required_if:type,==,parcel',
             'sender_address' => 'required_if:type,==,parcel',

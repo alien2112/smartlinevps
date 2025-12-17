@@ -60,18 +60,21 @@ class KashierController extends Controller
     
     $mid = $this->config['merchant_id'] ?? null;
     $publicKey = $this->config['public_key'] ?? null;
-    $secretFull = $this->config['secret_key'] ?? null;
+    $secretKey = $this->config['secret_key'] ?? null;
     $callbackUrl = $this->config['callback_url'] ?? route('kashier.callback');
     $currency = $this->config['currency'] ?? 'EGP';
     $mode = $this->config['mode'] ?? 'live';
 
-    // orderId عشوائي بدون حروف
-    $merchantOrderId = (string)mt_rand(10000, 99999);
+    // Generate unique order ID using payment ID
+    $merchantOrderId = (string)mt_rand(100000, 999999);
     $amount = (int)$paymentData->payment_amount;
 
-    // ✅ توليد توقيع
+    // Store merchantOrderId in session for callback verification
+    session()->put('merchant_order_id', $merchantOrderId);
+
+    // Generate signature using API Key (secret key)
     $path = "/?payment={$mid}.{$merchantOrderId}.{$amount}.{$currency}";
-    $hash = hash_hmac('sha256', $path, $publicKey, false);
+    $hash = hash_hmac('sha256', $path, $secretKey, false);
 
     // ✅ بناء رابط الدفع
     $url = 'https://payments.kashier.io/?' . http_build_query([
@@ -106,45 +109,59 @@ class KashierController extends Controller
             return response()->json(['message' => 'Payment not found in session'], 404);
         }
 
-        // تحقق من التوقيع
+        // Verify signature using secret key (API Key)
         $receivedSignature = $request->query('signature');
         $params = $request->except(['signature', 'mode']);
+        ksort($params); // Sort parameters alphabetically
         $queryString = urldecode(http_build_query($params));
-        $publicKey = $this->config['public_key'] ?? null;
-        // $secretFull = $this->config['secret_key'] ?? '';
-        // $secret = explode('$', $secretFull)[1] ?? '';
+        $secretKey = $this->config['secret_key'] ?? null;
 
-        $generatedSignature = hash_hmac('sha256', $queryString, $publicKey, false);
+        $generatedSignature = hash_hmac('sha256', $queryString, $secretKey, false);
 
         if ($receivedSignature !== $generatedSignature) {
-
+            \Log::error('Kashier signature verification failed', [
+                'received' => $receivedSignature,
+                'generated' => $generatedSignature,
+                'query_string' => $queryString
+            ]);
             return $this->paymentResponse($paymentData, 'fail');
         }
 
-       if ($request->query('paymentStatus') === 'SUCCESS') {
-            // $paymentData->update([
-            //     'payment_method' => 'kashier',
-            //     'is_paid' => 1,
-            //     'transaction_id' => $request->query('order_id'),
-            // ]);
-            
-             $this->payment::where(['id' => session('payment_id')])->update([
+        // Verify payment status and transaction details
+        if ($request->query('paymentStatus') === 'SUCCESS') {
+            $kashierTransactionId = $request->query('transactionId');
+            $kashierOrderId = $request->query('orderId');
+
+            // Verify order ID matches
+            if ($kashierOrderId !== session('merchant_order_id')) {
+                \Log::error('Kashier order ID mismatch', [
+                    'expected' => session('merchant_order_id'),
+                    'received' => $kashierOrderId
+                ]);
+                return $this->paymentResponse($paymentData, 'fail');
+            }
+
+            // Update payment request with transaction details
+            $this->payment::where(['id' => $paymentId])->update([
                 'payment_method' => 'kashier',
                 'is_paid' => 1,
-                'transaction_id' => session('payment_id'),
+                'transaction_id' => $kashierTransactionId ?? $kashierOrderId,
             ]);
 
-		TripRequest::where('id', $paymentData->attribute_id)->update([
-        	'payment_method' => 'kashier',
-        	'payment_status' => 'paid',
-    		]);
+            // Update trip request payment status
+            TripRequest::where('id', $paymentData->attribute_id)->update([
+                'payment_method' => 'kashier',
+                'payment_status' => 'paid',
+            ]);
+
+            // Call the hook function if it exists
             if (isset($paymentData) && function_exists($paymentData->hook)) {
                 call_user_func($paymentData->hook, $paymentData);
             }
 
             return $this->paymentResponse($paymentData, 'success');
         }
-        
+
         return $this->paymentResponse($paymentData, 'fail');
     }
 }

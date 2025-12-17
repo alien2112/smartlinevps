@@ -14,4 +14,10 @@ const mix = require('laravel-mix');
 mix.js('resources/js/app.js', 'public/js')
     .postCss('resources/css/app.css', 'public/css', [
         //
-    ]);
+    ])
+    .options({
+        hmrOptions: {
+            host: '192.168.8.158',
+            port: 3000
+        }
+    });

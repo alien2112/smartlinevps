@@ -4,6 +4,7 @@ namespace Modules\TripManagement\Http\Controllers\Api\New\Customer;
 
 use App\Events\RideRequestEvent;
 use App\Jobs\SendPushNotificationJob;
+use App\Services\LogService;
 use MatanYadaev\EloquentSpatial\Objects\Point;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\JsonResponse;
@@ -94,12 +95,16 @@ class TripRequestController extends Controller
     {
         $trip = $this->tripRequestservice->getCustomerIncompleteRide();
         if ($trip) {
-
+            LogService::tripEvent('trip_creation_rejected_incomplete_ride', $trip, [
+                'reason' => 'customer_has_incomplete_ride',
+            ]);
             return response()->json(responseFormatter(INCOMPLETE_RIDE_403), 403);
         }
 
         if (empty($request->header('zoneId'))) {
-
+            LogService::securityEvent('trip_creation_rejected_missing_zone', [
+                'reason' => 'missing_zone_header',
+            ]);
             return response()->json(responseFormatter(ZONE_404), 403);
         }
 
@@ -122,6 +127,11 @@ class TripRequestController extends Controller
 
         $trip = $this->tripRequestservice->makeRideRequest($request, $pickupCoordinates);
 
+        LogService::tripEvent('trip_created', $trip, [
+            'type' => $request->type ?? 'ride_request',
+            'estimated_fare' => $request->estimated_fare,
+            'payment_method' => $request->payment_method ?? null,
+        ]);
 
         return response()->json(responseFormatter(TRIP_REQUEST_STORE_200, $trip));
     }
@@ -206,8 +216,14 @@ class TripRequestController extends Controller
             intermediateCoordinates: $intermediate_coordinates,
             drivingMode: $request->type == 'ride_request' ? (count($available_categories) == 2 ? ["DRIVE", 'TWO_WHEELER'] : ($available_categories[0] == 'car' ? ['DRIVE'] : ['TWO_WHEELER'])) : ['TWO_WHEELER'],
         );
+
+        // Check if getRoutes returned an error (integer status code) instead of array
+        if (!is_array($getRoutes)) {
+            return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, 'Unable to find route. API returned status: ' . $getRoutes), 404);
+        }
+
         if ($getRoutes[1]['status'] !== "OK") {
-            return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, $getRoutes[1]['error_detail']), 403);
+            return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, $getRoutes[1]['error_detail'] ?? 'Route not found'), 404);
         }
         $estimated_fare = $this->estimatedFare(
             tripRequest: $request->all(),
@@ -381,6 +397,20 @@ class TripRequestController extends Controller
 
         $env = env('APP_MODE');
         $otp = $env != "live" ? '0000' : rand(1000, 9999);
+
+        $assignedVehicleCategoryId = $trip->vehicle_category_id;
+        if (empty($assignedVehicleCategoryId)) {
+            $assignedVehicleCategoryId = $driver->vehicle->category_id ?? null;
+            if (is_string($assignedVehicleCategoryId)) {
+                $decodedCategoryIds = json_decode($assignedVehicleCategoryId, true);
+                if (is_array($decodedCategoryIds) && !empty($decodedCategoryIds)) {
+                    $assignedVehicleCategoryId = $decodedCategoryIds[0];
+                }
+            } elseif (is_array($assignedVehicleCategoryId)) {
+                $assignedVehicleCategoryId = $assignedVehicleCategoryId[0] ?? null;
+            }
+        }
+
         $attributes = [
             'column' => 'id',
             'driver_id' => $driver->id,
@@ -388,7 +418,7 @@ class TripRequestController extends Controller
             'vehicle_id' => $driver->vehicle->id,
             'current_status' => ACCEPTED,
             'trip_status' => ACCEPTED,
-            'vehicle_category_id' => $driver->vehicle->category_id,
+            'vehicle_category_id' => $assignedVehicleCategoryId,
         ];
 
         if ($request['action'] == ACCEPTED) {
@@ -442,8 +472,14 @@ class TripRequestController extends Controller
                     $driver->lastLocations->longitude
                 ],
             );
+
+            // Check if getRoutes returned an error (integer status code) instead of array
+            if (!is_array($driverArrivalTime)) {
+                return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, 'Unable to calculate driver arrival time. API returned status: ' . $driverArrivalTime), 404);
+            }
+
             if ($driverArrivalTime[1]['status'] !== "OK") {
-                return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, $driverArrivalTime[1]['error_detail']), 403);
+                return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, $driverArrivalTime[1]['error_detail'] ?? 'Route not found'), 404);
             }
             if ($trip->type == 'ride_request') {
                 $attributes['driver_arrival_time'] = (float)($driverArrivalTime[0]['duration']) / 60;
