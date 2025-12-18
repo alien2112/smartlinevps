@@ -736,8 +736,7 @@ class TripRequestController extends Controller
         $trip = $this->trip->getBy(column: 'id', value: $request['trip_request_id'], attributes: ['relations' => 'coordinate']);
         $driver = $this->driver->getBy(column: 'id', value: $request['driver_id'], attributes: ['relations' => ['vehicle', 'driverDetails', 'lastLocations']]);
 
-        if (Cache::get($request['trip_request_id']) == ACCEPTED && $trip->driver_id == $driver->id) {
-
+        if ($trip->current_status == ACCEPTED && $trip->driver_id == $driver->id) {
             return response()->json(responseFormatter(DEFAULT_UPDATE_200));
         }
 
@@ -793,7 +792,6 @@ class TripRequestController extends Controller
 
         if ($request['action'] == ACCEPTED) {
             DB::beginTransaction();
-            Cache::put($trip->id, ACCEPTED, now()->addHour());
 
             //set driver availability_status as on_trip
             $driverDetails = $this->driverDetails->getBy(column: 'user_id', value: $driver->id);

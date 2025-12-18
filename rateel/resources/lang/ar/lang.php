@@ -2941,4 +2941,9 @@
   'Your trip OTP is 1821' => 'Your trip OTP is 1821',
   'Your trip OTP is 7367' => 'Your trip OTP is 7367',
   'Your trip OTP is 7587' => 'Your trip OTP is 7587',
+  'Your trip OTP is 4154' => 'Your trip OTP is 4154',
+  '20.6 payment successful on this trip by cash.' => '20.6 payment successful on this trip by cash.',
+  'Your trip OTP is 2095' => 'Your trip OTP is 2095',
+  'Your trip OTP is 1220' => 'Your trip OTP is 1220',
+  'Your trip OTP is 2830' => 'Your trip OTP is 2830',
 );

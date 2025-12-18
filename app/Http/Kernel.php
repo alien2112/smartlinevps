@@ -2,6 +2,7 @@
 
 namespace App\Http;
 
+use App\Http\Middleware\EnsureIdempotency;
 use App\Http\Middleware\GlobalMiddleware;
 use App\Http\Middleware\LocalizationMiddleware;
 use App\Http\Middleware\LogContext;
@@ -71,5 +72,6 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'admin' => AdminMiddleware::class,
         'maintenance_mode' => MaintenanceModeMiddleware::class,
+        'idempotency' => EnsureIdempotency::class,
     ];
 }

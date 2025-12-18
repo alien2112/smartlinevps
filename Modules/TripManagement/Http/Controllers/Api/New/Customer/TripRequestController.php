@@ -370,8 +370,8 @@ class TripRequestController extends Controller
 
         $trip = $this->tripRequestservice->findOne(id: $request['trip_request_id'], relations: ['coordinate']);
         $driver = $this->userService->findOne(id: $request['driver_id'], relations: ['vehicle', 'driverDetails', 'lastLocations']);
-        if (Cache::get($request['trip_request_id']) == ACCEPTED && $trip->driver_id == $driver->id) {
 
+        if ($trip->current_status == ACCEPTED && $trip->driver_id == $driver->id) {
             return response()->json(responseFormatter(DEFAULT_UPDATE_200));
         }
 
@@ -423,7 +423,6 @@ class TripRequestController extends Controller
 
         if ($request['action'] == ACCEPTED) {
             DB::beginTransaction();
-            Cache::put($trip->id, ACCEPTED, now()->addHour());
 
             //set driver availability_status as on_trip
             $this->driverDetailService->update(id: $driver->id, data: ['column' => 'user_id', 'availability_status' => 'on_trip']);

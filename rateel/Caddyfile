@@ -1,0 +1,8 @@
+{
+    auto_https off
+}
+
+https://192.168.8.158:8443 {
+    tls ssl/cert.pem ssl/key.pem
+    reverse_proxy localhost:8080
+}

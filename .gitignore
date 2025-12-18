@@ -24,9 +24,24 @@ nul
 # Reference project - do not upload
 /smart-line.space/
 
+# Documentation and non-code files
+*.md
+*.MD
+*.postman_collection.json
+*.postman_environment.json
+/postman/
+*.sql
 
+# Test files
+test_*.php
+test_*.ps1
+test-*.php
+test-*.ps1
+simulate_*.php
+debug_*.php
 
-
+# Other non-code files
+*.txt
 
 
 

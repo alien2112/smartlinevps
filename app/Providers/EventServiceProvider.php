@@ -2,14 +2,10 @@
 
 namespace App\Providers;
 
-use App\Events\StoreDriverLastLocationEvent;
-use App\Listeners\BroadcastMessage;
-use App\Listeners\StoreDriverLastLocationToDatabase;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Event;
-use Laravel\Reverb\Events\MessageReceived;
 
 class EventServiceProvider extends ServiceProvider
 {
@@ -31,10 +27,8 @@ class EventServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        Event::listen(
-            MessageReceived::class,
-            BroadcastMessage::class
-        );
+        // Real-time events are now handled by Node.js WebSocket service
+        // Laravel publishes events via RealtimeEventPublisher to Redis pub/sub
     }
 
     public function shouldDiscoverEvents(): bool

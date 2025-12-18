@@ -28,7 +28,10 @@
       "Bash(where:*)",
       "Bash(timeout /t 3)",
       "Bash(redis-cli ping:*)",
-      "WebFetch(domain:developers.kashier.io)"
+      "WebFetch(domain:developers.kashier.io)",
+      "Bash(Remove-Item -Path \"app\\Events\\*.php\" -Exclude \"*.backup\" -Force)",
+      "Bash(del databasemigrations2025_12_17_183408_create_idempotency_keys_table.php)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []

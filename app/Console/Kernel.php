@@ -16,6 +16,7 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         $schedule->command('trip-request:cancel')->everyMinute();
+        $schedule->command('idempotency:cleanup')->hourly();
     }
 
     /**

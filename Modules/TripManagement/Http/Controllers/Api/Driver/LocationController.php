@@ -2,7 +2,6 @@
 
 namespace Modules\TripManagement\Http\Controllers\Api\Driver;
 
-use App\Events\DriverLocationUpdated;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -321,22 +320,9 @@ class LocationController extends Controller
         $notifyInterval = config('tracking.notify_rider_interval', 10);
 
         if (!cache()->has($cacheKey)) {
-            // Calculate ETA if possible (simplified version)
-            $eta = $this->calculateETA($ride, $location);
-
-            // Fire event for real-time updates
-            if (config('tracking.use_websocket', true)) {
-                event(new DriverLocationUpdated([
-                    'ride_id' => $ride->id,
-                    'customer_id' => $ride->customer_id,
-                    'latitude' => $location['latitude'],
-                    'longitude' => $location['longitude'],
-                    'speed' => $location['speed'] ?? 0,
-                    'heading' => $location['heading'] ?? null,
-                    'eta_minutes' => $eta,
-                    'timestamp' => $location['timestamp'],
-                ]));
-            }
+            // Real-time location updates are now handled by Node.js WebSocket service
+            // via the Redis pub/sub bridge in RealtimeEventPublisher
+            // This endpoint primarily serves to store route history for business logic
 
             // Set cache to throttle next notification
             cache()->put($cacheKey, true, $notifyInterval);
