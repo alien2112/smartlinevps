@@ -31,7 +31,9 @@
       "WebFetch(domain:developers.kashier.io)",
       "Bash(Remove-Item -Path \"app\\Events\\*.php\" -Exclude \"*.backup\" -Force)",
       "Bash(del databasemigrations2025_12_17_183408_create_idempotency_keys_table.php)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(composer require:*)",
+      "Bash(composer dump-autoload:*)"
     ],
     "deny": [],
     "ask": []

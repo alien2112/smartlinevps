@@ -55,3 +55,69 @@ Route::prefix('internal')->group(function () {
         'health'
     ]);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Location Configuration Routes (Tunable Tracking)
+|--------------------------------------------------------------------------
+|
+| Real-time location tracking configuration management
+| Allows switching between presets without app deployment
+| Used by driver apps to fetch current tracking parameters
+|
+*/
+Route::prefix('config/location')->group(function () {
+    /**
+     * Get current active configuration
+     * Public endpoint - no auth required for driver apps
+     */
+    Route::get('/', [
+        \App\Http\Controllers\Api\LocationConfigController::class,
+        'getConfig'
+    ]);
+
+    /**
+     * Get all available presets
+     */
+    Route::get('/presets', [
+        \App\Http\Controllers\Api\LocationConfigController::class,
+        'getPresets'
+    ]);
+
+    /**
+     * Admin-only endpoints for configuration management
+     */
+    Route::middleware('auth:sanctum')->group(function () {
+        /**
+         * Switch to a different preset
+         */
+        Route::post('/preset/{preset}', [
+            \App\Http\Controllers\Api\LocationConfigController::class,
+            'setPreset'
+        ]);
+
+        /**
+         * Save custom configuration
+         */
+        Route::post('/custom', [
+            \App\Http\Controllers\Api\LocationConfigController::class,
+            'saveCustom'
+        ]);
+
+        /**
+         * Get configuration statistics
+         */
+        Route::get('/stats', [
+            \App\Http\Controllers\Api\LocationConfigController::class,
+            'getStats'
+        ]);
+
+        /**
+         * Reset to default configuration
+         */
+        Route::post('/reset', [
+            \App\Http\Controllers\Api\LocationConfigController::class,
+            'reset'
+        ]);
+    });
+});
