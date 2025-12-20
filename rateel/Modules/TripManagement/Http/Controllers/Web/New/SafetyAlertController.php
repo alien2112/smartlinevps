@@ -53,7 +53,7 @@ class SafetyAlertController extends Controller
             'sentBy', 'solvedBy', 'trip.customer', 'trip.driver'
         ];
         $data = $this->safetyAlertService->export(criteria: $request->all(), relations: $relations, whereHasRelations: $whereHasRelations);
-        return exportData($data, $request['file'], '');
+        return exportData($data, $request['file'], 'tripmanagement::admin.safety-alert.print');
     }
 
     public function markAsSolved($id)

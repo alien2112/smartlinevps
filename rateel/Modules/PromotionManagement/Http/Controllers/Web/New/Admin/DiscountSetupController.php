@@ -193,7 +193,7 @@ class DiscountSetupController extends BaseController
                 "Active Status" => $item['is_active'] == 1 ? "Active" : "Inactive",
             ];
         });
-        return exportData($data, $request['file'], '');
+        return exportData($data, $request['file'], 'promotionmanagement::admin.discount-setup.print');
     }
 
     public function log(Request $request): View|Factory|Response|StreamedResponse|string|Application

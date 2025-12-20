@@ -13,17 +13,20 @@ class UserRegisterApiRequest extends FormRequest
      */
     public function rules()
     {
+        $maxSize = config('image.max_size', 500);
+        $mimes = implode(',', config('image.allowed_mimes', ['jpeg', 'jpg', 'png', 'gif', 'webp']));
+        
         return [
             'first_name' => 'required',
             'last_name' => 'required',
             'email' => 'email|unique:users',
             'phone' => 'required|regex:/^([0-9\s\-\+\(\)]*)$/|min:8|max:17|unique:users',
             'password' => 'required|min:8',
-            'profile_image' => 'image|mimes:jpeg,jpg,png,gif,webp|max:10000',
+            'profile_image' => "image|mimes:{$mimes}|max:{$maxSize}",
             'identification_type' => 'in:nid,passport,driving_licence',
             'identification_number' => 'sometimes',
             'identity_images' => 'sometimes|array',
-            'identity_images.*' => 'image|mimes:jpeg,jpg,png,gif,webp|max:10000',
+            'identity_images.*' => "image|mimes:{$mimes}|max:{$maxSize}",
             'fcm_token' => 'sometimes',
         ];
     }

@@ -16,14 +16,17 @@ class VehicleBrandStoreUpdateRequest extends FormRequest
     public function rules()
     {
         $id = $this->id;
+        $maxSize = config('image.icon.max_size', config('image.max_size', 500));
+        $mimes = implode(',', config('image.icon.mimes', ['png']));
+        
         return [
             'brand_name' => 'required|string|min:3|max:255|unique:vehicle_brands,name,' . $id,
             'short_desc' => 'required|max:900',
             'brand_logo' => [
                 Rule::requiredIf(empty($id)),
                 'image',
-                'mimes:png',
-                'max:5000']
+                "mimes:{$mimes}",
+                "max:{$maxSize}"]
         ];
     }
 

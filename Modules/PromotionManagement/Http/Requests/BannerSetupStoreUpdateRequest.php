@@ -16,6 +16,9 @@ class BannerSetupStoreUpdateRequest extends FormRequest
     public function rules()
     {
         $id = $this->id;
+        $maxSize = config('image.banner.max_size', config('image.max_size', 500));
+        $mimes = implode(',', config('image.banner.mimes', config('image.allowed_mimes', ['png', 'jpg', 'jpeg', 'webp'])));
+        
         return [
             'banner_title' => 'required|max:255',
             'short_desc' => 'required|max:900',
@@ -27,8 +30,8 @@ class BannerSetupStoreUpdateRequest extends FormRequest
             'banner_image' => [
                 Rule::requiredIf(empty($id)),
                 'image',
-                'mimes:png,jpg,jpeg,webp',
-                'max:5000']
+                "mimes:{$mimes}",
+                "max:{$maxSize}"]
         ];
         
     }

@@ -20,6 +20,159 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 /*
 |--------------------------------------------------------------------------
+| Version API Routes
+|--------------------------------------------------------------------------
+|
+| Returns the current API version from the database
+|
+*/
+Route::get('/version', [\App\Http\Controllers\Api\VersionController::class, 'index']);
+Route::get('/v', [\App\Http\Controllers\Api\VersionController::class, 'getVersion']);
+
+/*
+|--------------------------------------------------------------------------
+| Health Check & Monitoring Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::get('/health', function () {
+    try {
+        $status = [
+            'status' => 'healthy',
+            'timestamp' => now()->toIso8601String(),
+            'service' => 'SmartLine API',
+            'version' => config('app.version', '1.0.0'),
+        ];
+
+        // Check database connection
+        try {
+            \DB::connection()->getPdo();
+            $status['database'] = 'connected';
+        } catch (\Exception $e) {
+            $status['database'] = 'disconnected';
+            $status['status'] = 'unhealthy';
+        }
+
+        // Check Redis connection
+        try {
+            \Illuminate\Support\Facades\Redis::ping();
+            $status['redis'] = 'connected';
+        } catch (\Exception $e) {
+            $status['redis'] = 'disconnected';
+            $status['status'] = 'degraded';
+        }
+
+        // Check storage is writable
+        try {
+            \Storage::disk('public')->put('health-check.txt', 'OK');
+            \Storage::disk('public')->delete('health-check.txt');
+            $status['storage'] = 'writable';
+        } catch (\Exception $e) {
+            $status['storage'] = 'read-only';
+            $status['status'] = 'degraded';
+        }
+
+        $httpStatus = $status['status'] === 'healthy' ? 200 : 503;
+
+        return response()->json($status, $httpStatus);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'unhealthy',
+            'error' => 'Health check failed',
+            'timestamp' => now()->toIso8601String(),
+        ], 503);
+    }
+});
+
+Route::get('/health/detailed', function () {
+    try {
+        $health = [
+            'status' => 'healthy',
+            'timestamp' => now()->toIso8601String(),
+            'uptime' => null, // Can be calculated from deployment time
+            'checks' => [],
+        ];
+
+        // Database check with query time
+        $dbStart = microtime(true);
+        try {
+            \DB::select('SELECT 1');
+            $dbTime = round((microtime(true) - $dbStart) * 1000, 2);
+            $health['checks']['database'] = [
+                'status' => 'up',
+                'response_time_ms' => $dbTime,
+            ];
+        } catch (\Exception $e) {
+            $health['checks']['database'] = [
+                'status' => 'down',
+                'error' => $e->getMessage(),
+            ];
+            $health['status'] = 'unhealthy';
+        }
+
+        // Redis check
+        try {
+            $redisStart = microtime(true);
+            \Illuminate\Support\Facades\Redis::ping();
+            $redisTime = round((microtime(true) - $redisStart) * 1000, 2);
+            $health['checks']['redis'] = [
+                'status' => 'up',
+                'response_time_ms' => $redisTime,
+            ];
+        } catch (\Exception $e) {
+            $health['checks']['redis'] = [
+                'status' => 'down',
+                'error' => $e->getMessage(),
+            ];
+        }
+
+        // Storage check
+        try {
+            \Storage::disk('public')->put('health-check.txt', 'OK');
+            \Storage::disk('public')->delete('health-check.txt');
+            $health['checks']['storage'] = ['status' => 'up'];
+        } catch (\Exception $e) {
+            $health['checks']['storage'] = [
+                'status' => 'down',
+                'error' => $e->getMessage(),
+            ];
+        }
+
+        // Queue check
+        try {
+            $queueConnection = config('queue.default');
+            $health['checks']['queue'] = [
+                'status' => 'configured',
+                'driver' => $queueConnection,
+            ];
+        } catch (\Exception $e) {
+            $health['checks']['queue'] = [
+                'status' => 'error',
+                'error' => $e->getMessage(),
+            ];
+        }
+
+        // System info
+        $health['system'] = [
+            'php_version' => PHP_VERSION,
+            'laravel_version' => app()->version(),
+            'environment' => app()->environment(),
+        ];
+
+        $httpStatus = $health['status'] === 'healthy' ? 200 : 503;
+
+        return response()->json($health, $httpStatus);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'unhealthy',
+            'error' => 'Detailed health check failed',
+            'timestamp' => now()->toIso8601String(),
+        ], 503);
+    }
+});
+
+/*
+|--------------------------------------------------------------------------
 | Internal API Routes (Node.js Real-time Service)
 |--------------------------------------------------------------------------
 |

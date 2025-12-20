@@ -87,23 +87,64 @@ if (!function_exists('fileUploader')) {
         if ($image == null) {
             return $oldImage ?? 'def.png';
         }
-        if (is_array($oldImage) && !empty($oldImage)) {
-            // Handle the case when $oldImage is an array (multiple images)
-            foreach ($oldImage as $file) {
-                Storage::disk('public')->delete($dir . $file);
+        try {
+            // Delete old image(s) if exists
+            if (is_array($oldImage) && !empty($oldImage)) {
+                // Handle the case when $oldImage is an array (multiple images)
+                foreach ($oldImage as $file) {
+                    try {
+                        Storage::disk('public')->delete($dir . $file);
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to delete old image', [
+                            'file' => $dir . $file,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            } elseif (is_string($oldImage) && !empty($oldImage)) {
+                // Handle the case when $oldImage is a single image (string)
+                try {
+                    Storage::disk('public')->delete($dir . $oldImage);
+                } catch (\Exception $e) {
+                    Log::warning('Failed to delete old image', [
+                        'file' => $dir . $oldImage,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
-        } elseif (is_string($oldImage) && !empty($oldImage)) {
-            // Handle the case when $oldImage is a single image (string)
-            Storage::disk('public')->delete($dir . $oldImage);
-        }
 
-        $imageName = Carbon::now()->toDateString() . "-" . uniqid() . "." . $format;
-        if (!Storage::disk('public')->exists($dir)) {
-            Storage::disk('public')->makeDirectory($dir);
-        }
-        Storage::disk('public')->put($dir . $imageName, file_get_contents($image));
+            $imageName = Carbon::now()->toDateString() . "-" . uniqid() . "." . $format;
 
-        return $imageName;
+            // Create directory if it doesn't exist
+            if (!Storage::disk('public')->exists($dir)) {
+                Storage::disk('public')->makeDirectory($dir);
+            }
+
+            // Get file contents (handles both paths and UploadedFile objects)
+            if (is_string($image)) {
+                $contents = file_get_contents($image);
+            } else {
+                $contents = file_get_contents($image->getRealPath());
+            }
+
+            if ($contents === false) {
+                throw new \Exception('Failed to read file contents');
+            }
+
+            // Store the new image
+            Storage::disk('public')->put($dir . $imageName, $contents);
+
+            return $imageName;
+        } catch (\Exception $e) {
+            Log::error('File upload failed', [
+                'directory' => $dir,
+                'format' => $format,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            throw new \RuntimeException('Failed to upload file: ' . $e->getMessage(), 0, $e);
+        }
     }
 }
 
@@ -112,9 +153,22 @@ if (!function_exists('fileRemover')) {
     {
         if (!isset($image)) return true;
 
-        if (Storage::disk('public')->exists($dir . $image)) Storage::disk('public')->delete($dir . $image);
+        try {
+            if (Storage::disk('public')->exists($dir . $image)) {
+                Storage::disk('public')->delete($dir . $image);
+                Log::info('File deleted successfully', ['file' => $dir . $image]);
+            }
+            return true;
+        } catch (\Exception $e) {
+            Log::error('File deletion failed', [
+                'file' => $dir . $image,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-        return true;
+            // Return false instead of throwing to allow graceful degradation
+            return false;
+        }
     }
 }
 
@@ -236,6 +290,49 @@ if (!function_exists('generateReferralCode')) {
 }
 
 
+if (!function_exists('utf8Clean')) {
+    /**
+     * Clean string to ensure valid UTF-8 encoding for JSON responses
+     * 
+     * @param mixed $input The input to clean
+     * @return mixed The cleaned input
+     */
+    function utf8Clean($input)
+    {
+        if (is_null($input)) {
+            return null;
+        }
+        
+        if (is_string($input)) {
+            // Remove invalid UTF-8 sequences
+            $cleaned = mb_convert_encoding($input, 'UTF-8', 'UTF-8');
+            
+            // Remove any remaining invalid characters
+            $cleaned = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $cleaned);
+            
+            // If still has issues, try iconv as fallback
+            if (!mb_check_encoding($cleaned, 'UTF-8')) {
+                $cleaned = iconv('UTF-8', 'UTF-8//IGNORE', $input);
+            }
+            
+            return $cleaned ?: '';
+        }
+        
+        if (is_array($input)) {
+            return array_map('utf8Clean', $input);
+        }
+        
+        if (is_object($input)) {
+            foreach ($input as $key => $value) {
+                $input->$key = utf8Clean($value);
+            }
+            return $input;
+        }
+        
+        return $input;
+    }
+}
+
 if (!function_exists('responseFormatter')) {
     function responseFormatter($constant, $content = null, $limit = null, $offset = null, $errors = []): array
     {
@@ -269,9 +366,46 @@ if (!function_exists('errorProcessor')) {
 if (!function_exists('autoTranslator')) {
     function autoTranslator($q, $sl, $tl): array|string
     {
-        $res = file_get_contents("https://translate.googleapis.com/translate_a/single?client=gtx&ie=UTF-8&oe=UTF-8&dt=bd&dt=ex&dt=ld&dt=md&dt=qca&dt=rw&dt=rm&dt=ss&dt=t&dt=at&sl=" . $sl . "&tl=" . $tl . "&hl=hl&q=" . urlencode($q), $_SERVER['DOCUMENT_ROOT'] . "/transes.html");
-        $res = json_decode($res);
-        return str_replace('_', ' ', $res[0][0][0]);
+        try {
+            // Set timeout context for file_get_contents
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 10, // 10 seconds timeout
+                    'ignore_errors' => true,
+                ]
+            ]);
+
+            $url = "https://translate.googleapis.com/translate_a/single?client=gtx&ie=UTF-8&oe=UTF-8&dt=bd&dt=ex&dt=ld&dt=md&dt=qca&dt=rw&dt=rm&dt=ss&dt=t&dt=at&sl=" . $sl . "&tl=" . $tl . "&hl=hl&q=" . urlencode($q);
+
+            $res = @file_get_contents($url, false, $context);
+
+            if ($res === false) {
+                throw new \Exception('Failed to fetch translation from Google Translate API');
+            }
+
+            $decoded = json_decode($res);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception('Invalid JSON response from translation API: ' . json_last_error_msg());
+            }
+
+            if (!isset($decoded[0][0][0])) {
+                throw new \Exception('Unexpected translation API response structure');
+            }
+
+            return str_replace('_', ' ', $decoded[0][0][0]);
+
+        } catch (\Exception $e) {
+            Log::error('Translation API call failed', [
+                'query' => $q,
+                'source_lang' => $sl,
+                'target_lang' => $tl,
+                'error' => $e->getMessage(),
+            ]);
+
+            // Return original query as fallback
+            return $q;
+        }
     }
 }
 
@@ -566,7 +700,6 @@ if (!function_exists('getRoutes')) {
                 if (!is_array($point) || count($point) < 2) {
                     continue;
                 }
-
                 $lat = (int) round(((float) $point[0]) * 1e5);
                 $lng = (int) round(((float) $point[1]) * 1e5);
 
@@ -632,34 +765,13 @@ if (!function_exists('getRoutes')) {
             ];
         }
 
-        if (config('app.debug')) {
-            \Log::info('GeoLink API Request', [
-                'url' => MAP_API_BASE_URI . '/api/v2/directions',
-                'params' => $params
-            ]);
-        }
-
         $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/directions', $params);
-
-        if (config('app.debug')) {
-            \Log::info('GeoLink API Response', [
-                'status' => $response->status(),
-                'body' => $response->json()
-            ]);
-        }
-
         if ($response->successful()) {
             $result = $response->json();
 
             $routes = $extractGeoLinkRoutes($result);
             if (empty($routes)) {
                 $errorMessage = $result['message'] ?? 'No routes found between the specified locations';
-                if (config('app.debug')) {
-                    \Log::warning('GeoLink API: No routes found', [
-                        'params' => $params,
-                        'response' => $result
-                    ]);
-                }
                 return [
                     0 => ['status' => 'ERROR', 'error_detail' => $errorMessage],
                     1 => ['status' => 'ERROR', 'error_detail' => $errorMessage]
@@ -687,7 +799,6 @@ if (!function_exists('getRoutes')) {
                 $encodedPolyline = $encodePolyline($route['waypoints']);
             }
 
-            // Geolink doesn't provide duration_in_traffic, use regular duration
             $durationInTraffic = $durationSeconds;
             $convert_to_bike = 1.2;
 

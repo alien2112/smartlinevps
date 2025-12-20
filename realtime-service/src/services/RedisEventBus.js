@@ -25,7 +25,9 @@ class RedisEventBus {
       RIDE_COMPLETED: 'laravel:ride.completed',
       RIDE_STARTED: 'laravel:ride.started',
       DRIVER_ASSIGNED: 'laravel:driver.assigned',
-      PAYMENT_COMPLETED: 'laravel:payment.completed'
+      PAYMENT_COMPLETED: 'laravel:payment.completed',
+      LOST_ITEM_CREATED: 'lost_item:created',
+      LOST_ITEM_UPDATED: 'lost_item:updated'
     };
   }
 
@@ -103,6 +105,14 @@ class RedisEventBus {
 
       case this.CHANNELS.PAYMENT_COMPLETED:
         await this.handlePaymentCompleted(data);
+        break;
+
+      case this.CHANNELS.LOST_ITEM_CREATED:
+        await this.handleLostItemCreated(data);
+        break;
+
+      case this.CHANNELS.LOST_ITEM_UPDATED:
+        await this.handleLostItemUpdated(data);
         break;
 
       default:
@@ -275,6 +285,102 @@ class RedisEventBus {
     });
 
     this.subscriber.quit();
+  }
+
+  /**
+   * Handle lost item created event
+   */
+  async handleLostItemCreated(data) {
+    const payload = this.normalizeLostItemPayload(data);
+    logger.info('Handling lost item created', {
+      lostItemId: payload.id,
+      driverId: payload.driverId,
+      customerId: payload.customerId
+    });
+
+    // Notify driver
+    if (payload.driverId) {
+      this.io.to(`user:${payload.driverId}`).emit('lost_item:new', {
+        ...payload,
+        message: 'A customer reported a lost item'
+      });
+    }
+
+    // Notify customer (confirmation)
+    if (payload.customerId) {
+      this.io.to(`user:${payload.customerId}`).emit('lost_item:created', {
+        ...payload,
+        message: 'Lost item report submitted successfully'
+      });
+    }
+  }
+
+  /**
+   * Handle lost item updated event
+   */
+  async handleLostItemUpdated(data) {
+    const payload = this.normalizeLostItemPayload(data);
+    logger.info('Handling lost item updated', {
+      lostItemId: payload.id,
+      driverId: payload.driverId,
+      customerId: payload.customerId,
+      status: payload.status,
+      driverResponse: payload.driverResponse
+    });
+
+    const updateMessage = payload.driverResponse
+      ? `Driver marked item as ${payload.driverResponse}`
+      : `Lost item report status updated to ${payload.status}`;
+
+    // Notify customer
+    if (payload.customerId) {
+      this.io.to(`user:${payload.customerId}`).emit('lost_item:updated', {
+        ...payload,
+        message: updateMessage
+      });
+    }
+
+    // Notify driver
+    if (payload.driverId) {
+      this.io.to(`user:${payload.driverId}`).emit('lost_item:updated', {
+        ...payload,
+        message: updateMessage
+      });
+    }
+  }
+
+  /**
+   * Normalize payload from Laravel (supports legacy flat payload and new rich resource)
+   */
+  normalizeLostItemPayload(data) {
+    const body = data?.lost_item || data || {};
+
+    const tripRequestId = body.trip_request_id || data?.trip_request_id || body.trip?.id;
+    const driverId = body.driver_id || data?.driver_id || body.driver?.id;
+    const customerId = body.customer_id || data?.customer_id || body.customer?.id;
+
+    return {
+      id: body.id || data?.id,
+      tripRequestId,
+      trip_request_id: tripRequestId, // keep snake_case for existing clients
+      customerId,
+      driverId,
+      category: body.category || data?.category,
+      description: body.description || data?.description,
+      imageUrl: body.image_url || data?.image_url,
+      status: body.status || data?.status,
+      driverResponse: body.driver_response || data?.driver_response,
+      driverNotes: body.driver_notes || data?.driver_notes,
+      adminNotes: body.admin_notes || data?.admin_notes,
+      contactPreference: body.contact_preference || data?.contact_preference,
+      itemLostAt: body.item_lost_at || data?.item_lost_at,
+      createdAt: body.created_at || data?.created_at,
+      updatedAt: body.updated_at || data?.updated_at,
+      trip: body.trip || data?.trip,
+      customer: body.customer || data?.customer,
+      driver: body.driver || data?.driver,
+      statusLogs: body.status_logs || data?.status_logs || []
+    };
   }
 }
 

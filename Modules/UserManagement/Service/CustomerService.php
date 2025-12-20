@@ -76,13 +76,33 @@ class CustomerService extends BaseService implements Interface\CustomerServiceIn
             'is_active' => 1,
             'ref_code' => generateReferralCode(),
         ]);
-        DB::beginTransaction();
 
-        $customer = $this->userRepository->create($customerData);
+        try {
+            DB::beginTransaction();
 
-        $customer?->userAccount()->create();
-        DB::commit();
-        return $customer;
+            $customer = $this->userRepository->create($customerData);
+
+            $customer?->userAccount()->create();
+
+            DB::commit();
+
+            Log::info('Customer created successfully', [
+                'customer_id' => $customer?->id,
+                'email' => $customer?->email,
+            ]);
+
+            return $customer;
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Failed to create customer', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'data' => array_diff_key($customerData, array_flip(['password'])), // Exclude password from log
+            ]);
+
+            throw $e;
+        }
     }
 
     public function createExternalCustomer(array $data): ?Model
@@ -97,11 +117,32 @@ class CustomerService extends BaseService implements Interface\CustomerServiceIn
             'ref_code' => generateReferralCode(),
             'identification_image' => []
         ]);
-        DB::beginTransaction();
-        $customer = $this->userRepository->create($customerData);
-        $customer?->userAccount()->create();
-        DB::commit();
-        return $customer;
+
+        try {
+            DB::beginTransaction();
+
+            $customer = $this->userRepository->create($customerData);
+            $customer?->userAccount()->create();
+
+            DB::commit();
+
+            Log::info('External customer created successfully', [
+                'customer_id' => $customer?->id,
+                'email' => $customer?->email,
+            ]);
+
+            return $customer;
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Failed to create external customer', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'data' => array_diff_key($customerData, array_flip(['password'])),
+            ]);
+
+            throw $e;
+        }
     }
 
     public function update(int|string $id, array $data = []): ?Model
@@ -156,24 +197,44 @@ class CustomerService extends BaseService implements Interface\CustomerServiceIn
             'is_active' => $customer?->is_active ?? 1,
         ]);
 
-        DB::beginTransaction();
-        $customer = $this->userRepository->update(id: $id, data: $customerData);
+        try {
+            DB::beginTransaction();
 
-        // Customer Address
-        if (array_key_exists('address', $data)) {
-            $address = $customer?->addresses()->where(['user_id' => $customer?->id, 'address_label' => 'default'])->first();
-            if (is_null($address)) {
-                $customer?->addresses()->create([
-                    'address' => $data['address'],
-                    'address_label' => 'default'
-                ]);
-            } else {
-                $address->address = $data['address'];
-                $address->save();
+            $customer = $this->userRepository->update(id: $id, data: $customerData);
+
+            // Customer Address
+            if (array_key_exists('address', $data)) {
+                $address = $customer?->addresses()->where(['user_id' => $customer?->id, 'address_label' => 'default'])->first();
+                if (is_null($address)) {
+                    $customer?->addresses()->create([
+                        'address' => $data['address'],
+                        'address_label' => 'default'
+                    ]);
+                } else {
+                    $address->address = $data['address'];
+                    $address->save();
+                }
             }
+
+            DB::commit();
+
+            Log::info('Customer updated successfully', [
+                'customer_id' => $customer?->id,
+                'email' => $customer?->email,
+            ]);
+
+            return $customer;
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Failed to update customer', [
+                'customer_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            throw $e;
         }
-        DB::commit();
-        return $customer;
     }
 
     public function updateExternalCustomer(int|string $id, array $data = []): ?Model

@@ -16,6 +16,9 @@ class CustomerProfileUpdateApiRequest extends FormRequest
     public function rules()
     {
         $id = $this->user()->id;
+        $maxSize = config('image.max_size', 500);
+        $mimes = implode(',', config('image.allowed_mimes', ['jpeg', 'jpg', 'png', 'gif', 'webp']));
+        
         return [
             'first_name' => 'required',
             'last_name' => 'required',
@@ -26,11 +29,11 @@ class CustomerProfileUpdateApiRequest extends FormRequest
                     return $this->password != null;
                 }),
                 'same:password'],
-            'profile_image' => 'image|mimes:jpeg,jpg,png,gif,webp|max:10000',
+            'profile_image' => "image|mimes:{$mimes}|max:{$maxSize}",
             'identification_type' => 'in:nid,passport,driving_license',
             'identification_number' => 'sometimes',
             'identity_images' => 'sometimes|array',
-            'identity_images.*' => 'image|mimes:jpeg,jpg,png,gif,webp|max:10000',
+            'identity_images.*' => "image|mimes:{$mimes}|max:{$maxSize}",
         ];
     }
 

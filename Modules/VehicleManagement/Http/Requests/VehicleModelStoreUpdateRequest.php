@@ -18,6 +18,9 @@ class VehicleModelStoreUpdateRequest extends FormRequest
     {
         $id = $this->id;
         $brand_id= $this->request->get('brand_id');
+        $maxSize = config('image.icon.max_size', config('image.max_size', 500));
+        $mimes = implode(',', config('image.icon.mimes', ['png']));
+        
         return [
             'name' => ['required',
                 'string',
@@ -34,8 +37,8 @@ class VehicleModelStoreUpdateRequest extends FormRequest
             'model_image' => [
                 Rule::requiredIf(empty($id)),
                 'image',
-                'mimes:png',
-                'max:5000']
+                "mimes:{$mimes}",
+                "max:{$maxSize}"]
         ];
     }
 

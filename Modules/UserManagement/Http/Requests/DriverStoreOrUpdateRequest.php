@@ -15,6 +15,9 @@ class DriverStoreOrUpdateRequest extends FormRequest
     public function rules()
     {
         $id = $this->id;
+        $maxSize = config('image.max_size', 500);
+        $mimes = implode(',', config('image.allowed_mimes', ['jpeg', 'jpg', 'png', 'gif', 'webp']));
+        
         return [
             'first_name' => 'required',
             'last_name' => 'required',
@@ -30,8 +33,8 @@ class DriverStoreOrUpdateRequest extends FormRequest
             'profile_image' => [
                 Rule::requiredIf(empty($id)),
                 'image',
-                'mimes:jpeg,jpg,png,gif,webp',
-                'max:10000'
+                "mimes:{$mimes}",
+                "max:{$maxSize}"
             ],
             'identification_type' => 'required|in:passport,driving_license,nid',
             'identification_number' => 'required',
@@ -40,44 +43,14 @@ class DriverStoreOrUpdateRequest extends FormRequest
             'other_documents' => 'array',
             'other_documents.*' => [
                 Rule::requiredIf(empty($id)),
-                'max:10000'
+                "max:{$maxSize}"
             ],
             'identity_images.*' => [
                 Rule::requiredIf(empty($id)),
                 'image',
-                'mimes:jpeg,jpg,png,gif,webp',
-                'max:10000'
+                "mimes:{$mimes}",
+                "max:{$maxSize}"
             ],
-            //  'driving_license' => [
-            // Rule::requiredIf(empty($id)),
-            // 'image',
-            // 'mimes:jpeg,jpg,png,webp',
-            // 'max:10000'
-            // ],
-            // 'vehicle_license' => [
-            // Rule::requiredIf(empty($id)),
-            // 'image',
-            // 'mimes:jpeg,jpg,png,webp',
-            // 'max:10000'
-            // ],
-            // 'criminal_record' => [
-            // Rule::requiredIf(empty($id)),
-            // 'image',
-            // 'mimes:jpeg,jpg,png,webp',
-            // 'max:10000'
-            // ],
-            // 'car_front_image' => [
-            // Rule::requiredIf(empty($id)),
-            // 'image',
-            // 'mimes:jpeg,jpg,png,webp',
-            // 'max:10000'
-            // ],
-            // 'car_back_image' => [
-            // Rule::requiredIf(empty($id)),
-            // 'image',
-            // 'mimes:jpeg,jpg,png,webp',
-            // 'max:10000'
-            // ],
         ];
     }
 

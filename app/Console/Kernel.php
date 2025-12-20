@@ -17,6 +17,9 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('trip-request:cancel')->everyMinute();
         $schedule->command('idempotency:cleanup')->hourly();
+
+        // Database backups - daily at 2:00 AM
+        $schedule->command('backup:run')->daily()->at('02:00');
     }
 
     /**

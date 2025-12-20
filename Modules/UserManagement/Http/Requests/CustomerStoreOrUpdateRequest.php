@@ -16,6 +16,9 @@ class CustomerStoreOrUpdateRequest extends FormRequest
     public function rules()
     {
         $id = $this->id;
+        $maxSize = config('image.max_size', 500);
+        $mimes = implode(',', config('image.allowed_mimes', ['jpeg', 'jpg', 'png', 'gif', 'webp']));
+        
         return [
             'first_name' => 'required',
             'last_name' => 'required',
@@ -27,13 +30,13 @@ class CustomerStoreOrUpdateRequest extends FormRequest
                     return $this->password != null;
                 }),
                 'same:password'],
-            'profile_image' => 'nullable|image|mimes:jpeg,jpg,png,gif,webp|max:10000',
+            'profile_image' => "nullable|image|mimes:{$mimes}|max:{$maxSize}",
             'identification_type' => 'nullable|in:passport,driving_license,nid',
             'identification_number' => 'nullable',
             'identity_images' => 'nullable|array',
             'existing_documents' => 'nullable|array',
             'other_documents' => 'array',
-            'identity_images.*' => 'image|mimes:jpeg,jpg,png,gif,webp|max:10000',
+            'identity_images.*' => "image|mimes:{$mimes}|max:{$maxSize}",
             'existing_identity_images' => 'nullable|array',
         ];
     }

@@ -1119,3 +1119,34 @@ const SAFETY_ALERT_UNDO_200 = [
     'response_code' => 'safety_alert_undo_200',
     'message' => 'You have successfully removed your safety alert.'
 ];
+
+// Lost & Found
+const LOST_ITEM_STORE_200 = [
+    'response_code' => 'lost_item_store_200',
+    'message' => 'Lost item report submitted successfully'
+];
+
+const LOST_ITEM_UPDATE_200 = [
+    'response_code' => 'lost_item_update_200',
+    'message' => 'Lost item report updated successfully'
+];
+
+const LOST_ITEM_NOT_FOUND_404 = [
+    'response_code' => 'lost_item_404',
+    'message' => 'Lost item report not found'
+];
+
+const LOST_ITEM_DUPLICATE_403 = [
+    'response_code' => 'lost_item_duplicate_403',
+    'message' => 'A report for this item category already exists for this trip'
+];
+
+const LOST_ITEM_TRIP_NOT_COMPLETED_403 = [
+    'response_code' => 'lost_item_trip_not_completed_403',
+    'message' => 'Lost items can only be reported for completed trips'
+];
+
+const ACCESS_DENIED_403 = [
+    'response_code' => 'access_denied_403',
+    'message' => 'You do not have permission to access this resource'
+];

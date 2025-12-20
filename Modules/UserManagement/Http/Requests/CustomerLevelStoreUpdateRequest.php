@@ -128,8 +128,8 @@ class CustomerLevelStoreUpdateRequest extends FormRequest
             'image' => [
                 Rule::requiredIf(empty($id)),
                 'image',
-                'mimes:png',
-                'max:5000']
+                'mimes:' . implode(',', config('image.icon.mimes', ['png'])),
+                'max:' . config('image.icon.max_size', config('image.max_size', 500))]
         ];
     }
 

@@ -18,7 +18,6 @@ use Modules\Gateways\Http\Controllers\BkashPaymentController;
 use Modules\Gateways\Http\Controllers\FlutterwaveV3Controller;
 use Modules\Gateways\Http\Controllers\LiqPayController;
 use Modules\Gateways\Http\Controllers\MercadoPagoController;
-use Modules\Gateways\Http\Controllers\PaymobController;
 use Modules\Gateways\Http\Controllers\PaypalPaymentController;
 use Modules\Gateways\Http\Controllers\PaystackController;
 use Modules\Gateways\Http\Controllers\PaytabsController;
@@ -117,12 +116,6 @@ Route::group(['prefix' => 'payment'], function () {
     Route::group(['prefix' => 'mercadopago', 'as' => 'mercadopago.'], function () {
         Route::get('pay', [MercadoPagoController::class, 'index'])->name('index');
         Route::post('make-payment', [MercadoPagoController::class, 'make_payment'])->name('make_payment');
-    });
-
-    //PAYMOB
-    Route::group(['prefix' => 'paymob', 'as' => 'paymob.'], function () {
-        Route::any('pay', [PaymobController::class, 'credit'])->name('pay');
-        Route::any('callback', [PaymobController::class, 'callback'])->name('callback');
     });
 
     //PAYTABS

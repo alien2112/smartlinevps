@@ -205,6 +205,12 @@
 
                         </a>
                     </li>
+                    <li class="{{ Request::is('admin/lost-items*')?'active open':'' }}">
+                        <a href="{{route('admin.lost-items.index')}}">
+                            <i class="bi bi-bag-x-fill"></i>
+                            <span class="link-title text-capitalize">{{ translate('المفقودات') }}</span>
+                        </a>
+                    </li>
                     <!----------------- End Trip Management ------------------------>
                 @endif
 

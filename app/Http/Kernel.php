@@ -69,6 +69,8 @@ class Kernel extends HttpKernel
         'password.confirm' => \Illuminate\Auth\Middleware\RequirePassword::class,
         'signed' => \Illuminate\Routing\Middleware\ValidateSignature::class,
         'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
+        'throttle.auth' => \Illuminate\Routing\Middleware\ThrottleRequests::class . ':5,1', // 5 requests per minute for auth endpoints
+        'throttle.strict' => \Illuminate\Routing\Middleware\ThrottleRequests::class . ':10,1', // 10 requests per minute for sensitive operations
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'admin' => AdminMiddleware::class,
         'maintenance_mode' => MaintenanceModeMiddleware::class,

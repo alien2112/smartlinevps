@@ -1,41 +1,8 @@
 <?php
 
-//payment methods
+//payment methods - Only Kashier gateway is enabled
 const PAYMENT_METHODS = [
-    ['key' => 'ssl_commerz', 'value' => 'SSLCOMMERZ'],
-    ['key' => 'stripe', 'value' => 'Stripe'],
-    ['key' => 'paypal', 'value' => 'PayPal'],
-    ['key' => 'razor_pay', 'value' => 'Razor Pay'],
-    ['key' => 'paystack', 'value' => 'Paystack'],
-    ['key' => 'senang_pay', 'value' => 'Senang Pay'],
-    ['key' => 'paymob_accept', 'value' => 'Paymob Accept'],
-    ['key' => 'flutterwave', 'value' => 'Flutter Wave'],
-    ['key' => 'paytm', 'value' => 'Paytm'],
-    ['key' => 'paytabs', 'value' => 'Pay Tabs'],
-    ['key' => 'liqpay', 'value' => 'Liq Pay'],
-    ['key' => 'mercadopago', 'value' => 'Mercadopago'],
-    ['key' => 'bkash', 'value' => 'Bkash'],
-    ['key' => 'fatoorah', 'value' => 'Fatoorah'],
-    ['key' => 'xendit', 'value' => 'Xendit'],
-    ['key' => 'amazon_pay', 'value' => 'Amazon Pay'],
-    ['key' => 'iyzi_pay', 'value' => 'Iyzi Pay'],
-    ['key' => 'hyper_pay', 'value' => 'Hyper Pay'],
-    ['key' => 'foloosi', 'value' => 'Foloosi'],
-    ['key' => 'ccavenue', 'value' => 'CC Avenue'],
-    ['key' => 'pvit', 'value' => 'Pvit'],
-    ['key' => 'moncash', 'value' => 'Moncash'],
-    ['key' => 'thawani', 'value' => 'Thawani'],
-    ['key' => 'tap', 'value' => 'Tap Payment'],
-    ['key' => 'viva_wallet', 'value' => 'Viva Wallet'],
-    ['key' => 'hubtel', 'value' => 'Hubtel'],
-    ['key' => 'maxicash', 'value' => 'Maxicash'],
-    ['key' => 'esewa', 'value' => 'Esewa'],
-    ['key' => 'swish', 'value' => 'Swish'],
-    ['key' => 'momo', 'value' => 'Momo'],
-    ['key' => 'payfast', 'value' => 'Pay Fast'],
-    ['key' => 'worldpay', 'value' => 'World Pay'],
-    ['key' => 'sixcash', 'value' => 'Six Cash'],
-    ['key' => 'kashier', 'name' => 'Kashier'],
+    ['key' => 'kashier', 'value' => 'Kashier'],
 ];
 
 //currencies

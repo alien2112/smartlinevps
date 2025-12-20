@@ -34,7 +34,10 @@
       "Bash(test:*)",
       "Bash(composer require:*)",
       "Bash(composer dump-autoload:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"D:\\\\smartline-copy\\\\smart-line.space\\\\apply_database_indexes.ps1\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"D:\\\\smartline-copy\\\\smart-line.space\\\\apply_indexes_fixed.ps1\")",
+      "Bash(mysqldump:*)"
     ],
     "deny": [],
     "ask": []

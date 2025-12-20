@@ -52,4 +52,14 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
         });
     });
 
+    // Lost & Found Management Routes
+    Route::group(['prefix' => 'lost-items', 'as' => 'lost-items.'], function () {
+        Route::controller(\Modules\TripManagement\Http\Controllers\Web\New\LostItemController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/{id}', 'show')->name('show');
+            Route::patch('/{id}/status', 'updateStatus')->name('update-status');
+            Route::get('/export/download', 'export')->name('export');
+        });
+    });
+
 });

@@ -16,16 +16,16 @@ class LandingBusinessStatisticsStoreOrUpdateRequest extends FormRequest
     {
         $id = $this->id;
         return [
-            'total_download_image' => 'sometimes|image|mimes:jpg,png,jpeg,webp|max:5200',
+            'total_download_image' => 'sometimes|image|mimes:jpg,png,jpeg,webp|max:500',
             'total_download_count' => 'required|string',
             'total_download_content' => 'required|string',
-            'complete_ride_image' => 'sometimes|image|mimes:jpg,png,jpeg,webp|max:5200',
+            'complete_ride_image' => 'sometimes|image|mimes:jpg,png,jpeg,webp|max:500',
             'complete_ride_count' => 'required|string',
             'complete_ride_content' => 'required|string',
-            'happy_customer_image' => 'sometimes|image|mimes:jpg,png,jpeg,webp|max:5200',
+            'happy_customer_image' => 'sometimes|image|mimes:jpg,png,jpeg,webp|max:500',
             'happy_customer_count' => 'required|string',
             'happy_customer_content' => 'required|string',
-            'support_image' => 'sometimes|image|mimes:jpg,png,jpeg,webp|max:5200',
+            'support_image' => 'sometimes|image|mimes:jpg,png,jpeg,webp|max:500',
             'support_title' => 'required|string',
             'support_content' => 'required|string',
         ];

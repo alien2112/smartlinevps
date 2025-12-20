@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Throwable;
@@ -48,14 +49,38 @@ class Handler extends ExceptionHandler
 
         $this->renderable(function (HttpException $e, $request) {
             if ($request->wantsJson()) {
-                abort(response()->json([
-                    'response_code' => $e->getStatusCode(),
+                // Log detailed error for debugging
+                Log::error('HTTP Exception occurred', [
                     'message' => $e->getMessage(),
-                    'content' => null,
-                    'errors' => [
+                    'code' => $e->getStatusCode(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString(),
+                    'url' => $request->fullUrl(),
+                    'method' => $request->method(),
+                ]);
 
-                    ]
-                ], $e->getStatusCode()));
+                // Return generic message to user
+                $statusCode = $e->getStatusCode();
+                $message = 'An error occurred. Please try again later.';
+
+                // Provide slightly more specific messages for common status codes
+                if ($statusCode === 401) {
+                    $message = 'Unauthorized. Please log in.';
+                } elseif ($statusCode === 403) {
+                    $message = 'You do not have permission to perform this action.';
+                } elseif ($statusCode === 404) {
+                    $message = 'The requested resource was not found.';
+                } elseif ($statusCode === 429) {
+                    $message = 'Too many requests. Please try again later.';
+                }
+
+                abort(response()->json([
+                    'response_code' => $statusCode,
+                    'message' => $message,
+                    'content' => null,
+                    'errors' => []
+                ], $statusCode));
             }
         });
     }

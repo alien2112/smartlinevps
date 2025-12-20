@@ -75,6 +75,7 @@ return [
             'level' => env('LOG_LEVEL', 'info'),
             'days' => 7,
             'formatter' => JsonFormatter::class,
+            'tap' => [App\Logging\RedactSensitiveDataProcessor::class],
         ],
 
         'security' => [
@@ -82,6 +83,7 @@ return [
             'path' => storage_path('logs/security.log'),
             'level' => 'info',
             'days' => 30,
+            'tap' => [App\Logging\RedactSensitiveDataProcessor::class],
             'formatter' => JsonFormatter::class,
         ],
 
@@ -91,6 +93,7 @@ return [
             'level' => 'info',
             'days' => 365, // Keep financial logs for 1 year
             'formatter' => JsonFormatter::class,
+            'tap' => [App\Logging\RedactSensitiveDataProcessor::class], // CRITICAL: Redact payment data
         ],
 
         'websocket' => [
@@ -99,6 +102,7 @@ return [
             'level' => 'info',
             'days' => 7,
             'formatter' => JsonFormatter::class,
+            'tap' => [App\Logging\RedactSensitiveDataProcessor::class],
         ],
 
         'queue' => [
@@ -107,6 +111,7 @@ return [
             'level' => 'info',
             'days' => 7,
             'formatter' => JsonFormatter::class,
+            'tap' => [App\Logging\RedactSensitiveDataProcessor::class],
         ],
 
         'performance' => [
@@ -115,6 +120,7 @@ return [
             'level' => 'info',
             'days' => 7,
             'formatter' => JsonFormatter::class,
+            'tap' => [App\Logging\RedactSensitiveDataProcessor::class],
         ],
 
         'slack' => [

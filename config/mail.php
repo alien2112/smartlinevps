@@ -11,70 +11,89 @@ return [
     | messages sent by your application. Alternative mailers may be setup
     | and used as needed; however, this mailer will be used by default.
     |
+    | Supported: "mailgun", "log", "array", "failover"
+    |
     */
 
-    'default' => env('MAIL_MAILER', 'smtp'),
+    'default' => env('MAIL_MAILER', 'mailgun'),
 
     /*
     |--------------------------------------------------------------------------
     | Mailer Configurations
     |--------------------------------------------------------------------------
     |
-    | Here you may configure all of the mailers used by your application plus
-    | their respective settings. Several examples have been configured for
-    | you and you are free to add your own as your application requires.
-    |
-    | Laravel supports a variety of mail "transport" drivers to be used while
-    | sending an e-mail. You will specify which one you are using for your
-    | mailers below. You are free to add additional mailers as required.
-    |
-    | Supported: "smtp", "sendmail", "mailgun", "ses",
-    |            "postmark", "log", "array", "failover"
+    | SmartLine Mail Configuration
+    | 
+    | Supported Mailers:
+    | - Mailgun: Free tier available, best for small projects
+    | - Log: For development/testing (logs emails to file)
+    | - Array: For unit testing (stores in memory)
+    | - Failover: Automatic fallback (mailgun → log)
     |
     */
 
     'mailers' => [
-        'smtp' => [
-            'transport' => 'smtp',
-            'host' => env('MAIL_HOST', 'smtp.mailgun.org'),
-            'port' => env('MAIL_PORT', 587),
-            'encryption' => env('MAIL_ENCRYPTION', 'tls'),
-            'username' => env('MAIL_USERNAME'),
-            'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
-            'auth_mode' => null,
-        ],
-
-        'ses' => [
-            'transport' => 'ses',
-        ],
-
+        
+        /*
+        |----------------------------------------------------------------------
+        | Mailgun - Primary Email Provider
+        |----------------------------------------------------------------------
+        | 
+        | ✅ Free tier: 5,000 emails/month for 3 months
+        | ✅ Good deliverability
+        | ✅ Easy setup
+        | 📌 Best choice for production
+        |
+        | Required ENV variables:
+        | - MAILGUN_DOMAIN=your-domain.mailgun.org
+        | - MAILGUN_SECRET=your-api-key
+        | - MAILGUN_ENDPOINT=api.mailgun.net (or api.eu.mailgun.net for EU)
+        |
+        */
         'mailgun' => [
             'transport' => 'mailgun',
         ],
 
-        'postmark' => [
-            'transport' => 'postmark',
-        ],
-
-        'sendmail' => [
-            'transport' => 'sendmail',
-            'path' => env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -t -i'),
-        ],
-
+        /*
+        |----------------------------------------------------------------------
+        | Log - Development/Testing
+        |----------------------------------------------------------------------
+        | 
+        | Logs all emails to storage/logs instead of sending
+        | Perfect for development and debugging
+        |
+        */
         'log' => [
             'transport' => 'log',
-            'channel' => env('MAIL_LOG_CHANNEL'),
+            'channel' => env('MAIL_LOG_CHANNEL', 'stack'),
         ],
 
+        /*
+        |----------------------------------------------------------------------
+        | Array - Unit Testing
+        |----------------------------------------------------------------------
+        | 
+        | Stores emails in memory for testing assertions
+        | Use Mail::fake() in tests
+        |
+        */
         'array' => [
             'transport' => 'array',
         ],
 
+        /*
+        |----------------------------------------------------------------------
+        | Failover - Production Fallback
+        |----------------------------------------------------------------------
+        | 
+        | Automatically tries the next mailer if one fails
+        | mailgun → log (ensures emails are at least logged if sending fails)
+        |
+        */
         'failover' => [
             'transport' => 'failover',
             'mailers' => [
-                'smtp',
+                'mailgun',
                 'log',
             ],
         ],
@@ -92,19 +111,14 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
-        'name' => env('MAIL_FROM_NAME', 'Example'),
+        'address' => env('MAIL_FROM_ADDRESS', 'noreply@smartline.com'),
+        'name' => env('MAIL_FROM_NAME', 'SmartLine'),
     ],
 
     /*
     |--------------------------------------------------------------------------
     | Markdown Mail Settings
     |--------------------------------------------------------------------------
-    |
-    | If you are using Markdown based email rendering, you may configure your
-    | theme and component paths here, allowing you to customize the design
-    | of the emails. Or, you may simply stick with the Laravel defaults!
-    |
     */
 
     'markdown' => [

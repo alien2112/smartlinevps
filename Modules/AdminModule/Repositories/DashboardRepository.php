@@ -27,7 +27,7 @@ class DashboardRepository implements DashboardInterface
         return TripRequest::query()
             ->with($user)
             ->whereNotNull($id)
-            ->selectRaw($id . ', count(*) as total_records')
+            ->selectRaw('??, count(*) as total_records', [$id])
             ->groupBy($id)
             ->orderBy('total_records', 'desc')
             ->when($attributes['date'] ?? null, fn($query) => $query->whereBetween('created_at', [$attributes['date']['start'], $attributes['date']['end']]))

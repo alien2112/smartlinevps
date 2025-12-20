@@ -52,6 +52,14 @@ Route::group(['prefix' => 'customer', 'middleware' => ['auth:api', 'maintenance_
             Route::delete('undo/{trip_request_id}', 'deleteSafetyAlert');
         });
     });
+    // Lost & Found routes
+    Route::group(['prefix' => 'lost-items'], function () {
+        Route::controller(\Modules\TripManagement\Http\Controllers\Api\New\Customer\LostItemController::class)->group(function () {
+            Route::post('/', 'store');
+            Route::get('/', 'index');
+            Route::get('/{id}', 'show');
+        });
+    });
 });
 
 
@@ -110,6 +118,15 @@ Route::group(['prefix' => 'driver', 'middleware' => ['auth:api', 'maintenance_mo
             Route::post('check-deviation', 'checkDeviation');
             Route::post('request-new-route', 'requestNewRoute');
             Route::post('get-alternatives', 'getRouteAlternatives');
+        });
+    });
+
+    // Lost & Found routes for driver
+    Route::group(['prefix' => 'lost-items'], function () {
+        Route::controller(\Modules\TripManagement\Http\Controllers\Api\New\Driver\LostItemController::class)->group(function () {
+            Route::get('/', 'index');
+            Route::get('/{id}', 'show');
+            Route::patch('/{id}', 'update');
         });
     });
 });

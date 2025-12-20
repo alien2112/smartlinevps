@@ -10,7 +10,7 @@
 
 # Configuration - UPDATE THESE VALUES
 $DB_USER = "root"
-$DB_NAME = "smartline_db"  # Your current database name
+$DB_NAME = "smartline_new2"  # Your current database name
 $DB_COPY_NAME = "smartline_indexed_copy"
 
 Write-Host "=====================================================================" -ForegroundColor Cyan
@@ -63,7 +63,7 @@ Write-Host "These are critical indexes for trip queries and spatial searches..."
 (Get-Content "indexes_priority1.sql") -replace "USE smartline_indexed_copy;", "USE $DB_COPY_NAME;" | Set-Content "indexes_priority1_temp.sql"
 
 # Apply Priority 1 indexes
-mysql -u $DB_USER -p$PlainPassword < indexes_priority1_temp.sql 2>&1 | Tee-Object -Variable output | Out-Null
+Get-Content "indexes_priority1_temp.sql" | mysql -u $DB_USER -p$PlainPassword 2>&1 | Tee-Object -Variable output | Out-Null
 
 if ($output -match "ERROR") {
     Write-Host "⚠ Some errors occurred while applying Priority 1 indexes:" -ForegroundColor Yellow
@@ -82,7 +82,7 @@ Write-Host "These are performance optimization indexes..." -ForegroundColor Gray
 (Get-Content "indexes_priority2.sql") -replace "USE smartline_indexed_copy;", "USE $DB_COPY_NAME;" | Set-Content "indexes_priority2_temp.sql"
 
 # Apply Priority 2 indexes
-mysql -u $DB_USER -p$PlainPassword < indexes_priority2_temp.sql 2>&1 | Tee-Object -Variable output | Out-Null
+Get-Content "indexes_priority2_temp.sql" | mysql -u $DB_USER -p$PlainPassword 2>&1 | Tee-Object -Variable output | Out-Null
 
 if ($output -match "ERROR") {
     Write-Host "⚠ Some errors occurred while applying Priority 2 indexes:" -ForegroundColor Yellow

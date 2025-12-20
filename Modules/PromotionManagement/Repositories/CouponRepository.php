@@ -302,8 +302,8 @@ class CouponRepository implements CoupounInterface
                 $_end_date = Carbon::now()->endOfWeek();
                 $coupon = $this->coupon->where(function ($query) use ($_start_date, $_end_date) {
                     $query->where(function ($query) use ($_start_date, $_end_date) {
-                        $query->whereRaw("end_date >= date('$_start_date')")
-                            ->whereRaw("start_date <= date('$_end_date')");
+                        $query->whereRaw("end_date >= date(?)", [$_start_date])
+                            ->whereRaw("start_date <= date(?)", [$_end_date]);
                     });
                 })->count();
                 $couponInactive = $this->coupon
@@ -325,8 +325,8 @@ class CouponRepository implements CoupounInterface
                 $_end_date = Carbon::now()->endOfMonth();
                 $coupon = $this->coupon->where(function ($query) use ($_start_date, $_end_date) {
                     $query->where(function ($query) use ($_start_date, $_end_date) {
-                        $query->whereRaw("end_date >= date('$_start_date')")
-                            ->whereRaw("start_date <= date('$_end_date')");
+                        $query->whereRaw("end_date >= date(?)", [$_start_date])
+                            ->whereRaw("start_date <= date(?)", [$_end_date]);
                     });
                 })->count();
                 $couponInactive = $this->coupon
@@ -349,8 +349,8 @@ class CouponRepository implements CoupounInterface
                 $_end_date = Carbon::now()->endOfYear();
                 $coupon = $this->coupon->where(function ($query) use ($_start_date, $_end_date) {
                     $query->where(function ($query) use ($_start_date, $_end_date) {
-                        $query->whereRaw("end_date >= date('$_start_date')")
-                            ->whereRaw("start_date <= date('$_end_date')");
+                        $query->whereRaw("end_date >= date(?)", [$_start_date])
+                            ->whereRaw("start_date <= date(?)", [$_end_date]);
                     });
                 })->count();
                 $couponInactive = $this->coupon

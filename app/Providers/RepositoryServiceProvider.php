@@ -229,6 +229,20 @@ class RepositoryServiceProvider extends ServiceProvider
         $this->app->bind(DriverTimeLogInterface::class, DriverTimeLogRepository::class);
         $this->app->bind(DashboardInterface::class, DashboardRepository::class);
 
+        // Lost & Found Bindings
+        $this->app->bind(
+            \Modules\TripManagement\Repository\LostItemRepositoryInterface::class,
+            \Modules\TripManagement\Repository\Eloquent\LostItemRepository::class
+        );
+        $this->app->bind(
+            \Modules\TripManagement\Repository\LostItemStatusLogRepositoryInterface::class,
+            \Modules\TripManagement\Repository\Eloquent\LostItemStatusLogRepository::class
+        );
+        $this->app->bind(
+            \Modules\TripManagement\Service\Interface\LostItemServiceInterface::class,
+            \Modules\TripManagement\Service\LostItemService::class
+        );
+
     }
 
     /**

@@ -108,7 +108,7 @@ class CouponSetupRepository extends BaseRepository implements CouponSetupReposit
                 }))
             ->where(function ($query) use ($tripType, $vehicleCategoryId) {
                 $query->whereRaw("JSON_CONTAINS(category_coupon_type, '\"all\"')")
-                    ->orWhereRaw("JSON_CONTAINS(category_coupon_type, '\"$tripType\"')");
+                    ->orWhereRaw("JSON_CONTAINS(category_coupon_type, ?)", ["\"$tripType\""]);
 
                 if ($tripType != 'parcel' && $vehicleCategoryId != null) {
                     $query->orWhereHas('vehicleCategories', function ($query1) use ($vehicleCategoryId) {

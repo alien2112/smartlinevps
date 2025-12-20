@@ -15,6 +15,9 @@ class DiscountStoreOrUpdateRequest extends FormRequest
     {
         $id = $this->id;
         $data = $this;
+        $maxSize = config('image.max_size', 500);
+        $mimes = implode(',', config('image.allowed_mimes', ['png', 'jpg', 'jpeg', 'webp']));
+        
         return [
             'title' => 'required|max:100',
             'short_description' => 'required|max:900',
@@ -22,8 +25,8 @@ class DiscountStoreOrUpdateRequest extends FormRequest
             'image' => [
                 Rule::requiredIf(empty($id)),
                 'image',
-                'mimes:png,jpg,jpeg,webp',
-                'max:5000'],
+                "mimes:{$mimes}",
+                "max:{$maxSize}"],
             'zone_discount_type'=>'required|array',
             'customer_level_discount_type'=>'required|array',
             'customer_discount_type'=>'required|array',

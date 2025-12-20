@@ -2946,4 +2946,7 @@
   'Your trip OTP is 2095' => 'Your trip OTP is 2095',
   'Your trip OTP is 1220' => 'Your trip OTP is 1220',
   'Your trip OTP is 2830' => 'Your trip OTP is 2830',
+  'Lost items can only be reported for completed trips' => 'Lost items can only be reported for completed trips',
+  'Lost item report submitted successfully' => 'Lost item report submitted successfully',
+  'A report for this item category already exists for this trip' => 'A report for this item category already exists for this trip',
 );
