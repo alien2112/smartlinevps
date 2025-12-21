@@ -1046,16 +1046,33 @@ class TripRequestController extends Controller
             'offset' => 'required|numeric',
         ]);
         if ($validator->fails()) {
+            \Log::warning('pendingRideList: Validation failed', ['errors' => $validator->errors()->toArray()]);
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
-        if (empty($request->header('zoneId'))) {
-            \Log::warning('No zoneId provided in request');
+
+        $zoneId = $request->header('zoneId');
+        \Log::info('pendingRideList: Request received', [
+            'zoneId' => $zoneId,
+            'limit' => $request->input('limit'),
+            'offset' => $request->input('offset'),
+            'all_headers' => $request->headers->all()
+        ]);
+
+        if (empty($zoneId)) {
+            \Log::warning('pendingRideList: No zoneId provided in request headers');
             return response()->json(responseFormatter(ZONE_404));
         }
 
         $user = auth('api')->user();
+        \Log::info('pendingRideList: User authenticated', ['user_id' => $user->id, 'user_type' => $user->user_type ?? 'unknown']);
+
+        if (!$user->driverDetails) {
+            \Log::error('pendingRideList: Driver details not found', ['user_id' => $user->id]);
+            return response()->json(responseFormatter(constant: DRIVER_UNAVAILABLE_403), 403);
+        }
+
         if ($user->driverDetails->is_online != 1) {
-            \Log::warning('Driver is offline, user ID: ' . $user->id);
+            \Log::warning('pendingRideList: Driver is offline', ['user_id' => $user->id, 'is_online' => $user->driverDetails->is_online]);
             return response()->json(responseFormatter(constant: DRIVER_UNAVAILABLE_403), 403);
         }
 
@@ -1069,11 +1086,19 @@ class TripRequestController extends Controller
             ?? Vehicle::query()->where('driver_id', $user->id)->latest('updated_at')->first();
 
         if (is_null($vehicle)) {
-            \Log::warning('No vehicle registered for user ID: ' . $user->id);
+            \Log::warning('pendingRideList: No vehicle registered', ['user_id' => $user->id]);
             return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404, content: []), 403);
         }
+
+        \Log::info('pendingRideList: Vehicle found', [
+            'vehicle_id' => $vehicle->id,
+            'is_active' => $vehicle->is_active,
+            'vehicle_request_status' => $vehicle->vehicle_request_status,
+            'category_id' => $vehicle->category_id
+        ]);
+
         if (!$vehicle->is_active && $vehicle->vehicle_request_status !== APPROVED) {
-            \Log::warning('Vehicle is not approved/active for user ID: ' . $user->id . ', vehicle ID: ' . $vehicle->id);
+            \Log::warning('pendingRideList: Vehicle not approved/active', ['vehicle_id' => $vehicle->id]);
             return response()->json(responseFormatter(constant: VEHICLE_NOT_APPROVED_OR_ACTIVE_404, content: []), 403);
         }
 
@@ -1082,23 +1107,45 @@ class TripRequestController extends Controller
         $maxParcelRequestAcceptLimitCount = (int)($maxParcelRequestAcceptLimit?->value['limit'] ?? 0);
         $search_radius = (double)get_cache('search_radius') ?? 5;
 
+        \Log::info('pendingRideList: Search config', [
+            'search_radius' => $search_radius,
+            'parcel_limit_status' => $maxParcelRequestAcceptLimitStatus,
+            'parcel_limit_count' => $maxParcelRequestAcceptLimitCount
+        ]);
+
         $location = $this->lastLocation->getBy(column: 'user_id', value: $user->id);
         if (!$location) {
-            \Log::warning('No location found for user ID: ' . $user->id);
+            \Log::warning('pendingRideList: No location found for driver', ['user_id' => $user->id]);
             return response()->json(responseFormatter(constant: DEFAULT_200, content: ''));
         }
+
+        \Log::info('pendingRideList: Driver location found', [
+            'latitude' => $location->latitude ?? 'null',
+            'longitude' => $location->longitude ?? 'null',
+            'zone_id' => $location->zone_id ?? 'null'
+        ]);
 
         $vehicleCategoryIds = $vehicle->category_id ?? [];
         if (is_string($vehicleCategoryIds)) {
             $vehicleCategoryIds = json_decode($vehicleCategoryIds, true) ?? [];
         }
+        // Ensure it's always an array
+        if (!is_array($vehicleCategoryIds)) {
+            $vehicleCategoryIds = [$vehicleCategoryIds];
+        }
 
-        \Log::info('Vehicle Category IDs for user ' . $user->id . ': ' . json_encode($vehicleCategoryIds));
+        \Log::info('pendingRideList: Vehicle category IDs', ['category_ids' => $vehicleCategoryIds]);
 
         if (empty($vehicleCategoryIds)) {
-            \Log::warning('No vehicle categories found for vehicle ID: ' . $vehicle->id);
+            \Log::warning('pendingRideList: No vehicle categories found', ['vehicle_id' => $vehicle->id]);
             return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404, content: []), 403);
         }
+
+        // Check if there are ANY pending trips in the database for this zone
+        $totalPendingInZone = \Modules\TripManagement\Entities\TripRequest::where('zone_id', $zoneId)
+            ->where('current_status', PENDING)
+            ->count();
+        \Log::info('pendingRideList: Total pending trips in zone', ['zone_id' => $zoneId, 'count' => $totalPendingInZone]);
 
         $pendingTrips = $this->trip->getPendingRides(attributes: [
             'ride_count' => $user->driverDetails->ride_count ?? 0,
@@ -1110,7 +1157,7 @@ class TripRequestController extends Controller
             'service' => $user->driverDetails->service ?? null,
             'parcel_weight_capacity' => $vehicle->parcel_weight_capacity ?? null,
             'distance' => $search_radius * 1000,
-            'zone_id' => $request->header('zoneId'),
+            'zone_id' => $zoneId,
             'relations' => ['driver.driverDetails', 'customer', 'ignoredRequests', 'time', 'fee', 'fare_biddings', 'parcel', 'parcelRefund', 'vehicle'],
             'withAvgRelation' => 'customerReceivedReviews',
             'withAvgColumn' => 'rating',
@@ -1118,7 +1165,11 @@ class TripRequestController extends Controller
             'offset' => $request['offset']
         ]);
 
-        \Log::info('Pending trips count for user ' . $user->id . ': ' . $pendingTrips->count());
+        \Log::info('pendingRideList: Query completed', [
+            'trips_found' => $pendingTrips->count(),
+            'total_items' => $pendingTrips->total()
+        ]);
+
         $trips = TripRequestResource::collection($pendingTrips);
 
         return response()->json(
