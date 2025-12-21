@@ -2949,4 +2949,10 @@
   'Lost items can only be reported for completed trips' => 'Lost items can only be reported for completed trips',
   'Lost item report submitted successfully' => 'Lost item report submitted successfully',
   'A report for this item category already exists for this trip' => 'A report for this item category already exists for this trip',
+  'Your trip OTP is 4341' => 'Your trip OTP is 4341',
+  '50 payment successful on this trip by cash.' => '50 payment successful on this trip by cash.',
+  'We regret to inform you that your bid request for trip ID 102386 has been rejected by the customer' => 'We regret to inform you that your bid request for trip ID 102386 has been rejected by the customer',
+  'We regret to inform you that your bid request for trip ID 102387 has been rejected by the customer' => 'We regret to inform you that your bid request for trip ID 102387 has been rejected by the customer',
+  'Your trip OTP is 8512' => 'Your trip OTP is 8512',
+  'Your trip OTP is 7403' => 'Your trip OTP is 7403',
 );

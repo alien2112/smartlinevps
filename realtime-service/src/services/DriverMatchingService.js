@@ -5,16 +5,20 @@
 
 const axios = require('axios');
 const logger = require('../utils/logger');
+const config = require('../config/config');
 
 class DriverMatchingService {
   constructor(redisClient, io, locationService) {
     this.redis = redisClient;
     this.io = io;
     this.locationService = locationService;
-    this.LARAVEL_API_URL = process.env.LARAVEL_API_URL;
-    this.LARAVEL_API_KEY = process.env.LARAVEL_API_KEY;
-    this.MAX_DRIVERS_TO_NOTIFY = parseInt(process.env.MAX_DRIVERS_TO_NOTIFY) || 10;
-    this.MATCH_TIMEOUT = parseInt(process.env.DRIVER_MATCH_TIMEOUT_SECONDS) || 120;
+    // Load from centralized config
+    this.LARAVEL_API_URL = config.laravel.apiUrl;
+    this.LARAVEL_API_KEY = config.laravel.apiKey;
+    this.LARAVEL_API_TIMEOUT = config.laravel.timeout;
+    this.MAX_DRIVERS_TO_NOTIFY = config.driverMatching.maxDriversToNotify;
+    this.MATCH_TIMEOUT = config.driverMatching.matchTimeoutSeconds;
+    this.SEARCH_RADIUS_KM = config.driverMatching.searchRadiusKm;
   }
 
   /**
@@ -39,7 +43,7 @@ class DriverMatchingService {
     const nearbyDrivers = await this.locationService.findNearbyDrivers(
       pickupLatitude,
       pickupLongitude,
-      parseInt(process.env.DRIVER_SEARCH_RADIUS_KM) || 10,
+      this.SEARCH_RADIUS_KM,
       vehicleCategoryId
     );
 

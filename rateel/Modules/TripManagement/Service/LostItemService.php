@@ -243,6 +243,7 @@ class LostItemService extends BaseService implements LostItemServiceInterface
 
     /**
      * Publish lost item event to Redis for realtime updates
+     * Uses raw Redis connection to avoid Laravel's default prefix
      */
     protected function publishLostItemEvent(string $event, Model $lostItem): void
     {
@@ -254,10 +255,15 @@ class LostItemService extends BaseService implements LostItemServiceInterface
                 'driver_id' => $lostItem->driver_id,
                 'category' => $lostItem->category,
                 'status' => $lostItem->status,
+                'driver_response' => $lostItem->driver_response,
                 'created_at' => $lostItem->created_at->toIso8601String(),
             ]);
 
-            Redis::publish($event, $payload);
+            // Use 'pubsub' connection which has no prefix
+            // This ensures Node.js receives events on expected channel names
+            Redis::connection('pubsub')->publish($event, $payload);
+            
+            \Log::info('Published lost item event', ['event' => $event, 'lost_item_id' => $lostItem->id]);
         } catch (\Exception $e) {
             // Log but don't fail the main operation
             \Log::warning('Failed to publish lost item event: ' . $e->getMessage());

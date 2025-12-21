@@ -11,23 +11,23 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Comprehensive API rate limiting middleware
  * Protects against abuse with different limits per endpoint type
+ * 
+ * All rate limits are configurable via config/rate_limits.php
  */
 class ApiRateLimiter
 {
     /**
-     * Rate limit configurations for different endpoint types
+     * Rate limit configurations loaded from config file
      */
-    protected array $limits = [
-        // Critical trip actions - stricter limits
-        'trip_accept' => ['max' => 10, 'decay' => 60], // 10 per minute
-        'trip_cancel' => ['max' => 5, 'decay' => 60],  // 5 per minute
+    protected array $limits;
 
-        // Location updates - moderate limits
-        'location_update' => ['max' => 100, 'decay' => 60], // 100 per minute
-
-        // General API - lenient limits
-        'general' => ['max' => 60, 'decay' => 60], // 60 per minute
-    ];
+    public function __construct()
+    {
+        // Load rate limits from config file (allows env var customization)
+        $this->limits = config('rate_limits.limits', [
+            'general' => ['max' => 60, 'decay' => 60],
+        ]);
+    }
 
     /**
      * Handle an incoming request.

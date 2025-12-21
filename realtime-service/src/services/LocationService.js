@@ -6,6 +6,7 @@
 const { getDistance } = require('geolib');
 const logger = require('../utils/logger');
 const { objectToHsetArgs } = require('../utils/redisHelpers');
+const config = require('../config/config');
 
 class LocationService {
   constructor(redisClient, io) {
@@ -17,9 +18,11 @@ class LocationService {
     this.RIDE_DRIVER_PREFIX = 'ride:driver:';
     this.RIDE_CUSTOMER_PREFIX = 'ride:customer:';
     this.ACTIVE_RIDES_SET = 'rides:active';
-    this.LOCATION_EXPIRY = parseInt(process.env.LOCATION_EXPIRY_SECONDS) || 3600;
-    this.UPDATE_THROTTLE = parseInt(process.env.LOCATION_UPDATE_THROTTLE_MS) || 1000;
-    this.RIDE_CONTEXT_EXPIRY = parseInt(process.env.RIDE_CONTEXT_EXPIRY_SECONDS) || 21600; // 6h
+
+    // Load from centralized config
+    this.LOCATION_EXPIRY = config.location.expirySeconds;
+    this.UPDATE_THROTTLE = config.location.updateThrottleMs;
+    this.RIDE_CONTEXT_EXPIRY = config.location.rideContextExpirySeconds;
 
     // Throttle map to prevent excessive updates
     this.lastUpdateTime = new Map();

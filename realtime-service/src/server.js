@@ -12,6 +12,7 @@ const cors = require('cors');
 const compression = require('compression');
 
 const logger = require('./utils/logger');
+const config = require('./config/config');
 const redisClient = require('./config/redis');
 const { authenticateSocket } = require('./middleware/auth');
 const { rateLimit } = require('./utils/rateLimiter');
@@ -55,16 +56,16 @@ app.get('/metrics', async (req, res) => {
   });
 });
 
-// Socket.IO server with configuration
+// Socket.IO server with configuration (loaded from config)
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.WS_CORS_ORIGIN || '*',
+    origin: config.websocket.corsOrigin,
     methods: ['GET', 'POST']
   },
-  pingTimeout: parseInt(process.env.WS_PING_TIMEOUT) || 60000,
-  pingInterval: parseInt(process.env.WS_PING_INTERVAL) || 25000,
-  maxHttpBufferSize: 1e6, // 1 MB
-  transports: ['websocket', 'polling']
+  pingTimeout: config.websocket.pingTimeout,
+  pingInterval: config.websocket.pingInterval,
+  maxHttpBufferSize: config.websocket.maxHttpBufferSize,
+  transports: config.websocket.transports
 });
 
 // Initialize services
@@ -74,8 +75,7 @@ const redisEventBus = new RedisEventBus(redisClient, io, locationService, driver
 
 // Socket.IO middleware for authentication
 io.use((socket, next) => {
-  const maxConnections = parseInt(process.env.MAX_CONNECTIONS_PER_INSTANCE) || 10000;
-  if (io.engine.clientsCount >= maxConnections) {
+  if (io.engine.clientsCount >= config.performance.maxConnectionsPerInstance) {
     return next(new Error('Server overloaded'));
   }
   next();
@@ -86,8 +86,10 @@ io.use(authenticateSocket);
 io.on('connection', (socket) => {
   const userId = socket.user.id;
   const userType = socket.user.type; // 'driver' or 'customer'
-  const enforceRideRoomAuth = process.env.ENFORCE_RIDE_SUBSCRIPTION_AUTH !== 'false';
-  const disconnectOfflineGraceMs = parseInt(process.env.DISCONNECT_OFFLINE_GRACE_MS) || 30000;
+
+  // Load security settings from config
+  const enforceRideRoomAuth = config.security.enforceRideSubscriptionAuth;
+  const disconnectOfflineGraceMs = config.security.disconnectOfflineGraceMs;
 
   logger.info(`Client connected`, {
     socketId: socket.id,
@@ -107,7 +109,7 @@ io.on('connection', (socket) => {
   if (userType === 'driver') {
     // Driver goes online
     socket.on('driver:online', async (data) => {
-      if (!rateLimit(socket, 'driver:online', { windowMs: 60_000, max: 10 })) {
+      if (!rateLimit(socket, 'driver:online', config.rateLimiting.driverOnline)) {
         return;
       }
 
@@ -123,7 +125,7 @@ io.on('connection', (socket) => {
 
     // Driver goes offline
     socket.on('driver:offline', async () => {
-      if (!rateLimit(socket, 'driver:offline', { windowMs: 60_000, max: 10 })) {
+      if (!rateLimit(socket, 'driver:offline', config.rateLimiting.driverOffline)) {
         return;
       }
 
@@ -156,7 +158,7 @@ io.on('connection', (socket) => {
 
     // Driver accepts ride
     socket.on('driver:accept:ride', async (data) => {
-      if (!rateLimit(socket, 'driver:accept:ride', { windowMs: 10_000, max: 5 })) {
+      if (!rateLimit(socket, 'driver:accept:ride', config.rateLimiting.driverAcceptRide)) {
         socket.emit('ride:accept:failed', { rideId: data?.rideId, message: 'Too many attempts, slow down' });
         return;
       }
@@ -180,7 +182,7 @@ io.on('connection', (socket) => {
   if (userType === 'customer') {
     // Subscribe to ride updates
     socket.on('customer:subscribe:ride', async (data, ack) => {
-      if (!rateLimit(socket, 'customer:subscribe:ride', { windowMs: 60_000, max: 30 })) {
+      if (!rateLimit(socket, 'customer:subscribe:ride', config.rateLimiting.customerSubscribeRide)) {
         ack?.({ success: false, message: 'Rate limited' });
         return;
       }
@@ -206,7 +208,7 @@ io.on('connection', (socket) => {
 
     // Unsubscribe from ride updates
     socket.on('customer:unsubscribe:ride', (data) => {
-      if (!rateLimit(socket, 'customer:unsubscribe:ride', { windowMs: 60_000, max: 60 })) {
+      if (!rateLimit(socket, 'customer:unsubscribe:ride', config.rateLimiting.customerUnsubscribeRide)) {
         return;
       }
 
@@ -221,7 +223,7 @@ io.on('connection', (socket) => {
   // COMMON EVENTS
   // Heartbeat/ping
   socket.on('ping', () => {
-    if (!rateLimit(socket, 'ping', { windowMs: 10_000, max: 50 })) {
+    if (!rateLimit(socket, 'ping', config.rateLimiting.ping)) {
       return;
     }
     socket.emit('pong', { timestamp: Date.now() });
@@ -294,14 +296,14 @@ process.on('SIGINT', async () => {
 });
 
 // Start server
-const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
+const PORT = config.server.port;
+const HOST = config.server.host;
 
 httpServer.listen(PORT, HOST, () => {
   logger.info(`SmartLine Real-time Service started`, {
     port: PORT,
     host: HOST,
-    environment: process.env.NODE_ENV
+    environment: config.server.nodeEnv
   });
 });
 

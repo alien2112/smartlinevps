@@ -6,9 +6,12 @@
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const logger = require('../utils/logger');
+const config = require('../config/config');
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const LARAVEL_API_URL = process.env.LARAVEL_API_URL;
+// Load from centralized config
+const JWT_SECRET = config.jwt.secret;
+const LARAVEL_API_URL = config.laravel.apiUrl;
+const LARAVEL_API_TIMEOUT = config.laravel.timeout;
 
 /**
  * Authenticate Socket.IO connection
@@ -24,7 +27,7 @@ async function authenticateSocket(socket, next) {
     }
 
     // DEVELOPMENT MODE: Allow test tokens
-    if (process.env.NODE_ENV === 'development') {
+    if (config.server.nodeEnv === 'development') {
       if (token === 'test-driver-token') {
         socket.user = {
           id: 'test-driver-id',
@@ -74,13 +77,13 @@ async function authenticateSocket(socket, next) {
     }
 
     // Validate with Laravel API (optional, can be disabled for performance)
-    if (process.env.VALIDATE_WITH_LARAVEL === 'true') {
+    if (config.laravel.validateWithLaravel) {
       try {
         const response = await axios.get(`${LARAVEL_API_URL}/api/auth/verify`, {
           headers: {
             Authorization: `Bearer ${token}`
           },
-          timeout: 5000
+          timeout: LARAVEL_API_TIMEOUT
         });
 
         if (response.data.response_code !== 'default_200') {

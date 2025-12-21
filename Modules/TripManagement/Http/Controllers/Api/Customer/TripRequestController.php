@@ -970,7 +970,7 @@ class TripRequestController extends Controller
             'column' => 'id',
             'value' => $trip_request_id,
             'trip_status' => $request['status'],
-            'trip_cancellation_reason' => $request['cancel_reason'] ?? null
+            'trip_cancellation_reason' => utf8Clean($request['cancel_reason'] ?? null)
         ];
 
 
@@ -1145,7 +1145,8 @@ class TripRequestController extends Controller
             ]);
         }
 
-        return response()->json(responseFormatter(DEFAULT_UPDATE_200, TripRequestResource::make($trip)));
+        $resource = TripRequestResource::make($trip)->resolve();
+        return response()->json(utf8Clean(responseFormatter(DEFAULT_UPDATE_200, $resource)));
     }
 
     /**
