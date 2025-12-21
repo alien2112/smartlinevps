@@ -16,6 +16,7 @@ class UserLastLocation extends Model
         'type',
         'latitude',
         'longitude',
+        'location_point',
         'zone_id',
         'created_at',
         'updated_at',

@@ -37,11 +37,15 @@ class UserLastLocationRepository implements UserLastLocationInterface
 
     public function updateOrCreate($attributes): mixed
     {
+        $lat = $attributes['latitude'];
+        $lng = $attributes['longitude'];
+
         $location = $this->last_location->query()
             ->updateOrInsert(['user_id' => $attributes['user_id']], [
                 'type' => $attributes['type'],
-                'latitude' => $attributes['latitude'],
-                'longitude' => $attributes['longitude'],
+                'latitude' => $lat,
+                'longitude' => $lng,
+                'location_point' => \DB::raw("ST_SRID(POINT($lng, $lat), 4326)"),
                 'zone_id' => $attributes['zone_id'],
                 'created_at' => now(),
                 'updated_at' => now(),
