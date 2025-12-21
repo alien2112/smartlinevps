@@ -5,6 +5,7 @@ namespace Modules\TripManagement\Service;
 use App\Service\BaseService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
@@ -131,7 +132,7 @@ class LostItemService extends BaseService implements LostItemServiceInterface
     /**
      * Get lost items by customer ID
      */
-    public function getByCustomer(string $customerId, int $limit = 10, int $offset = 1): Collection
+    public function getByCustomer(string $customerId, int $limit = 10, int $offset = 1): Collection|LengthAwarePaginator
     {
         return $this->baseRepository->getBy(
             criteria: ['customer_id' => $customerId],
@@ -145,7 +146,7 @@ class LostItemService extends BaseService implements LostItemServiceInterface
     /**
      * Get lost items by driver ID
      */
-    public function getByDriver(string $driverId, int $limit = 10, int $offset = 1): Collection
+    public function getByDriver(string $driverId, int $limit = 10, int $offset = 1): Collection|LengthAwarePaginator
     {
         return $this->baseRepository->getBy(
             criteria: ['driver_id' => $driverId],
@@ -167,7 +168,8 @@ class LostItemService extends BaseService implements LostItemServiceInterface
             return null;
         }
 
-        $newStatus = $response === 'found' ? LostItem::STATUS_FOUND : $lostItem->status;
+        // Reflect driver decision in status so the customer can see progress
+        $newStatus = $response === 'found' ? LostItem::STATUS_FOUND : LostItem::STATUS_DRIVER_CONTACTED;
         $fromStatus = $lostItem->status;
 
         DB::beginTransaction();

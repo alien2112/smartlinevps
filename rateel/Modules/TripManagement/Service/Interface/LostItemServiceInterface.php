@@ -5,6 +5,7 @@ namespace Modules\TripManagement\Service\Interface;
 use App\Service\BaseServiceInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 interface LostItemServiceInterface extends BaseServiceInterface
 {
@@ -21,12 +22,12 @@ interface LostItemServiceInterface extends BaseServiceInterface
     /**
      * Get lost items by customer ID
      */
-    public function getByCustomer(string $customerId, int $limit = 10, int $offset = 1): Collection;
+    public function getByCustomer(string $customerId, int $limit = 10, int $offset = 1): Collection|LengthAwarePaginator;
 
     /**
      * Get lost items by driver ID
      */
-    public function getByDriver(string $driverId, int $limit = 10, int $offset = 1): Collection;
+    public function getByDriver(string $driverId, int $limit = 10, int $offset = 1): Collection|LengthAwarePaginator;
 
     /**
      * Update driver response

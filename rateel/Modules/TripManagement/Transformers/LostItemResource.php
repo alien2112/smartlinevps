@@ -9,6 +9,8 @@ class LostItemResource extends JsonResource
 {
     public function toArray(Request $request)
     {
+        $isDriverContext = $request->user()?->user_type === 'driver';
+
         return [
             'id' => $this->id,
             'trip_request_id' => $this->trip_request_id,
@@ -35,11 +37,12 @@ class LostItemResource extends JsonResource
             }),
 
             // Customer info (with masked phone for privacy)
-            'customer' => $this->whenLoaded('customer', function () {
+            'customer' => $this->whenLoaded('customer', function () use ($isDriverContext) {
                 return [
                     'id' => $this->customer->id,
                     'name' => $this->customer->first_name . ' ' . $this->customer->last_name,
-                    'phone' => $this->maskPhoneNumber($this->customer->phone),
+                    'phone' => $isDriverContext ? $this->customer->phone : $this->maskPhoneNumber($this->customer->phone),
+                    'phone_unmasked' => $isDriverContext ? $this->customer->phone : null,
                     'profile_image' => $this->customer->profile_image,
                 ];
             }),
