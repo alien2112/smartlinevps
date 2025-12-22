@@ -30,6 +30,11 @@ interface LostItemServiceInterface extends BaseServiceInterface
     public function getByDriver(string $driverId, int $limit = 10, int $offset = 1): Collection|LengthAwarePaginator;
 
     /**
+     * Get pending lost items by driver ID
+     */
+    public function getPendingByDriver(string $driverId, int $limit = 10, int $offset = 1): Collection|LengthAwarePaginator;
+
+    /**
      * Update driver response
      */
     public function updateDriverResponse(string $id, string $response, ?string $notes = null): ?Model;

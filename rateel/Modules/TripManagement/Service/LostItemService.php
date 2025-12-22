@@ -158,6 +158,21 @@ class LostItemService extends BaseService implements LostItemServiceInterface
     }
 
     /**
+     * Get pending lost items for a driver (pending or driver_contacted)
+     */
+    public function getPendingByDriver(string $driverId, int $limit = 10, int $offset = 1): Collection|LengthAwarePaginator
+    {
+        return $this->baseRepository->getBy(
+            criteria: ['driver_id' => $driverId],
+            whereInCriteria: ['status' => [LostItem::STATUS_PENDING, LostItem::STATUS_DRIVER_CONTACTED]],
+            relations: ['trip', 'customer'],
+            orderBy: ['created_at' => 'desc'],
+            limit: $limit,
+            offset: $offset
+        );
+    }
+
+    /**
      * Update driver response
      */
     public function updateDriverResponse(string $id, string $response, ?string $notes = null): ?Model
