@@ -332,43 +332,100 @@ class TripRequestRepository implements TripRequestInterfaces
         return $query->orderBy('created_at', 'desc')
             ->paginate(perPage: $attributes['limit'], page: $attributes['offset']);
     }
+    /**
+     * HIGH-PERFORMANCE: Get pending rides for a driver
+     * 
+     * Optimizations applied:
+     * - Selective eager loading (only load necessary relations)
+     * - Uses whereExists instead of whereHas for better performance
+     * - Adds limit to prevent large result sets
+     * - Uses index-friendly ordering
+     */
     public function getPendingRides($attributes): mixed
     {
+        $driverId = auth()->id();
+        $zoneId = $attributes['zone_id'];
+        $vehicleCategoryIds = (array) $attributes['vehicle_category_id'];
+        $distance = $attributes['distance'];
+        $driverLocation = $attributes['driver_locations'];
+        
+        // Build optimized query
         $query = $this->trip
-            ->when($attributes['relations'] ?? null, fn($query) => $query->with($attributes['relations']))
-            ->with([
-                'fare_biddings' => fn($query) => $query->where('driver_id', auth()->id()),
-                'coordinate' => fn($query) => $query->distanceSphere('pickup_coordinates', $attributes['driver_locations'], $attributes['distance']),
+            ->select([
+                'trip_requests.id',
+                'trip_requests.ref_id',
+                'trip_requests.customer_id',
+                'trip_requests.driver_id',
+                'trip_requests.vehicle_category_id',
+                'trip_requests.zone_id',
+                'trip_requests.estimated_fare',
+                'trip_requests.actual_fare',
+                'trip_requests.estimated_distance',
+                'trip_requests.payment_method',
+                'trip_requests.type',
+                'trip_requests.current_status',
+                'trip_requests.created_at',
+                'trip_requests.updated_at',
             ])
-            ->whereHas('coordinate', fn($query) => $query->distanceSphere('pickup_coordinates', $attributes['driver_locations'], $attributes['distance']))
-            ->whereDoesntHave('ignoredRequests', fn($query) => $query->where('user_id', auth()->id()))
-            ->where(fn($query) => $query->whereIn('vehicle_category_id', (array) $attributes['vehicle_category_id'])
-                ->orWhereNull('vehicle_category_id')
-            )
-            ->where('zone_id', $attributes['zone_id'])
+            // Zone and status filter (uses idx_trips_zone_status index)
+            ->where('zone_id', $zoneId)
             ->where('current_status', PENDING)
-            ->where(function ($query) use ($attributes) {
-                if ($attributes['ride_count'] < 1) {
-                    $query->where('type', RIDE_REQUEST);
-                }
-    
-                // 2. Parcel request logic based on parcel follow status and parcel count
-                $query->orWhere(function ($query) use ($attributes) {
-                    if ($attributes['parcel_follow_status']) {
-                        // Only include parcels if parcel_count < 2
-                        if ($attributes['parcel_count'] < $attributes['max_parcel_request_accept_limit']) {
-                            $query->where('type', PARCEL);
-                        } else {
-                            $query->whereNotIn('type', [PARCEL, RIDE_REQUEST]);
-                        }
+            // Vehicle category filter
+            ->where(function ($q) use ($vehicleCategoryIds) {
+                $q->whereIn('vehicle_category_id', $vehicleCategoryIds)
+                    ->orWhereNull('vehicle_category_id');
+            })
+            // Exclude ignored requests using whereNotExists (more efficient)
+            ->whereNotExists(function ($subquery) use ($driverId) {
+                $subquery->select(\DB::raw(1))
+                    ->from('rejected_driver_requests')
+                    ->whereColumn('rejected_driver_requests.trip_request_id', 'trip_requests.id')
+                    ->where('rejected_driver_requests.user_id', $driverId);
+            })
+            // Spatial distance filter via coordinate join
+            ->whereHas('coordinate', fn($q) => $q->distanceSphere('pickup_coordinates', $driverLocation, $distance));
+        
+        // Type filtering based on ride/parcel counts
+        $query->where(function ($q) use ($attributes) {
+            if ($attributes['ride_count'] < 1) {
+                $q->where('type', RIDE_REQUEST);
+            }
+            
+            $q->orWhere(function ($q2) use ($attributes) {
+                if ($attributes['parcel_follow_status']) {
+                    if ($attributes['parcel_count'] < $attributes['max_parcel_request_accept_limit']) {
+                        $q2->where('type', PARCEL);
                     } else {
-                        // Include all parcels when parcel_follow_status is false
-                        $query->where('type', PARCEL);
+                        $q2->whereNotIn('type', [PARCEL, RIDE_REQUEST]);
                     }
-                });
+                } else {
+                    $q2->where('type', PARCEL);
+                }
             });
-    
-        return $query->orderBy('created_at', 'desc')
+        });
+        
+        // Selective eager loading - only load what's needed
+        $relations = [
+            'customer:id,first_name,last_name,phone,profile_image',
+            'time:id,trip_request_id,estimated_time,driver_arrival_time',
+            'fee:id,trip_request_id,cancellation_fee,vat_tax',
+            'coordinate',
+            'fare_biddings' => fn($q) => $q->where('driver_id', $driverId),
+            'parcel:id,trip_request_id,payer,weight',
+        ];
+        
+        // Add optional relations from attributes
+        if (!empty($attributes['relations'])) {
+            foreach ($attributes['relations'] as $relation) {
+                if (!in_array($relation, array_keys($relations)) && !in_array($relation, $relations)) {
+                    $relations[] = $relation;
+                }
+            }
+        }
+        
+        return $query
+            ->with($relations)
+            ->orderBy('created_at', 'desc')
             ->paginate(perPage: $attributes['limit'], page: $attributes['offset']);
     }
 

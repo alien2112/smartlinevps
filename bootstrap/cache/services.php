@@ -91,6 +91,7 @@
     87 => 'Modules\\ZoneManagement\\Providers\\RepositoryServiceProvider',
     88 => 'Modules\\VehicleManagement\\Providers\\RepositoryServiceProvider',
     89 => 'Modules\\AdminModule\\Providers\\FirebaseServiceProvider',
+    90 => 'App\\Providers\\PerformanceServiceProvider',
   ),
   'eager' => 
   array (
@@ -157,6 +158,7 @@
     60 => 'Modules\\ZoneManagement\\Providers\\RepositoryServiceProvider',
     61 => 'Modules\\VehicleManagement\\Providers\\RepositoryServiceProvider',
     62 => 'Modules\\AdminModule\\Providers\\FirebaseServiceProvider',
+    63 => 'App\\Providers\\PerformanceServiceProvider',
   ),
   'deferred' => 
   array (

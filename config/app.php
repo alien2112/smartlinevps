@@ -193,7 +193,10 @@ return [
         \Modules\UserManagement\Providers\RepositoryServiceProvider::class,
         \Modules\ZoneManagement\Providers\RepositoryServiceProvider::class,
         \Modules\VehicleManagement\Providers\RepositoryServiceProvider::class,
-        \Modules\AdminModule\Providers\FirebaseServiceProvider::class
+        \Modules\AdminModule\Providers\FirebaseServiceProvider::class,
+        
+        // Performance Optimization
+        App\Providers\PerformanceServiceProvider::class,
     ])->toArray(),
 
     /*

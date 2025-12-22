@@ -477,16 +477,33 @@ if (!function_exists('log_viewer')) {
 
 
 if (!function_exists('get_cache')) {
-    function get_cache($key)
+    /**
+     * Get cached configuration value with proper TTL
+     * 
+     * Uses atomic Cache::remember() to prevent race conditions
+     * and includes a 1-hour TTL to ensure data freshness.
+     * 
+     * @param string $key Configuration key
+     * @param mixed $default Default value if not found
+     * @return mixed
+     */
+    function get_cache($key, $default = null)
     {
-        if (!Cache::has($key)) {
-            $config = businessConfig($key)?->value;
-            if (!$config) {
-                return null;
+        // Use a constant TTL of 1 hour (3600 seconds)
+        $ttl = 3600;
+        
+        return Cache::remember($key, $ttl, function () use ($key, $default) {
+            try {
+                $config = businessConfig($key)?->value;
+                return $config ?? $default;
+            } catch (\Exception $e) {
+                Log::warning('get_cache: Failed to fetch config', [
+                    'key' => $key,
+                    'error' => $e->getMessage()
+                ]);
+                return $default;
             }
-            Cache::put($key, $config);
-        }
-        return Cache::get($key);
+        });
     }
 }
 
@@ -677,8 +694,36 @@ if (!function_exists('getMainDomain')) {
 }
 
 if (!function_exists('getRoutes')) {
+    /**
+     * Get routes with caching for improved performance
+     * 
+     * Routes are cached for 30 minutes using a hash of the coordinates.
+     * This significantly reduces external API calls for repeated queries.
+     */
     function getRoutes(array $originCoordinates, array $destinationCoordinates, array $intermediateCoordinates = [], array $drivingMode = ["DRIVE"])
     {
+        // Build cache key from rounded coordinates (~11m accuracy to increase cache hits)
+        $originKey = round($originCoordinates[0], 4) . ',' . round($originCoordinates[1], 4);
+        $destKey = round($destinationCoordinates[0], 4) . ',' . round($destinationCoordinates[1], 4);
+        $waypointsKey = '';
+        if (!empty($intermediateCoordinates) && isset($intermediateCoordinates[0][0])) {
+            $wpParts = [];
+            foreach ($intermediateCoordinates as $wp) {
+                if (isset($wp[0], $wp[1])) {
+                    $wpParts[] = round($wp[0], 4) . ',' . round($wp[1], 4);
+                }
+            }
+            $waypointsKey = ':' . implode('|', $wpParts);
+        }
+        $cacheKey = 'route:' . md5($originKey . ':' . $destKey . $waypointsKey);
+        
+        // Check cache first (30 minute TTL)
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+        
+        // Fetch from API
         $apiKey = businessConfig(GOOGLE_MAP_API)?->value['map_api_key_server'] ?? '';
         $responses = [];
 
@@ -826,6 +871,9 @@ if (!function_exists('getRoutes')) {
                 'encoded_polyline' => $encodedPolyline,
             ];
 
+            // Cache successful response for 30 minutes
+            Cache::put($cacheKey, $responses, 1800);
+            
             return $responses;
         } else {
             // Handle the error if the request was not successful

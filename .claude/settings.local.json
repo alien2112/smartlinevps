@@ -37,7 +37,15 @@
       "Bash(done)",
       "Bash(powershell -ExecutionPolicy Bypass -File \"D:\\\\smartline-copy\\\\smart-line.space\\\\apply_database_indexes.ps1\")",
       "Bash(powershell -ExecutionPolicy Bypass -File \"D:\\\\smartline-copy\\\\smart-line.space\\\\apply_indexes_fixed.ps1\")",
-      "Bash(mysqldump:*)"
+      "Bash(mysqldump:*)",
+      "Bash(ssh -o StrictHostKeyChecking=no root@72.62.29.3 \"echo ''Connection successful'' && uname -a && pwd\")",
+      "Bash(ssh:*)",
+      "Bash(sshpass -p '@Smart123456@' ssh -o StrictHostKeyChecking=no root@72.62.29.3 \"echo ''Connected to VPS'' && pwd && systemctl status nginx --no-pager && systemctl status php8.2-fpm --no-pager && systemctl status mysql --no-pager && systemctl status redis --no-pager\")",
+      "Bash(scp:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []
