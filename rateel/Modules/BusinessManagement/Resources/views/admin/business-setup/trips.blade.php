@@ -96,6 +96,31 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="col-lg-4 col-sm-6">
+                                <div class="mb-4 text">
+                                    <label for="lost_item_response_timeout_hours"
+                                           class="mb-4 d-flex align-items-center fw-medium gap-2">
+                                        {{ translate('مدة انتظار رد الكابتن على المفقودات') }}
+                                        <i class="bi bi-info-circle-fill text-primary cursor-pointer"
+                                           data-bs-toggle="tooltip"
+                                           title="{{ translate('إذا لم يرد الكابتن على بلاغ المفقودات خلال هذه المدة، سيتم إغلاق البلاغ تلقائياً') }}">
+                                        </i>
+                                    </label>
+                                    <div class="floating-form-group">
+                                        <label for="" class="floating-form-label">
+                                            {{ translate('المدة بالساعات') }}
+                                        </label>
+                                        <div class="input-group_tooltip">
+                                            <input type="number" class="form-control" placeholder="Ex: 24"
+                                                   id="lost_item_response_timeout_hours" name="lost_item_response_timeout_hours"
+                                                   value="{{$settings->firstWhere('key_name', 'lost_item_response_timeout_hours')?->value ?? 24}}"
+                                                   min="1" max="168">
+                                            <i class="bi bi-info-circle-fill text-primary tooltip-icon" data-bs-toggle="tooltip"
+                                               data-bs-title="{{translate('سيتم إغلاق بلاغات المفقودات تلقائياً إذا لم يرد الكابتن خلال هذه المدة. القيمة الافتراضية 24 ساعة.')}}"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="d-flex gap-3 flex-wrap justify-content-end">

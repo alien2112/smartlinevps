@@ -60,7 +60,18 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // Connection pooling - enable in production for better performance
+                PDO::ATTR_PERSISTENT => env('DB_PERSISTENT', false),
             ]) : [],
+            
+            // Read/Write splitting configuration (uncomment when using read replicas)
+            // 'read' => [
+            //     'host' => explode(',', env('DB_READ_HOSTS', env('DB_HOST', '127.0.0.1'))),
+            // ],
+            // 'write' => [
+            //     'host' => env('DB_HOST', '127.0.0.1'),
+            // ],
+            // 'sticky' => true, // Ensures writes are read back from master
         ],
 
         'pgsql' => [

@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Cache;
 use Modules\VehicleManagement\Entities\VehicleCategory;
+use Modules\VehicleManagement\Service\VehicleCategoryService;
 use Modules\ZoneManagement\Entities\Zone;
 
 class TripFare extends Model
@@ -65,5 +67,14 @@ class TripFare extends Model
     protected static function newFactory()
     {
         return \Modules\FareManagement\Database\factories\TripFareFactory::new();
+    }
+
+    protected static function booted()
+    {
+        $flush = fn () => Cache::forever(VehicleCategoryService::CACHE_VERSION_KEY, now()->timestamp);
+
+        static::saved($flush);
+        static::deleted($flush);
+        static::forceDeleted($flush);
     }
 }

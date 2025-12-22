@@ -38,7 +38,14 @@ class VehicleCategoryController extends Controller
         $orderBy = [
     'created_at' => 'Asc'
 ];
-        $categories = $this->vehicleCategoryService->getBy(criteria: ['is_active'=>1], whereHasRelations: $whereHasRelations, relations: $relations, orderBy: $orderBy, limit: $request['limit'], offset: $request['offset']);
+        $categories = $this->vehicleCategoryService->getActiveCategoriesCached(
+            zoneId: (int)$request->header('zoneId'),
+            limit: $request['limit'],
+            offset: $request['offset'],
+            relations: $relations,
+            whereHasRelations: $whereHasRelations,
+            orderBy: $orderBy
+        );
 
         $data = VehicleCategoryResource::collection($categories);
 

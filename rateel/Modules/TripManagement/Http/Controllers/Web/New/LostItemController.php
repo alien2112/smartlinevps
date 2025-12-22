@@ -43,6 +43,7 @@ class LostItemController extends Controller
             'found' => LostItem::where('status', 'found')->count(),
             'returned' => LostItem::where('status', 'returned')->count(),
             'closed' => LostItem::where('status', 'closed')->count(),
+            'no_driver_response' => LostItem::where('status', 'no_driver_response')->count(),
         ];
         
         return view('tripmanagement::admin.lost-items.index', compact('lostItems', 'statusCounts'));

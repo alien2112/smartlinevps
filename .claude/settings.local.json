@@ -45,7 +45,11 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(redis-cli info:*)",
+      "Bash(redis-cli:*)",
+      "Bash(move \"D:\\\\smartline-copy\\\\smart-line.space\\\\PERFORMANCE_REPORT_2025-12-22_014242.md\" \"D:\\\\smartline-copy\\\\smart-line.space\\\\performance fixes after 22\"\" && move \"D:smartline-copysmart-line.spaceCRITICAL_FIXES_COMPLETED.md\" \"D:smartline-copysmart-line.spaceperformance fixes after 22\"\")",
+      "Bash(move \"D:\\\\smartline-copy\\\\smart-line.space\\\\supervisor-smartline-workers.conf\" \"D:\\\\smartline-copy\\\\smart-line.space\\\\performance fixes after 22\"\")"
     ],
     "deny": [],
     "ask": []

@@ -49,6 +49,7 @@ class LostItem extends Model
     const STATUS_DRIVER_CONTACTED = 'driver_contacted';
     const STATUS_FOUND = 'found';
     const STATUS_RETURNED = 'returned';
+    const STATUS_NO_DRIVER_RESPONSE = 'no_driver_response';
     const STATUS_CLOSED = 'closed';
 
     /**
@@ -71,6 +72,7 @@ class LostItem extends Model
             self::STATUS_FOUND,
             self::STATUS_RETURNED,
             self::STATUS_CLOSED,
+            self::STATUS_NO_DRIVER_RESPONSE,
         ];
     }
 

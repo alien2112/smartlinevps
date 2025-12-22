@@ -6,8 +6,10 @@ use App\Traits\HasUuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Cache;
 use Modules\AdminModule\Entities\ActivityLog;
 use Modules\FareManagement\Entities\TripFare;
+use Modules\VehicleManagement\Service\VehicleCategoryService;
 
 class VehicleCategory extends Model
 {
@@ -72,6 +74,10 @@ class VehicleCategory extends Model
     {
         parent::boot();
 
+        static::saved(function () {
+            self::flushCategoryCache();
+        });
+
         static::updated(function($item) {
             $array = [];
             foreach ($item->changes as $key => $change){
@@ -91,8 +97,22 @@ class VehicleCategory extends Model
             $log->edited_by = auth()->user()->id;
             $log->before = $item->original;
             $item->logs()->save($log);
+            self::flushCategoryCache();
         });
 
+        static::restored(function () {
+            self::flushCategoryCache();
+        });
+
+        static::forceDeleted(function () {
+            self::flushCategoryCache();
+        });
+
+    }
+
+    private static function flushCategoryCache(): void
+    {
+        Cache::forever(VehicleCategoryService::CACHE_VERSION_KEY, now()->timestamp);
     }
 
 }

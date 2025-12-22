@@ -350,4 +350,4 @@
     <!-- CTA Section End -->
 <?php $__env->stopSection(); ?>
 
-<?php echo $__env->make('landing-page.layouts.master', \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?><?php /**PATH D:\smartline-copy\smart-line.space\resources\views/landing-page/index.blade.php ENDPATH**/ ?>
+<?php echo $__env->make('landing-page.layouts.master', \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?><?php /**PATH D:\smartline-copy\smart-line.space\resources\views\landing-page\index.blade.php ENDPATH**/ ?>

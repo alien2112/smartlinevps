@@ -16,17 +16,17 @@ Route::group(['prefix' => 'customer'], function () {
 
         Route::group(['prefix' => 'category'], function () {
             Route::controller(CustomerVehicleCategoryController::class)->group(function () {
-                Route::get('/', 'categoryFareList');
+                Route::get('/', 'categoryFareList')->middleware('cache.response:300');
             });
         });
     });
 });
 
 Route::group(['prefix' => 'year'], function () {
-            Route::controller(VehicleYearController::class)->group(function () {
-                Route::get('/list', 'yearList');
-            });
+        Route::controller(VehicleYearController::class)->group(function () {
+            Route::get('/list', 'yearList')->middleware('cache.response:300');
         });
+    });
 Route::group(['prefix' => 'driver'], function () {
     Route::group(['prefix' => 'vehicle', 'middleware' => ['auth:api', 'maintenance_mode']], function () {
 
@@ -36,19 +36,19 @@ Route::group(['prefix' => 'driver'], function () {
         });
         Route::group(['prefix' => 'category'], function () {
             Route::controller(VehicleCategoryController::class)->group(function () {
-                Route::get('/list', 'list');
+                Route::get('/list', 'list')->middleware('cache.response:300');
             });
         });
 
         Route::group(['prefix' => 'brand'], function () {
             Route::controller(VehicleBrandController::class)->group(function () {
-                Route::get('/list', 'brandList');
+                Route::get('/list', 'brandList')->middleware('cache.response:300');
             });
         });
 
         Route::group(['prefix' => 'model'], function () {
             Route::controller(VehicleModelController::class)->group(function () {
-                Route::get('/list', 'modelList');
+                Route::get('/list', 'modelList')->middleware('cache.response:300');
             });
         });
         

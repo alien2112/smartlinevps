@@ -47,8 +47,33 @@ class RouteServiceProvider extends ServiceProvider
      */
     protected function configureRateLimiting()
     {
+        // General API rate limiter
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by(optional($request->user())->id ?: $request->ip());
+        });
+
+        // Trip creation rate limiter - prevents booking abuse (3 per minute)
+        RateLimiter::for('trip_creation', function (Request $request) {
+            return Limit::perMinute(3)
+                ->by($request->user()?->id ?: $request->ip())
+                ->response(function () {
+                    return response()->json([
+                        'response_code' => 'too_many_requests_403',
+                        'message' => 'Too many trip requests. Please wait before creating another trip.',
+                    ], 429);
+                });
+        });
+
+        // Location update rate limiter - 20 per minute (3 second intervals)
+        RateLimiter::for('location_update', function (Request $request) {
+            return Limit::perMinute(20)
+                ->by($request->user()?->id ?: $request->ip());
+        });
+
+        // Push notification rate limiter - prevents notification spam
+        RateLimiter::for('notifications', function (Request $request) {
+            return Limit::perMinute(10)
+                ->by($request->user()?->id ?: $request->ip());
         });
     }
 }

@@ -2955,4 +2955,5 @@
   'We regret to inform you that your bid request for trip ID 102387 has been rejected by the customer' => 'We regret to inform you that your bid request for trip ID 102387 has been rejected by the customer',
   'Your trip OTP is 8512' => 'Your trip OTP is 8512',
   'Your trip OTP is 7403' => 'Your trip OTP is 7403',
+  'Your trip OTP is 2524' => 'Your trip OTP is 2524',
 );

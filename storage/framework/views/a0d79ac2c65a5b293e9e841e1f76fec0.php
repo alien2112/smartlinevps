@@ -36,4 +36,4 @@
     </div>
     <!-- Header Bottom -->
 </header>
-<?php /**PATH D:\smartline-copy\smart-line.space\resources\views/landing-page/partials/_header.blade.php ENDPATH**/ ?>
+<?php /**PATH D:\smartline-copy\smart-line.space\resources\views\landing-page\partials\_header.blade.php ENDPATH**/ ?>

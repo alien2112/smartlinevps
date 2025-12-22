@@ -1,0 +1,140 @@
+SmartLine VPS Deployment Configuration Files
+=============================================
+
+This directory contains all configuration files and scripts needed to deploy
+SmartLine to a production VPS server.
+
+
+FILES INCLUDED
+--------------
+
+1. initial_setup.sh
+   - Run on a fresh Ubuntu 22.04/24.04 VPS
+   - Installs all dependencies (PHP, MySQL, Redis, Nginx, Node.js, etc.)
+   - Creates database and deploy user
+   - Generates secure passwords
+   - Usage: sudo bash initial_setup.sh
+
+2. deploy.sh
+   - Complete deployment script for code updates
+   - Handles maintenance mode, migrations, cache clearing
+   - Restarts all services
+   - Usage: bash deploy.sh
+
+3. health_check.sh
+   - Comprehensive server health check
+   - Tests all services (Redis, MySQL, PHP-FPM, queues, etc.)
+   - Checks disk/memory usage
+   - Usage: bash health_check.sh
+
+4. .env.production.example
+   - Production environment template
+   - Contains all required settings with secure defaults
+   - Copy to .env and fill in your values
+
+5. nginx-smartline.conf
+   - Nginx configuration with:
+     - Gzip compression
+     - Security headers
+     - WebSocket proxy for Reverb
+     - Static file caching
+   - Copy to: /etc/nginx/sites-available/smartline
+
+6. supervisor-smartline-worker.conf
+   - Supervisor configuration for Laravel queue workers
+   - Runs 2 high-priority + 4 default workers
+   - Copy to: /etc/supervisor/conf.d/
+
+7. supervisor-smartline-reverb.conf
+   - Supervisor configuration for Laravel Reverb (WebSocket)
+   - Copy to: /etc/supervisor/conf.d/
+
+8. php-opcache.ini
+   - PHP OPcache settings for production
+   - Enables JIT compilation
+   - Copy to: /etc/php/8.2/fpm/conf.d/99-opcache-custom.ini
+
+
+QUICK START
+-----------
+
+1. Fresh VPS Setup:
+   scp -r deployment-configs/ root@your-server:/tmp/
+   ssh root@your-server
+   cd /tmp/deployment-configs
+   bash initial_setup.sh
+
+2. Clone and Configure:
+   sudo su - smartline
+   cd /var/www/smartline
+   git clone https://github.com/alien2112/smartlinevps.git .
+   cp deployment-configs/.env.production.example .env
+   nano .env  # Fill in your values
+   composer install --optimize-autoloader --no-dev
+   php artisan key:generate
+   php artisan migrate --force
+
+3. Configure Services:
+   sudo cp deployment-configs/nginx-smartline.conf /etc/nginx/sites-available/smartline
+   sudo ln -s /etc/nginx/sites-available/smartline /etc/nginx/sites-enabled/
+   sudo rm /etc/nginx/sites-enabled/default
+   sudo nginx -t && sudo systemctl reload nginx
+
+   sudo cp deployment-configs/supervisor-*.conf /etc/supervisor/conf.d/
+   sudo supervisorctl reread && sudo supervisorctl update
+   sudo supervisorctl start all
+
+4. SSL Certificate:
+   sudo certbot --nginx -d your-domain.com
+
+5. Verify:
+   bash deployment-configs/health_check.sh
+
+
+SERVER REQUIREMENTS
+-------------------
+
+Minimum:
+  - 4 CPU cores
+  - 8 GB RAM
+  - 100 GB SSD
+  - Ubuntu 22.04 LTS
+
+Recommended:
+  - 8 CPU cores
+  - 16 GB RAM
+  - 200 GB NVMe SSD
+  - Ubuntu 24.04 LTS
+
+
+IMPORTANT NOTES
+---------------
+
+1. SECURITY: Change all default passwords in .env before deploying
+2. REDIS: Always set a strong REDIS_PASSWORD in production
+3. Backups: The backup:run command requires spatie/laravel-backup package
+4. SSL: Always use HTTPS in production (Certbot makes this easy)
+5. Monitoring: Configure Sentry DSN for error tracking
+
+
+MAINTENANCE COMMANDS
+--------------------
+
+# View logs
+tail -f /var/www/smartline/storage/logs/laravel.log
+
+# Queue status
+php artisan queue:monitor redis:high,redis:default --max=100
+
+# Restart workers
+sudo supervisorctl restart smartline-worker:*
+
+# Clear all caches
+php artisan optimize:clear
+
+# Full restart
+sudo systemctl restart nginx php8.2-fpm mysql redis-server
+sudo supervisorctl restart all
+
+
+Last Updated: 2025-12-22

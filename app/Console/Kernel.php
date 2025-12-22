@@ -20,6 +20,28 @@ class Kernel extends ConsoleKernel
 
         // Database backups - daily at 2:00 AM
         $schedule->command('backup:run')->daily()->at('02:00');
+
+        // FCM token cleanup - weekly on Sundays at 3:00 AM
+        // Removes stale tokens from inactive users to reduce failed notifications
+        $schedule->job(new \App\Jobs\CleanupInvalidFcmTokensJob())
+            ->weekly()
+            ->sundays()
+            ->at('03:00')
+            ->withoutOverlapping();
+
+        // Queue health check - every 5 minutes
+        // Logs queue depth for monitoring
+        $schedule->call(function () {
+            $queueSize = \Illuminate\Support\Facades\Redis::llen('queues:default');
+            $highQueueSize = \Illuminate\Support\Facades\Redis::llen('queues:high');
+            
+            if ($queueSize > 1000 || $highQueueSize > 100) {
+                \Illuminate\Support\Facades\Log::warning('Queue depth high', [
+                    'default_queue' => $queueSize,
+                    'high_queue' => $highQueueSize,
+                ]);
+            }
+        })->everyFiveMinutes();
     }
 
     /**

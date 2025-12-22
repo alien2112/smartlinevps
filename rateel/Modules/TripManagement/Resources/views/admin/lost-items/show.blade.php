@@ -25,13 +25,20 @@
                                 'driver_contacted' => 'info',
                                 'found' => 'success',
                                 'returned' => 'primary',
-                                'closed' => 'dark'
+                                'closed' => 'dark',
+                                'no_driver_response' => 'danger'
                             ];
                         @endphp
                         <span class="badge bg-{{ $statusColors[$lostItem->status] ?? 'secondary' }} fs-6 text-capitalize">
-                            {{ $lostItem->status }}
+                            {{ $lostItem->status == 'no_driver_response' ? translate('No Driver Response') : $lostItem->status }}
                         </span>
                     </div>
+                    @if($lostItem->status == 'no_driver_response')
+                        <div class="alert alert-danger m-3 mb-0">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            {{ translate('تم إغلاق هذا البلاغ تلقائياً لعدم رد الكابتن خلال المدة المحددة') }}
+                        </div>
+                    @endif
                     <div class="card-body">
                         <div class="row mb-3">
                             <div class="col-md-6">
@@ -251,6 +258,7 @@
                                     <option value="found" {{ $lostItem->status == 'found' ? 'selected' : '' }}>{{ translate('Found') }}</option>
                                     <option value="returned" {{ $lostItem->status == 'returned' ? 'selected' : '' }}>{{ translate('Returned') }}</option>
                                     <option value="closed" {{ $lostItem->status == 'closed' ? 'selected' : '' }}>{{ translate('Closed') }}</option>
+                                    <option value="no_driver_response" {{ $lostItem->status == 'no_driver_response' ? 'selected' : '' }}>{{ translate('No Driver Response') }}</option>
                                 </select>
                             </div>
                             <div class="mb-3">

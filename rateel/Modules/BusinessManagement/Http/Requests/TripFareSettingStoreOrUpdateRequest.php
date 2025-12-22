@@ -29,6 +29,7 @@ class TripFareSettingStoreOrUpdateRequest extends FormRequest
             'trip_request_active_time' => [Rule::requiredIf(function () {
                 return $this->input('type') === TRIP_SETTINGS;
             }), 'gt:0', 'lte:30'],
+            'lost_item_response_timeout_hours' => 'nullable|integer|min:1|max:168',
             'trip_push_notification' => 'sometimes',
             'bidding_push_notification' => 'sometimes',
             "driver_otp_confirmation_for_trip" => "nullable|string|in:on",

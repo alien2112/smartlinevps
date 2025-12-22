@@ -27,4 +27,4 @@ $text = businessConfig('text_color')?->value;
         }
     </style>
 <?php endif; ?>
-<?php /**PATH D:\smartline-copy\smart-line.space\resources\views/landing-page/layouts/css.blade.php ENDPATH**/ ?>
+<?php /**PATH D:\smartline-copy\smart-line.space\resources\views\landing-page\layouts\css.blade.php ENDPATH**/ ?>

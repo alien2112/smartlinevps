@@ -142,4 +142,4 @@
 
     </div>
 </footer>
-<?php /**PATH D:\smartline-copy\smart-line.space\resources\views/landing-page/partials/_footer.blade.php ENDPATH**/ ?>
+<?php /**PATH D:\smartline-copy\smart-line.space\resources\views\landing-page\partials\_footer.blade.php ENDPATH**/ ?>

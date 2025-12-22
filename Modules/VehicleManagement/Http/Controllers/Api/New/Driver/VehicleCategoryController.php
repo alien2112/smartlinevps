@@ -20,7 +20,10 @@ class VehicleCategoryController extends Controller
 
     public function list(Request $request)
     {
-        $categories = $this->vehicleCategoryService->getBy(criteria: ['is_active'=>1], limit: $request['limit'], offset: $request['offset']);
+        $categories = $this->vehicleCategoryService->getActiveCategoriesCached(
+            limit: $request['limit'],
+            offset: $request['offset']
+        );
         $data = VehicleCategoryResource::collection($categories);
 
         return response()->json(responseFormatter(constant: DEFAULT_200, content: $data, limit: $request['limit'], offset: $request['offset']), 200);

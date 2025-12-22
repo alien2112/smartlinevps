@@ -26,8 +26,10 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 | Returns the current API version from the database
 |
 */
-Route::get('/version', [\App\Http\Controllers\Api\VersionController::class, 'index']);
-Route::get('/v', [\App\Http\Controllers\Api\VersionController::class, 'getVersion']);
+Route::get('/version', [\App\Http\Controllers\Api\VersionController::class, 'index'])
+    ->middleware('cache.response:300');
+Route::get('/v', [\App\Http\Controllers\Api\VersionController::class, 'getVersion'])
+    ->middleware('cache.response:300');
 
 /*
 |--------------------------------------------------------------------------
@@ -227,7 +229,7 @@ Route::prefix('config/location')->group(function () {
     Route::get('/', [
         \App\Http\Controllers\Api\LocationConfigController::class,
         'getConfig'
-    ]);
+    ])->middleware('cache.response:60');
 
     /**
      * Get all available presets
@@ -235,7 +237,7 @@ Route::prefix('config/location')->group(function () {
     Route::get('/presets', [
         \App\Http\Controllers\Api\LocationConfigController::class,
         'getPresets'
-    ]);
+    ])->middleware('cache.response:300');
 
     /**
      * Admin-only endpoints for configuration management

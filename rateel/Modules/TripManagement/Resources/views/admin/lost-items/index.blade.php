@@ -42,6 +42,12 @@
                             {{ translate('Closed') }} <span class="badge bg-dark">{{ $statusCounts['closed'] ?? 0 }}</span>
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ request('status') == 'no_driver_response' ? 'active' : '' }}" 
+                           href="{{ route('admin.lost-items.index', ['status' => 'no_driver_response']) }}">
+                            {{ translate('No Response') }} <span class="badge bg-danger">{{ $statusCounts['no_driver_response'] ?? 0 }}</span>
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -140,7 +146,8 @@
                                                 'driver_contacted' => 'info',
                                                 'found' => 'success',
                                                 'returned' => 'primary',
-                                                'closed' => 'dark'
+                                                'closed' => 'dark',
+                                                'no_driver_response' => 'danger'
                                             ];
                                         @endphp
                                         <span class="badge bg-{{ $statusColors[$item->status] ?? 'secondary' }} text-capitalize">
