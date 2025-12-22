@@ -125,6 +125,7 @@ Route::group(['prefix' => 'driver', 'middleware' => ['auth:api', 'maintenance_mo
     Route::group(['prefix' => 'lost-items'], function () {
         Route::controller(\Modules\TripManagement\Http\Controllers\Api\New\Driver\LostItemController::class)->group(function () {
             Route::get('/', 'index');
+            Route::get('/pending', 'pending');
             Route::get('/{id}', 'show');
             Route::patch('/{id}', 'update');
         });

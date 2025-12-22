@@ -9,6 +9,7 @@ use App\Events\DriverTripCancelledEvent;
 use App\Events\DriverTripCompletedEvent;
 use App\Events\DriverTripStartedEvent;
 use App\Jobs\SendPushNotificationJob;
+use App\Jobs\ProcessTripAcceptNotificationsJob;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Exception;
@@ -149,7 +150,9 @@ class TripRequestController extends Controller
         }
 
         $user = auth('api')->user();
-        $trip = $this->trip->getBy('id', $request['trip_request_id']);
+        $trip = $this->trip->getBy('id', $request['trip_request_id'], [
+            'relations' => ['customer', 'coordinate', 'parcelUserInfo', 'tripStatus']
+        ]);
         $user_status = $user->driverDetails->availability_status;
 
         if ($user_status == 'unavailable' || !$user->driverDetails->is_online) {
@@ -275,23 +278,48 @@ class TripRequestController extends Controller
             $attributes['actual_fare'] = $trip->actual_fare;
         }
         Cache::put($trip->id, ACCEPTED, now()->addHour());
-        $driverArrivalTime = getRoutes(
-            originCoordinates: [
+        
+        // Calculate driver arrival time with fallback
+        $driverArrivalTimeMinutes = 10; // Default fallback: 10 minutes
+        try {
+            $driverArrivalTime = getRoutes(
+                originCoordinates: [
+                    $trip->coordinate->pickup_coordinates->latitude,
+                    $trip->coordinate->pickup_coordinates->longitude
+                ],
+                destinationCoordinates: [
+                    $user->lastLocations->latitude,
+                    $user->lastLocations->longitude
+                ],
+            );
+            
+            // Check if getRoutes returned valid data
+            if (is_array($driverArrivalTime) && isset($driverArrivalTime[0]['duration'])) {
+                $driverArrivalTimeMinutes = (double)($driverArrivalTime[0]['duration']) / 60;
+            } else {
+                // Fallback: Calculate using haversine distance (assuming 30 km/h average speed)
+                $distanceMeters = haversineDistance(
+                    $trip->coordinate->pickup_coordinates->latitude,
+                    $trip->coordinate->pickup_coordinates->longitude,
+                    $user->lastLocations->latitude,
+                    $user->lastLocations->longitude
+                );
+                $driverArrivalTimeMinutes = ($distanceMeters / 1000) / 30 * 60; // distance / speed * 60 for minutes
+                $driverArrivalTimeMinutes = max($driverArrivalTimeMinutes, 5); // Minimum 5 minutes
+            }
+        } catch (\Exception $e) {
+            // Fallback: Calculate using haversine distance
+            $distanceMeters = haversineDistance(
                 $trip->coordinate->pickup_coordinates->latitude,
-                $trip->coordinate->pickup_coordinates->longitude
-            ],
-            destinationCoordinates: [
+                $trip->coordinate->pickup_coordinates->longitude,
                 $user->lastLocations->latitude,
                 $user->lastLocations->longitude
-            ],
-        );
-
-        // Check if getRoutes returned an error (integer status code) instead of array
-        if (!is_array($driverArrivalTime)) {
-            return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, 'Unable to calculate driver arrival time. API returned status: ' . $driverArrivalTime), 404);
+            );
+            $driverArrivalTimeMinutes = ($distanceMeters / 1000) / 30 * 60; // distance / speed * 60 for minutes
+            $driverArrivalTimeMinutes = max($driverArrivalTimeMinutes, 5); // Minimum 5 minutes
         }
 
-        $attributes['driver_arrival_time'] = (double)($driverArrivalTime[0]['duration']) / 60;
+        $attributes['driver_arrival_time'] = $driverArrivalTimeMinutes;
 
         //notify other driver about ride started
 
@@ -325,21 +353,7 @@ class TripRequestController extends Controller
         }
         //Trip update
         $trip = $this->trip->update(attributes: $attributes, id: $request['trip_request_id']);
-        if ($trip->type == PARCEL && $trip->parcelUserInfo?->firstWhere('user_type', RECEIVER)?->contact_number && businessConfig('parcel_tracking_message')?->value && businessConfig('parcel_tracking_status')?->value && businessConfig('parcel_tracking_status')?->value == 1) {
-            $parcelTemplateMessage = businessConfig('parcel_tracking_message')?->value;
-            $smsTemplate = smsTemplateDataFormat(
-                value: $parcelTemplateMessage,
-                customerName: $trip->parcelUserInfo?->firstWhere('user_type', RECEIVER)?->name,
-                parcelId: $trip->ref_id,
-                trackingLink: route('track-parcel', $trip->ref_id)
-            );
-            try {
-                self::send($trip->parcelUserInfo?->firstWhere('user_type', RECEIVER)?->contact_number, $smsTemplate);
-            } catch (\Exception $exception) {
-
-            }
-        }
-
+        
         $trip->tripStatus()->update([
             'accepted' => now()
         ]);
@@ -349,46 +363,43 @@ class TripRequestController extends Controller
             'value' => $trip->id,
         ]);
 
-        $push = getNotification('driver_is_on_the_way');
-        sendDeviceNotification(fcm_token: $trip->customer->fcm_token,
-            title: translate($push['title']),
-            description: translate(textVariableDataFormat(value: $push['description'])),
-            status: $push['status'],
-            ride_request_id: $request['trip_request_id'],
-            type: $trip->type,
-            action: 'driver_assigned',
-            user_id: $trip->customer->id
-        );
-
-        $otpRequired = (bool)businessConfig(key: 'driver_otp_confirmation_for_trip', settingsType: TRIP_SETTINGS)?->value == 1;
-        if ($otpRequired && $trip->type === RIDE_REQUEST && $trip->otp) {
-            $otpMessage = 'Your trip OTP is ' . $trip->otp;
-            try {
-                if ($trip->customer?->phone) {
-                    self::send($trip->customer->phone, $otpMessage);
-                }
-            } catch (\Exception $exception) {
-
-            }
-
-            if ($trip->customer?->fcm_token) {
-                sendDeviceNotification(
-                    fcm_token: $trip->customer->fcm_token,
-                    title: translate('Trip OTP'),
-                    description: translate($otpMessage),
-                    status: 1,
-                    ride_request_id: $request['trip_request_id'],
-                    type: $trip->type,
-                    action: 'trip_otp',
-                    user_id: $trip->customer->id
-                );
-            }
+        // Prepare parcel receiver info if applicable
+        $parcelReceiverInfo = null;
+        if ($trip->type == PARCEL && $trip->parcelUserInfo?->firstWhere('user_type', RECEIVER)?->contact_number 
+            && businessConfig('parcel_tracking_message')?->value 
+            && businessConfig('parcel_tracking_status')?->value == 1) {
+            $receiver = $trip->parcelUserInfo->firstWhere('user_type', RECEIVER);
+            $parcelReceiverInfo = [
+                'contact_number' => $receiver?->contact_number,
+                'name' => $receiver?->name,
+                'ref_id' => $trip->ref_id,
+                'tracking_link' => route('track-parcel', $trip->ref_id)
+            ];
         }
+
+        // Check if OTP is required
+        $otpRequired = (bool)businessConfig(key: 'driver_otp_confirmation_for_trip', settingsType: TRIP_SETTINGS)?->value == 1;
+        $sendOtp = $otpRequired && $trip->type === RIDE_REQUEST && $trip->otp;
+
+        // Dispatch all notifications asynchronously for fast response
+        ProcessTripAcceptNotificationsJob::dispatch(
+            tripId: $trip->id,
+            customerId: $trip->customer->id,
+            customerFcmToken: $trip->customer?->fcm_token,
+            customerPhone: $trip->customer?->phone,
+            tripType: $trip->type,
+            tripOtp: $trip->otp,
+            sendOtp: $sendOtp,
+            parcelReceiverInfo: $parcelReceiverInfo
+        )->onQueue('high');
+
+        // Broadcast event (non-blocking with try-catch)
         try {
             checkPusherConnection(DriverTripAcceptedEvent::broadcast($trip));
         } catch (Exception $exception) {
-
+            // Silently fail - don't block the response
         }
+        
         return response()->json(responseFormatter(constant: DEFAULT_UPDATE_200));
     }
 
@@ -434,7 +445,7 @@ class TripRequestController extends Controller
             'column' => 'id',
             'value' => $request['trip_request_id'],
             'trip_status' => $request['status'],
-            'trip_cancellation_reason' => $request['cancel_reason'] ?? null
+            'trip_cancellation_reason' => utf8Clean($request['cancel_reason'] ?? null)
         ];
         DB::beginTransaction();
         if ($request->status == 'completed' || $request->status == 'cancelled') {

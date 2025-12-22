@@ -765,7 +765,7 @@ if (!function_exists('getRoutes')) {
             ];
         }
 
-        $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/directions', $params);
+        $response = Http::timeout(10)->retry(2, 100)->get(MAP_API_BASE_URI . '/api/v2/directions', $params);
         if ($response->successful()) {
             $result = $response->json();
 

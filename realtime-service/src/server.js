@@ -10,15 +10,17 @@ const { Server } = require('socket.io');
 const helmet = require('helmet');
 const cors = require('cors');
 const compression = require('compression');
+const Redis = require('ioredis');
 
 const logger = require('./utils/logger');
 const config = require('./config/config');
 const redisClient = require('./config/redis');
 const { authenticateSocket } = require('./middleware/auth');
-const { rateLimit } = require('./utils/rateLimiter');
+const { createRateLimiter } = require('./utils/rateLimiter');
 const LocationService = require('./services/LocationService');
 const DriverMatchingService = require('./services/DriverMatchingService');
 const RedisEventBus = require('./services/RedisEventBus');
+const RideTimeoutService = require('./services/RideTimeoutService');
 
 const app = express();
 const httpServer = createServer(app);
@@ -29,19 +31,34 @@ app.use(cors());
 app.use(compression());
 app.use(express.json());
 
+// Optional metrics/health authentication
+const metricsApiKey = config.metrics?.apiKey;
+const requireMetricsAuth = (req, res) => {
+  if (!metricsApiKey) return true;
+  const provided = req.headers['x-api-key'] || req.query.api_key;
+  if (provided !== metricsApiKey) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+  return true;
+};
+
 // Health check endpoint
 app.get('/health', (req, res) => {
+  if (!requireMetricsAuth(req, res)) return;
   res.json({
     status: 'ok',
     service: 'smartline-realtime',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    connections: io.engine.clientsCount
+    connections: io.engine.clientsCount,
+    redisAdapter: config.redis.enabled
   });
 });
 
 // Metrics endpoint
 app.get('/metrics', async (req, res) => {
+  if (!requireMetricsAuth(req, res)) return;
   const [activeDrivers, activeRides] = await Promise.all([
     locationService.getActiveDriversCount(),
     locationService.getActiveRidesCount()
@@ -52,7 +69,8 @@ app.get('/metrics', async (req, res) => {
     activeDrivers,
     activeRides,
     memory: process.memoryUsage(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    redisAdapter: config.redis.enabled
   });
 });
 
@@ -68,10 +86,40 @@ const io = new Server(httpServer, {
   transports: config.websocket.transports
 });
 
+const rateLimit = createRateLimiter(redisClient, config.redis.enabled);
+
+// Attach Redis adapter for horizontal scaling (cross-instance room broadcasts)
+if (config.redis.enabled) {
+  const { createAdapter } = require('@socket.io/redis-adapter');
+
+  const redisConfig = {
+    host: config.redis.host,
+    port: config.redis.port,
+    password: config.redis.password || undefined,
+    db: config.redis.db
+  };
+
+  const pubClient = new Redis(redisConfig);
+  const subClient = pubClient.duplicate();
+
+  Promise.all([
+    new Promise((resolve) => pubClient.on('ready', resolve)),
+    new Promise((resolve) => subClient.on('ready', resolve))
+  ]).then(() => {
+    io.adapter(createAdapter(pubClient, subClient));
+    logger.info('Socket.IO Redis adapter attached for horizontal scaling');
+  }).catch((err) => {
+    logger.error('Failed to attach Redis adapter', { error: err.message });
+  });
+} else {
+  logger.warn('Socket.IO running in single-instance mode (Redis disabled)');
+}
+
 // Initialize services
 const locationService = new LocationService(redisClient, io);
 const driverMatchingService = new DriverMatchingService(redisClient, io, locationService);
 const redisEventBus = new RedisEventBus(redisClient, io, locationService, driverMatchingService);
+const rideTimeoutService = new RideTimeoutService(redisClient, io, driverMatchingService);
 
 // Socket.IO middleware for authentication
 io.use((socket, next) => {
@@ -109,7 +157,7 @@ io.on('connection', (socket) => {
   if (userType === 'driver') {
     // Driver goes online
     socket.on('driver:online', async (data) => {
-      if (!rateLimit(socket, 'driver:online', config.rateLimiting.driverOnline)) {
+      if (!(await rateLimit(socket, 'driver:online', config.rateLimiting.driverOnline))) {
         return;
       }
 
@@ -125,7 +173,7 @@ io.on('connection', (socket) => {
 
     // Driver goes offline
     socket.on('driver:offline', async () => {
-      if (!rateLimit(socket, 'driver:offline', config.rateLimiting.driverOffline)) {
+      if (!(await rateLimit(socket, 'driver:offline', config.rateLimiting.driverOffline))) {
         return;
       }
 
@@ -158,7 +206,7 @@ io.on('connection', (socket) => {
 
     // Driver accepts ride
     socket.on('driver:accept:ride', async (data) => {
-      if (!rateLimit(socket, 'driver:accept:ride', config.rateLimiting.driverAcceptRide)) {
+      if (!(await rateLimit(socket, 'driver:accept:ride', config.rateLimiting.driverAcceptRide))) {
         socket.emit('ride:accept:failed', { rideId: data?.rideId, message: 'Too many attempts, slow down' });
         return;
       }
@@ -182,7 +230,7 @@ io.on('connection', (socket) => {
   if (userType === 'customer') {
     // Subscribe to ride updates
     socket.on('customer:subscribe:ride', async (data, ack) => {
-      if (!rateLimit(socket, 'customer:subscribe:ride', config.rateLimiting.customerSubscribeRide)) {
+      if (!(await rateLimit(socket, 'customer:subscribe:ride', config.rateLimiting.customerSubscribeRide))) {
         ack?.({ success: false, message: 'Rate limited' });
         return;
       }
@@ -207,8 +255,8 @@ io.on('connection', (socket) => {
     });
 
     // Unsubscribe from ride updates
-    socket.on('customer:unsubscribe:ride', (data) => {
-      if (!rateLimit(socket, 'customer:unsubscribe:ride', config.rateLimiting.customerUnsubscribeRide)) {
+    socket.on('customer:unsubscribe:ride', async (data) => {
+      if (!(await rateLimit(socket, 'customer:unsubscribe:ride', config.rateLimiting.customerUnsubscribeRide))) {
         return;
       }
 
@@ -222,8 +270,8 @@ io.on('connection', (socket) => {
 
   // COMMON EVENTS
   // Heartbeat/ping
-  socket.on('ping', () => {
-    if (!rateLimit(socket, 'ping', config.rateLimiting.ping)) {
+  socket.on('ping', async () => {
+    if (!(await rateLimit(socket, 'ping', config.rateLimiting.ping))) {
       return;
     }
     socket.emit('pong', { timestamp: Date.now() });
@@ -265,11 +313,13 @@ io.on('connection', (socket) => {
 
 // Start Redis event listener
 redisEventBus.start();
+rideTimeoutService.start();
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully');
 
+  rideTimeoutService.stop();
   io.close(() => {
     logger.info('All Socket.IO connections closed');
   });
@@ -284,6 +334,7 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   logger.info('SIGINT received, shutting down gracefully');
 
+  rideTimeoutService.stop();
   io.close(() => {
     logger.info('All Socket.IO connections closed');
   });

@@ -42,6 +42,29 @@ class LostItemController extends Controller
     }
 
     /**
+     * Get pending lost items for driver (needing driver attention)
+     * GET /api/driver/lost-items/pending
+     */
+    public function pending(Request $request): JsonResponse
+    {
+        $limit = $request->get('limit', 10);
+        $offset = $request->get('offset', 1);
+
+        $lostItems = $this->lostItemService->getPendingByDriver(
+            driverId: auth('api')->id(),
+            limit: $limit,
+            offset: $offset
+        );
+
+        return response()->json(responseFormatter(
+            constant: DEFAULT_200,
+            content: LostItemResource::collection($lostItems),
+            limit: $limit,
+            offset: $offset
+        ));
+    }
+
+    /**
      * Get single lost item details
      * GET /api/driver/lost-items/{id}
      */

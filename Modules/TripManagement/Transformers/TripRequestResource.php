@@ -85,6 +85,7 @@ class TripRequestResource extends JsonResource
             'parcel_refund' => ParcelRefundResource::make($this->whenLoaded('parcelRefund')),
             'driver_safety_alert' => SafetyAlertResource::make($this->driverSafetyAlert),
             'customer_safety_alert' => SafetyAlertResource::make($this->customerSafetyAlert),
+            'trip_cancellation_reason' => utf8Clean($this->trip_cancellation_reason),
         ];
 
         $coordinate = [];

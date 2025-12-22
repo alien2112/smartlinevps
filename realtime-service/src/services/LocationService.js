@@ -119,6 +119,7 @@ class LocationService {
 
   /**
    * Update driver location (high-frequency updates)
+   * OPTIMIZED: Uses Redis pipeline to reduce 4 round-trips to 1
    */
   async updateDriverLocation(driverId, locationData) {
     // Throttle updates to prevent Redis overload
@@ -140,11 +141,14 @@ class LocationService {
       return;
     }
 
+    // Use pipeline to batch all Redis commands into a single round-trip
+    const pipeline = this.redis.pipeline();
+
     // Update geo location
-    await this.redis.geoadd(this.DRIVERS_GEO_KEY, longitude, latitude, driverId);
+    pipeline.geoadd(this.DRIVERS_GEO_KEY, longitude, latitude, driverId);
 
     // Update driver status with last_seen
-    await this.redis.hset(
+    pipeline.hset(
       `${this.DRIVER_STATUS_PREFIX}${driverId}`,
       ...objectToHsetArgs({
         last_seen: now,
@@ -157,10 +161,16 @@ class LocationService {
     );
 
     // Reset expiry
-    await this.redis.expire(`${this.DRIVER_STATUS_PREFIX}${driverId}`, this.LOCATION_EXPIRY);
+    pipeline.expire(`${this.DRIVER_STATUS_PREFIX}${driverId}`, this.LOCATION_EXPIRY);
 
     // Check if driver is on an active ride
-    const rideId = await this.redis.get(`driver:active_ride:${driverId}`);
+    pipeline.get(`driver:active_ride:${driverId}`);
+
+    // Execute all commands in single round-trip
+    const results = await pipeline.exec();
+
+    // Get rideId from the 4th command result (index 3)
+    const rideId = results?.[3]?.[1];
 
     if (rideId) {
       // Broadcast location to customer in this ride

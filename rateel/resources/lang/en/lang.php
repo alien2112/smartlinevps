@@ -2790,4 +2790,5 @@
   'Route not found your selected pickup & destination address' => 'Route not found your selected pickup & destination address',
   'The bid field is required.' => 'The bid field is required.',
   'The selected payment method is invalid.' => 'The selected payment method is invalid.',
+  'Lost item report not found' => 'Lost item report not found',
 );

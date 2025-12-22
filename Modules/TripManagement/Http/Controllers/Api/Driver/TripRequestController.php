@@ -673,7 +673,7 @@ class TripRequestController extends Controller
             'column' => 'id',
             'value' => $request['trip_request_id'],
             'trip_status' => $request['status'],
-            'trip_cancellation_reason' => $request['cancel_reason'] ?? null
+            'trip_cancellation_reason' => utf8Clean($request['cancel_reason'] ?? null)
         ];
         DB::beginTransaction();
         if ($request->status == 'completed' || $request->status == 'cancelled') {

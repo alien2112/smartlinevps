@@ -181,8 +181,8 @@ class MockRedisClient extends EventEmitter {
       const dLat = (pos.lat - lat) * Math.PI / 180;
       const dLng = (pos.lng - lng) * Math.PI / 180;
       const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(lat * Math.PI / 180) * Math.cos(pos.lat * Math.PI / 180) *
-                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        Math.cos(lat * Math.PI / 180) * Math.cos(pos.lat * Math.PI / 180) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const distance = R * c;
 
@@ -287,6 +287,42 @@ class MockRedisClient extends EventEmitter {
     return 0;
   }
 
+  // SCAN operation for iterating through keys
+  async scan(cursor, ...args) {
+    // Parse MATCH pattern from args
+    let pattern = '*';
+    const matchIndex = args.indexOf('MATCH');
+    if (matchIndex !== -1 && args[matchIndex + 1]) {
+      pattern = args[matchIndex + 1];
+    }
+
+    // Convert glob pattern to regex
+    const regexPattern = pattern
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.');
+    const regex = new RegExp(`^${regexPattern}$`);
+
+    // Collect all matching keys
+    const matchingKeys = [];
+
+    // Search in data map
+    for (const key of this.data.keys()) {
+      if (regex.test(key)) {
+        matchingKeys.push(key);
+      }
+    }
+
+    // Search in hashes map
+    for (const key of this.hashes.keys()) {
+      if (regex.test(key) && !matchingKeys.includes(key)) {
+        matchingKeys.push(key);
+      }
+    }
+
+    // Return all matches with cursor '0' (mock: single iteration)
+    return ['0', matchingKeys];
+  }
+
   // Transaction support (simplified)
   multi() {
     const commands = [];
@@ -343,6 +379,77 @@ class MockRedisClient extends EventEmitter {
       }
     };
     return mockMulti;
+  }
+
+  // Pipeline support (like multi but for batching commands)
+  pipeline() {
+    const commands = [];
+    const self = this;
+    const mockPipeline = {
+      get: (...args) => {
+        commands.push({ cmd: 'get', args });
+        return mockPipeline;
+      },
+      set: (...args) => {
+        commands.push({ cmd: 'set', args });
+        return mockPipeline;
+      },
+      hset: (...args) => {
+        // Handle object syntax: hset(key, {field1: value1, field2: value2})
+        if (args.length === 2 && typeof args[1] === 'object' && !Array.isArray(args[1])) {
+          const [key, obj] = args;
+          const flatArgs = [key];
+          Object.entries(obj).forEach(([field, value]) => {
+            flatArgs.push(field, value);
+          });
+          commands.push({ cmd: 'hset', args: flatArgs });
+        } else {
+          commands.push({ cmd: 'hset', args });
+        }
+        return mockPipeline;
+      },
+      hgetall: (...args) => {
+        commands.push({ cmd: 'hgetall', args });
+        return mockPipeline;
+      },
+      sadd: (...args) => {
+        commands.push({ cmd: 'sadd', args });
+        return mockPipeline;
+      },
+      geoadd: (...args) => {
+        commands.push({ cmd: 'geoadd', args });
+        return mockPipeline;
+      },
+      zadd: (...args) => {
+        commands.push({ cmd: 'zadd', args });
+        return mockPipeline;
+      },
+      zrem: (...args) => {
+        commands.push({ cmd: 'zrem', args });
+        return mockPipeline;
+      },
+      del: (...args) => {
+        commands.push({ cmd: 'del', args });
+        return mockPipeline;
+      },
+      expire: (...args) => {
+        commands.push({ cmd: 'expire', args });
+        return mockPipeline;
+      },
+      exec: async () => {
+        const results = [];
+        for (const { cmd, args } of commands) {
+          try {
+            const result = await self[cmd](...args);
+            results.push([null, result]);
+          } catch (err) {
+            results.push([err, null]);
+          }
+        }
+        return results;
+      }
+    };
+    return mockPipeline;
   }
 }
 

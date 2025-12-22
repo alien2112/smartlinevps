@@ -147,15 +147,26 @@ function sendCurlRequest(string $url, string $postdata, array $header): string|b
 
 function sendNotificationToHttp(array|null $data): bool|string|null
 {
-    $serverKey = businessConfig('server_key')?->value ?? null;
-    if (empty($serverKey) || !is_string($serverKey)) {
+    // Cache the server_key config to avoid repeated database lookups
+    static $cachedServerKey = null;
+    static $cachedKey = null;
+    
+    if ($cachedServerKey === null) {
+        $cachedServerKey = businessConfig('server_key')?->value ?? false;
+    }
+    
+    if (empty($cachedServerKey) || !is_string($cachedServerKey)) {
         if (config('app.debug')) {
             \Log::warning('FCM server_key not configured; skipping push notification');
         }
         return false;
     }
 
-    $key = json_decode($serverKey);
+    if ($cachedKey === null) {
+        $cachedKey = json_decode($cachedServerKey);
+    }
+    
+    $key = $cachedKey;
     if (!is_object($key) || empty($key->project_id) || empty($key->client_email) || empty($key->private_key)) {
         if (config('app.debug')) {
             \Log::warning('FCM server_key invalid JSON or missing required fields; skipping push notification', [
@@ -183,7 +194,8 @@ function sendNotificationToHttp(array|null $data): bool|string|null
             'Content-Type' => 'application/json',
         ];
         try {
-            return Http::withHeaders($headers)->post($url, $data);
+            // Use timeout to prevent long waits
+            return Http::timeout(5)->withHeaders($headers)->post($url, $data);
         } catch (\Exception $exception) {
             return false;
         }
@@ -195,6 +207,18 @@ function getAccessToken($key): array|string
         return [
             'status' => false,
             'data' => ['message' => 'Invalid server_key credentials']
+        ];
+    }
+
+    // Cache key based on project_id to support multiple Firebase projects
+    $cacheKey = 'fcm_access_token_' . ($key->project_id ?? 'default');
+    
+    // Try to get cached token first (cache for 50 minutes, token valid for 60)
+    $cachedToken = \Illuminate\Support\Facades\Cache::get($cacheKey);
+    if ($cachedToken) {
+        return [
+            'status' => true,
+            'data' => $cachedToken
         ];
     }
 
@@ -211,7 +235,7 @@ function getAccessToken($key): array|string
     openssl_sign($unsignedJwt, $signature, $key->private_key, OPENSSL_ALGO_SHA256);
     $jwt = $unsignedJwt . '.' . base64_encode($signature);
 
-    $response = Http::asForm()->post('https://oauth2.googleapis.com/token', [
+    $response = Http::timeout(10)->asForm()->post('https://oauth2.googleapis.com/token', [
         'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
         'assertion' => $jwt,
     ]);
@@ -222,8 +246,14 @@ function getAccessToken($key): array|string
         ];
 
     }
+    
+    $accessToken = $response->json('access_token');
+    
+    // Cache the token for 50 minutes (token is valid for 60 minutes)
+    \Illuminate\Support\Facades\Cache::put($cacheKey, $accessToken, now()->addMinutes(50));
+    
     return [
         'status' => true,
-        'data' => $response->json('access_token')
+        'data' => $accessToken
     ];
 }

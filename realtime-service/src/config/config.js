@@ -74,10 +74,20 @@ const config = {
         workerProcesses: parseInt(process.env.WORKER_PROCESSES) || 2,
     },
 
+    // Ride timeout handling
+    rideTimeout: {
+        checkIntervalMs: parseInt(process.env.RIDE_TIMEOUT_CHECK_INTERVAL_MS) || 5000,
+    },
+
     // Security Configuration
     security: {
         enforceRideSubscriptionAuth: process.env.ENFORCE_RIDE_SUBSCRIPTION_AUTH !== 'false',
         disconnectOfflineGraceMs: parseInt(process.env.DISCONNECT_OFFLINE_GRACE_MS) || 30000,
+    },
+
+    // Metrics/Health authentication
+    metrics: {
+        apiKey: process.env.METRICS_API_KEY || '',
     },
 
     // Rate Limiting Configuration (per socket, per event)

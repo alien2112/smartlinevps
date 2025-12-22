@@ -70,15 +70,20 @@ class DriverMatchingService {
       driverCount: driversToNotify.length
     });
 
-    // Store ride info in Redis
+    // Calculate expiration time for timeout handler
+    const dispatchedAt = Date.now();
+    const expiresAt = dispatchedAt + (this.MATCH_TIMEOUT * 1000);
+
+    // Store ride info in Redis with expiresAt for RideTimeoutService
     await this.redis.setex(
       `ride:pending:${rideId}`,
-      this.MATCH_TIMEOUT,
+      this.MATCH_TIMEOUT + 60, // Extra 60s buffer for timeout handler to process
       JSON.stringify({
         ...rideData,
         notifiedDrivers: driversToNotify.map(d => d.driverId),
         status: 'pending',
-        dispatchedAt: Date.now()
+        dispatchedAt,
+        expiresAt
       })
     );
 
@@ -102,7 +107,7 @@ class DriverMatchingService {
         },
         estimatedFare,
         distance: driver.distance,
-        expiresAt: Date.now() + (this.MATCH_TIMEOUT * 1000)
+        expiresAt
       });
 
       // Track notification
@@ -110,13 +115,11 @@ class DriverMatchingService {
     }
 
     // Expire notified set alongside pending ride
-    notifyPipeline.expire(notifiedSetKey, this.MATCH_TIMEOUT);
+    notifyPipeline.expire(notifiedSetKey, this.MATCH_TIMEOUT + 60);
     await notifyPipeline.exec();
 
-    // Set timeout for auto-cancel if no driver accepts
-    setTimeout(async () => {
-      await this._checkRideTimeout(rideId);
-    }, this.MATCH_TIMEOUT * 1000);
+    // NOTE: Timeout is now handled by RideTimeoutService polling
+    // instead of setTimeout to prevent timer heap bloat
   }
 
   /**
