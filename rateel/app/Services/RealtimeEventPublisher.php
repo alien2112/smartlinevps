@@ -8,6 +8,12 @@ use Illuminate\Support\Facades\Log;
 /**
  * Realtime Event Publisher
  * Publishes events to Redis for Node.js real-time service to consume
+ * 
+ * IMPORTANT: Events published here are received by Node.js RedisEventBus
+ * and immediately emitted to connected socket clients.
+ * 
+ * This is the PRIMARY mechanism for real-time state updates.
+ * FCM notifications are SECONDARY (for when socket is disconnected).
  */
 class RealtimeEventPublisher
 {
@@ -18,6 +24,23 @@ class RealtimeEventPublisher
     const CHANNEL_RIDE_STARTED = 'laravel:ride.started';
     const CHANNEL_DRIVER_ASSIGNED = 'laravel:driver.assigned';
     const CHANNEL_PAYMENT_COMPLETED = 'laravel:payment.completed';
+    
+    // NEW: Critical channels for fixing race conditions
+    const CHANNEL_TRIP_ACCEPTED = 'laravel:trip.accepted';  // Driver accepted trip - notify BOTH driver and customer
+    const CHANNEL_OTP_VERIFIED = 'laravel:otp.verified';    // OTP verified - trip can start
+    const CHANNEL_DRIVER_ARRIVED = 'laravel:driver.arrived'; // Driver arrived at pickup
+
+    /**
+     * Get trace ID from current request context
+     */
+    private function getTraceId(): ?string
+    {
+        try {
+            return request()?->attributes?->get('trace_id');
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
 
     /**
      * Publish ride created event
@@ -78,7 +101,7 @@ class RealtimeEventPublisher
     }
 
     /**
-     * Publish ride started event
+     * Publish ride started event (OTP verified, trip ongoing)
      *
      * @param \Modules\TripManagement\Entities\TripRequest $trip
      * @return void
@@ -129,6 +152,95 @@ class RealtimeEventPublisher
     }
 
     /**
+     * ========================================================================
+     * NEW: Critical event for fixing race condition
+     * ========================================================================
+     * Publish trip accepted event - THIS MUST BE CALLED BEFORE API RETURNS
+     * 
+     * This event:
+     * 1. Notifies DRIVER that their acceptance was successful (immediate UI update)
+     * 2. Notifies CUSTOMER that a driver has been assigned
+     * 3. Notifies OTHER DRIVERS that this ride is no longer available
+     *
+     * @param \Modules\TripManagement\Entities\TripRequest $trip
+     * @param array $driverData Driver info to send to customer
+     * @param array $tripData Full trip data for driver confirmation
+     * @return void
+     */
+    public function publishTripAccepted($trip, array $driverData = [], array $tripData = []): void
+    {
+        $eventData = [
+            'ride_id' => $trip->id,
+            'trip_id' => $trip->id,
+            'customer_id' => $trip->customer_id,
+            'driver_id' => $trip->driver_id,
+            'status' => 'accepted',
+            'otp' => $trip->otp,
+            'vehicle_id' => $trip->vehicle_id,
+            'vehicle_category_id' => $trip->vehicle_category_id,
+            'accepted_at' => now()->toIso8601String(),
+            
+            // Driver info for customer app
+            'driver' => $driverData,
+            
+            // Full trip data for driver app confirmation
+            'trip' => $tripData,
+        ];
+        
+        Log::info('Publishing trip accepted event BEFORE response', [
+            'trip_id' => $trip->id,
+            'driver_id' => $trip->driver_id,
+            'customer_id' => $trip->customer_id,
+        ]);
+        
+        $this->publish(self::CHANNEL_TRIP_ACCEPTED, $eventData);
+    }
+
+    /**
+     * Publish OTP verified event - Trip is now ONGOING
+     * 
+     * Called BEFORE the API returns success to ensure driver app updates immediately
+     *
+     * @param \Modules\TripManagement\Entities\TripRequest $trip
+     * @return void
+     */
+    public function publishOtpVerified($trip): void
+    {
+        $eventData = [
+            'ride_id' => $trip->id,
+            'trip_id' => $trip->id,
+            'customer_id' => $trip->customer_id,
+            'driver_id' => $trip->driver_id,
+            'status' => 'ongoing',
+            'verified_at' => now()->toIso8601String(),
+        ];
+        
+        Log::info('Publishing OTP verified event BEFORE response', [
+            'trip_id' => $trip->id,
+            'driver_id' => $trip->driver_id,
+        ]);
+        
+        $this->publish(self::CHANNEL_OTP_VERIFIED, $eventData);
+    }
+
+    /**
+     * Publish driver arrived at pickup event
+     *
+     * @param \Modules\TripManagement\Entities\TripRequest $trip
+     * @return void
+     */
+    public function publishDriverArrived($trip): void
+    {
+        $this->publish(self::CHANNEL_DRIVER_ARRIVED, [
+            'ride_id' => $trip->id,
+            'trip_id' => $trip->id,
+            'customer_id' => $trip->customer_id,
+            'driver_id' => $trip->driver_id,
+            'arrived_at' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
      * Publish message to Redis channel
      *
      * @param string $channel
@@ -137,19 +249,28 @@ class RealtimeEventPublisher
      */
     protected function publish(string $channel, array $data): void
     {
+        // Add trace_id for end-to-end tracking
+        $data['trace_id'] = $this->getTraceId();
+        $data['published_at'] = now()->toIso8601String();
+        
         try {
             Redis::publish($channel, json_encode($data));
 
             Log::info('Published realtime event', [
                 'channel' => $channel,
-                'data' => $data,
+                'trace_id' => $data['trace_id'],
+                'ride_id' => $data['ride_id'] ?? $data['trip_id'] ?? null,
+                'driver_id' => $data['driver_id'] ?? null,
+                'customer_id' => $data['customer_id'] ?? null,
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to publish realtime event', [
                 'channel' => $channel,
                 'error' => $e->getMessage(),
-                'data' => $data,
+                'trace_id' => $data['trace_id'],
+                'ride_id' => $data['ride_id'] ?? $data['trip_id'] ?? null,
             ]);
         }
     }
 }
+

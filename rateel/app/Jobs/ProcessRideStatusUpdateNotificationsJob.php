@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\App;
 use Modules\TripManagement\Entities\TripRequest;
 use Illuminate\Support\Facades\Log;
 
@@ -44,6 +45,11 @@ class ProcessRideStatusUpdateNotificationsJob implements ShouldQueue
 
         // 1. Handle Referral Notification if applicable
         if ($this->referralData && isset($this->referralData['fcm_token'])) {
+            // Set locale for referral notification recipient
+            if (isset($this->referralData['language'])) {
+                App::setLocale($this->referralData['language']);
+            }
+            
             $push = getNotification('referral_reward_received');
             sendDeviceNotification(
                 fcm_token: $this->referralData['fcm_token'],
@@ -56,7 +62,10 @@ class ProcessRideStatusUpdateNotificationsJob implements ShouldQueue
             );
         }
 
-        // 2. Status wise notification
+        // 2. Status wise notification (set locale for customer)
+        $customerLanguage = $trip->customer?->current_language_key ?? 'en';
+        App::setLocale($customerLanguage);
+        
         if ($this->status == 'cancelled' && $trip->type == PARCEL) {
             $push = getNotification('ride_cancelled');
             sendDeviceNotification(

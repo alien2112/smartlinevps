@@ -67,6 +67,8 @@ trait Payment
             return url("payment/bkash/make-payment/?payment_id={$payment->id}");
         }else if($payment->payment_method == 'paystack'){
             return url("payment/paystack/pay/?payment_id={$payment->id}");
+        }else if($payment->payment_method == 'kashier'){
+            return url("payment/kashier/pay/?payment_id={$payment->id}");
         }
         return false;
     }

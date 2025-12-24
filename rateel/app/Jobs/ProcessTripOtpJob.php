@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\App;
 use Modules\TripManagement\Entities\TripRequest;
 use App\Events\DriverTripStartedEvent;
 use Illuminate\Support\Facades\Log;
@@ -37,8 +38,12 @@ class ProcessTripOtpJob implements ShouldQueue
             return;
         }
 
-        // 1. Send FCM Notification to Customer
+        // 1. Send FCM Notification to Customer (in customer's preferred language)
         if ($trip->customer && $trip->customer->fcm_token) {
+            // Set locale to customer's preferred language
+            $customerLanguage = $trip->customer->current_language_key ?? 'en';
+            App::setLocale($customerLanguage);
+            
             $push = getNotification('trip_started');
             sendDeviceNotification(
                 fcm_token: $trip->customer->fcm_token,

@@ -7,7 +7,9 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\App;
 use Modules\Gateways\Traits\SmsGatewayForMessage;
+use App\Services\ObservabilityService;
 
 /**
  * Job to handle all post-trip-acceptance notifications asynchronously
@@ -30,6 +32,8 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
     protected ?array $parcelReceiverInfo;
     protected string $driverId;
     protected ?string $driverFcmToken;
+    protected string $customerLanguage;
+    protected string $driverLanguage;
 
     /**
      * Create a new job instance.
@@ -44,7 +48,9 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
         bool $sendOtp,
         ?array $parcelReceiverInfo = null,
         string $driverId = null,
-        ?string $driverFcmToken = null
+        ?string $driverFcmToken = null,
+        string $customerLanguage = 'en',
+        string $driverLanguage = 'en'
     ) {
         $this->tripId = $tripId;
         $this->customerId = $customerId;
@@ -56,6 +62,8 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
         $this->parcelReceiverInfo = $parcelReceiverInfo;
         $this->driverId = $driverId;
         $this->driverFcmToken = $driverFcmToken;
+        $this->customerLanguage = $customerLanguage;
+        $this->driverLanguage = $driverLanguage;
 
         // Use high priority queue
         $this->onQueue('high');
@@ -66,76 +74,133 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
      */
     public function handle(): void
     {
-        \Log::info('ProcessTripAcceptNotificationsJob started', [
+        // OBSERVABILITY: Log job start with queue wait time calculation
+        $jobStartTime = ObservabilityService::observeJobStart(
+            'ProcessTripAcceptNotificationsJob',
+            $this->tripId,
+            $this->driverId
+        );
+        
+        \Log::info('OBSERVE: ProcessTripAcceptNotificationsJob started', [
+            'event_type' => 'job_started',
+            'source' => 'queue',
             'trip_id' => $this->tripId,
             'driver_id' => $this->driverId,
-            'customer_id' => $this->customerId
+            'customer_id' => $this->customerId,
+            'has_driver_fcm' => !empty($this->driverFcmToken),
+            'has_customer_fcm' => !empty($this->customerFcmToken),
+            'send_otp' => $this->sendOtp,
+            'attempt' => $this->attempts(),
+            'trace_id' => ObservabilityService::generateTraceId() // New trace for async job
         ]);
 
         $startTime = microtime(true);
 
-        // Send notification to driver confirming trip acceptance
+        // Send notification to driver confirming trip acceptance (in driver's preferred language)
         if ($this->driverFcmToken) {
-            \Log::info('Sending FCM to driver', ['trip_id' => $this->tripId]);
-            sendDeviceNotification(
-                fcm_token: $this->driverFcmToken,
-                title: translate('Trip Accepted'),
-                description: translate('You have successfully accepted the trip. Please proceed to pickup location.'),
-                status: 1,
-                ride_request_id: $this->tripId,
-                type: $this->tripType,
-                action: 'trip_accepted_by_driver',
-                user_id: $this->driverId
-            );
+            // Set locale to driver's preferred language
+            App::setLocale($this->driverLanguage);
+            
+            $fcmStartTime = ObservabilityService::observeFcmAttempt('trip_accepted_by_driver', $this->driverId, $this->tripId, $this->driverFcmToken);
+            
+            try {
+                sendDeviceNotification(
+                    fcm_token: $this->driverFcmToken,
+                    title: translate('trip_accepted'),
+                    description: translate('you_have_successfully_accepted_the_trip_please_proceed_to_pickup_location'),
+                    status: 1,
+                    ride_request_id: $this->tripId,
+                    type: $this->tripType,
+                    action: 'trip_accepted_by_driver',
+                    user_id: $this->driverId
+                );
+                
+                ObservabilityService::observeFcmResult('trip_accepted_by_driver', $fcmStartTime, true, $this->driverId, $this->tripId);
+            } catch (\Exception $e) {
+                ObservabilityService::observeFcmResult('trip_accepted_by_driver', $fcmStartTime, false, $this->driverId, $this->tripId, $e->getMessage());
+            }
         }
 
-        // Send "driver is on the way" notification
+        // Send "driver is on the way" notification (in customer's preferred language)
+        // Set locale to customer's preferred language
+        App::setLocale($this->customerLanguage);
+        
         $push = getNotification('driver_is_on_the_way');
         if ($this->customerFcmToken) {
-            \Log::info('Sending FCM to customer', ['trip_id' => $this->tripId]);
-            sendDeviceNotification(
-                fcm_token: $this->customerFcmToken,
-                title: translate($push['title']),
-                description: translate(textVariableDataFormat(value: $push['description'])),
-                status: $push['status'],
-                ride_request_id: $this->tripId,
-                type: $this->tripType,
-                action: 'driver_assigned',
-                user_id: $this->customerId
-            );
+            $fcmStartTime = ObservabilityService::observeFcmAttempt('driver_assigned', $this->customerId, $this->tripId, $this->customerFcmToken);
+            
+            try {
+                sendDeviceNotification(
+                    fcm_token: $this->customerFcmToken,
+                    title: translate($push['title']),
+                    description: translate(textVariableDataFormat(value: $push['description'])),
+                    status: $push['status'],
+                    ride_request_id: $this->tripId,
+                    type: $this->tripType,
+                    action: 'driver_assigned',
+                    user_id: $this->customerId
+                );
+                
+                ObservabilityService::observeFcmResult('driver_assigned', $fcmStartTime, true, $this->customerId, $this->tripId);
+            } catch (\Exception $e) {
+                ObservabilityService::observeFcmResult('driver_assigned', $fcmStartTime, false, $this->customerId, $this->tripId, $e->getMessage());
+            }
         }
 
-        // Send OTP if required
+        // Send OTP if required (customer's locale already set above)
         if ($this->sendOtp && $this->tripOtp) {
-            \Log::info('Sending OTP', ['trip_id' => $this->tripId, 'otp' => $this->tripOtp]);
-            $otpMessage = 'Your trip OTP is ' . $this->tripOtp;
+            \Log::info('OBSERVE: Sending OTP notifications', [
+                'trip_id' => $this->tripId,
+                'has_phone' => !empty($this->customerPhone),
+                'has_fcm' => !empty($this->customerFcmToken)
+            ]);
+            
+            // Translate OTP message using customer's language
+            $otpMessage = translate('your_trip_otp_is') . ' ' . $this->tripOtp;
 
             // Send OTP via SMS
             if ($this->customerPhone) {
+                $smsStartTime = microtime(true);
                 try {
-                    \Log::info('Sending OTP SMS', ['trip_id' => $this->tripId, 'phone' => $this->customerPhone]);
-                    self::send($this->customerPhone, $otpMessage);
-                } catch (\Exception $exception) {
-                    \Log::warning('Failed to send trip OTP SMS', [
+                    \Log::info('OBSERVE: Sending OTP SMS', [
                         'trip_id' => $this->tripId,
-                        'error' => $exception->getMessage()
+                        'phone_prefix' => substr($this->customerPhone, 0, 5) . '...'
+                    ]);
+                    self::send($this->customerPhone, $otpMessage);
+                    
+                    \Log::info('OBSERVE: OTP SMS sent successfully', [
+                        'trip_id' => $this->tripId,
+                        'duration_ms' => round((microtime(true) - $smsStartTime) * 1000, 2)
+                    ]);
+                } catch (\Exception $exception) {
+                    \Log::warning('OBSERVE: Failed to send trip OTP SMS', [
+                        'trip_id' => $this->tripId,
+                        'error' => $exception->getMessage(),
+                        'duration_ms' => round((microtime(true) - $smsStartTime) * 1000, 2)
                     ]);
                 }
             }
 
             // Send OTP via push notification
             if ($this->customerFcmToken) {
-                \Log::info('Sending OTP FCM', ['trip_id' => $this->tripId]);
-                sendDeviceNotification(
-                    fcm_token: $this->customerFcmToken,
-                    title: translate('Trip OTP'),
-                    description: translate($otpMessage),
-                    status: 1,
-                    ride_request_id: $this->tripId,
-                    type: $this->tripType,
-                    action: 'trip_otp',
-                    user_id: $this->customerId
-                );
+                $fcmStartTime = ObservabilityService::observeFcmAttempt('trip_otp', $this->customerId, $this->tripId, $this->customerFcmToken);
+                
+                try {
+                    sendDeviceNotification(
+                        fcm_token: $this->customerFcmToken,
+                        title: translate('trip_otp'),
+                        description: $otpMessage,
+                        status: 1,
+                        ride_request_id: $this->tripId,
+                        type: $this->tripType,
+                        action: 'trip_otp',
+                        user_id: $this->customerId
+                    );
+                    
+                    ObservabilityService::observeFcmResult('trip_otp', $fcmStartTime, true, $this->customerId, $this->tripId);
+                } catch (\Exception $e) {
+                    ObservabilityService::observeFcmResult('trip_otp', $fcmStartTime, false, $this->customerId, $this->tripId, $e->getMessage());
+                }
             }
         }
 
@@ -151,8 +216,9 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
                 );
                 try {
                     self::send($this->parcelReceiverInfo['contact_number'], $smsTemplate);
+                    \Log::info('OBSERVE: Parcel tracking SMS sent', ['trip_id' => $this->tripId]);
                 } catch (\Exception $exception) {
-                    \Log::warning('Failed to send parcel tracking SMS', [
+                    \Log::warning('OBSERVE: Failed to send parcel tracking SMS', [
                         'trip_id' => $this->tripId,
                         'error' => $exception->getMessage()
                     ]);
@@ -161,9 +227,23 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
         }
 
         $executionTime = round((microtime(true) - $startTime) * 1000, 2);
-        \Log::info('ProcessTripAcceptNotificationsJob completed', [
+        
+        // OBSERVABILITY: Log job completion with full timing
+        ObservabilityService::observeJobComplete(
+            'ProcessTripAcceptNotificationsJob',
+            $jobStartTime,
+            'success',
+            $this->tripId
+        );
+        
+        \Log::info('OBSERVE: ProcessTripAcceptNotificationsJob completed', [
+            'event_type' => 'job_completed',
+            'source' => 'queue',
+            'status' => 'success',
             'trip_id' => $this->tripId,
-            'execution_time_ms' => $executionTime
+            'execution_time_ms' => $executionTime,
+            'slow_job' => $executionTime > 5000
         ]);
     }
 }
+

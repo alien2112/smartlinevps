@@ -42,6 +42,8 @@ use Modules\UserManagement\Lib\LevelHistoryManagerTrait;
 use Modules\UserManagement\Lib\LevelUpdateCheckerTrait;
 use Modules\VehicleManagement\Entities\Vehicle;
 use App\Services\TripLockingService;
+use App\Services\RealtimeEventPublisher;
+use App\Services\ObservabilityService;
 use Ramsey\Uuid\Nonstandard\Uuid;
 
 class TripRequestController extends Controller
@@ -59,6 +61,7 @@ class TripRequestController extends Controller
         private ReviewInterface                $review,
         private TripRequestTimeInterface       $time,
         private TripLockingService             $tripLockingService,
+        private RealtimeEventPublisher         $realtimeEventPublisher,
     )
     {
     }
@@ -143,14 +146,29 @@ class TripRequestController extends Controller
      */
     public function requestAction(Request $request): JsonResponse
     {
+        // OBSERVABILITY: Log controller entry
+        $controllerStartTime = ObservabilityService::observeControllerEntry(
+            'TripRequestController',
+            'requestAction',
+            ['trip_request_id' => $request->input('trip_request_id'), 'action' => $request->input('action')],
+            auth('api')->id(),
+            $request->input('trip_request_id')
+        );
+        
         $validator = Validator::make($request->all(), [
             'trip_request_id' => 'required',
             'action' => 'required|in:accepted,rejected',
         ]);
 
         if ($validator->fails()) {
+            // OBSERVABILITY: Log validation failure
+            ObservabilityService::observeValidation('requestAction', false, $validator->errors()->toArray());
+            ObservabilityService::observeControllerExit('TripRequestController', 'requestAction', $controllerStartTime, 'validation_failed');
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
+        
+        // OBSERVABILITY: Log validation passed
+        ObservabilityService::observeValidation('requestAction', true);
 
         $user = auth('api')->user();
         $trip = $this->trip->getBy('id', $request['trip_request_id'], [
@@ -158,9 +176,25 @@ class TripRequestController extends Controller
         ]);
 
         if (!$trip) {
-            \Log::warning('Trip not found, trip_request_id: ' . $request['trip_request_id']);
+            \Log::warning('OBSERVE: Trip not found', [
+                'trip_request_id' => $request['trip_request_id'],
+                'user_id' => $user->id,
+                'trace_id' => ObservabilityService::getTraceId()
+            ]);
+            ObservabilityService::observeControllerExit('TripRequestController', 'requestAction', $controllerStartTime, 'trip_not_found', $user->id, $request['trip_request_id']);
             return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 403);
         }
+        
+        // OBSERVABILITY: Log trip current state
+        \Log::info('OBSERVE: Trip found for action', [
+            'trip_id' => $trip->id,
+            'current_status' => $trip->current_status,
+            'driver_id' => $trip->driver_id,
+            'customer_id' => $trip->customer_id,
+            'action_requested' => $request['action'],
+            'requesting_driver' => $user->id,
+            'trace_id' => ObservabilityService::getTraceId()
+        ]);
 
         if ($request['action'] != ACCEPTED) {
             if (get_cache('bid_on_fare') ?? 0) {
@@ -204,13 +238,41 @@ class TripRequestController extends Controller
         }
 
         // ATOMIC TRIP ASSIGNMENT
+        // OBSERVABILITY: Log before lock attempt
+        $lockStartTime = microtime(true);
+        \Log::info('OBSERVE: Attempting trip lock', [
+            'trip_id' => $request['trip_request_id'],
+            'driver_id' => $user->id,
+            'current_trip_status' => $trip->current_status,
+            'current_trip_driver' => $trip->driver_id,
+            'trace_id' => ObservabilityService::getTraceId()
+        ]);
+        
         $lockResult = $this->tripLockingService->lockAndAssignTrip(
             tripId: $request['trip_request_id'],
             driverId: $user->id
         );
+        
+        // OBSERVABILITY: Log lock result
+        $lockDuration = round((microtime(true) - $lockStartTime) * 1000, 2);
+        \Log::info('OBSERVE: Trip lock result', [
+            'trip_id' => $request['trip_request_id'],
+            'driver_id' => $user->id,
+            'success' => $lockResult['success'],
+            'message' => $lockResult['message'] ?? null,
+            'duration_ms' => $lockDuration,
+            'trace_id' => ObservabilityService::getTraceId()
+        ]);
 
         if (!$lockResult['success']) {
             if ($lockResult['trip'] && $lockResult['trip']->driver_id == $user->id) {
+                // OBSERVABILITY: Log idempotent retry detection
+                \Log::info('OBSERVE: Idempotent trip accept detected (already assigned to this driver)', [
+                    'trip_id' => $request['trip_request_id'],
+                    'driver_id' => $user->id,
+                    'trace_id' => ObservabilityService::getTraceId()
+                ]);
+                
                 // Trip already assigned to this driver, check if acceptance was completed
                 $existingTrip = $this->trip->getBy('id', $request['trip_request_id'], [
                     'relations' => ['customer', 'coordinate', 'parcelUserInfo', 'tripStatus', 'time', 'vehicle.model', 'vehicleCategory']
@@ -218,6 +280,15 @@ class TripRequestController extends Controller
 
                 // If trip has OTP and vehicle assigned, acceptance was completed
                 if ($existingTrip->otp && $existingTrip->vehicle_id) {
+                    \Log::info('OBSERVE: Returning cached acceptance result (fully completed before)', [
+                        'trip_id' => $request['trip_request_id'],
+                        'driver_id' => $user->id,
+                        'has_otp' => true,
+                        'has_vehicle' => true,
+                        'trace_id' => ObservabilityService::getTraceId()
+                    ]);
+                    
+                    ObservabilityService::observeControllerExit('TripRequestController', 'requestAction', $controllerStartTime, 'success_idempotent', $user->id, $request['trip_request_id']);
                     $data = TripRequestResource::make($existingTrip);
                     return response()->json(responseFormatter(DEFAULT_UPDATE_200, content: $data));
                 }
@@ -320,57 +391,58 @@ class TripRequestController extends Controller
             sendOtp: $sendOtp,
             parcelReceiverInfo: $parcelReceiverInfo,
             driverId: $user->id,
-            driverFcmToken: $user->fcm_token
+            driverFcmToken: $user->fcm_token,
+            customerLanguage: $trip->customer?->current_language_key ?? 'en',
+            driverLanguage: $user->current_language_key ?? 'en'
         )->onQueue('high');
 
-        // Emit Redis event for Node.js realtime service
+        // Refresh trip from database to ensure latest data
+        $trip = $this->trip->getBy('id', $request['trip_request_id'], [
+            'relations' => ['customer', 'coordinate', 'parcelUserInfo', 'tripStatus', 'time', 'vehicle.model', 'vehicleCategory', 'driver']
+        ]);
+        $data = TripRequestResource::make($trip);
+
+        // ====================================================================
+        // CRITICAL FIX: Publish trip accepted event via Redis BEFORE response
+        // This ensures driver app receives socket notification immediately,
+        // fixing the "second press works" bug.
+        // ====================================================================
         try {
-            $realtimeService = app(\App\Services\RealtimeEventService::class);
-            $realtimeService->publishDriverAccepted(
-                tripId: $trip->id,
-                driverId: $user->id,
-                customerId: $trip->customer->id,
-                driverInfo: [
-                    'id' => $user->id,
-                    'name' => $user->first_name . ' ' . $user->last_name,
-                    'phone' => $user->phone,
-                    'profile_image' => $user->profile_image,
-                    'vehicle' => [
-                        'model' => $user->vehicle?->model?->name ?? null,
-                        'brand' => $user->vehicle?->brand?->name ?? null,
-                        'licence_plate_number' => $user->vehicle?->licence_plate_number ?? null,
-                        'color' => $user->vehicle?->color ?? null,
-                    ],
+            $driverData = [
+                'id' => $user->id,
+                'first_name' => $user->first_name ?? '',
+                'last_name' => $user->last_name ?? '',
+                'phone' => $user->phone ?? '',
+                'profile_image' => $user->profile_image ?? '',
+                'vehicle' => [
+                    'brand' => $user->vehicle?->model?->brand?->name ?? '',
+                    'model' => $user->vehicle?->model?->name ?? '',
+                    'licence_plate' => $user->vehicle?->licence_plate_number ?? '',
+                    'color' => $user->vehicle?->color ?? '',
                 ],
-                tripInfo: [
-                    'id' => $trip->id,
-                    'otp' => $trip->otp,
-                    'current_status' => 'accepted',
-                    'estimated_fare' => $trip->estimated_fare,
-                ]
+            ];
+
+            $this->realtimeEventPublisher->publishTripAccepted(
+                $trip,
+                $driverData,
+                $data->resolve()
             );
-            \Log::info('Redis event published: driver.accepted', [
+
+            \Log::info('Trip accepted event published via Redis BEFORE response', [
                 'trip_id' => $trip->id,
                 'driver_id' => $user->id,
-                'trace_id' => request()?->attributes?->get('trace_id'),
             ]);
         } catch (Exception $e) {
-            \Log::error('Failed to publish Redis event: driver.accepted', [
-                'error' => $e->getMessage(),
+            \Log::error('Failed to publish trip accepted event', [
                 'trip_id' => $trip->id,
+                'error' => $e->getMessage()
             ]);
         }
 
-        // Broadcast non-blocking (legacy Pusher - keep for backward compatibility)
+        // Legacy Pusher broadcast (keep for backward compatibility)
         try {
             checkPusherConnection(DriverTripAcceptedEvent::broadcast($trip));
         } catch (Exception $exception) {}
-
-        // Refresh trip from database to ensure latest data and return it in response
-        $trip = $this->trip->getBy('id', $request['trip_request_id'], [
-            'relations' => ['customer', 'coordinate', 'parcelUserInfo', 'tripStatus', 'time', 'vehicle.model', 'vehicleCategory']
-        ]);
-        $data = TripRequestResource::make($trip);
 
         return response()->json(responseFormatter(constant: DEFAULT_UPDATE_200, content: $data));
     }
@@ -555,6 +627,17 @@ class TripRequestController extends Controller
      */
     public function matchOtp(Request $request): JsonResponse
     {
+        // OBSERVABILITY: Log controller entry for OTP verification
+        $controllerStartTime = ObservabilityService::observeControllerEntry(
+            'TripRequestController',
+            'matchOtp',
+            ['trip_request_id' => $request->input('trip_request_id')],
+            auth('api')->id(),
+            $request->input('trip_request_id')
+        );
+        
+        ObservabilityService::observeOtpVerification($request->input('trip_request_id') ?? 'unknown', 'received', auth('api')->id());
+        
         $validator = Validator::make($request->all(), [
             'trip_request_id' => 'required',
             'otp' => Rule::requiredIf(function () {
@@ -563,21 +646,45 @@ class TripRequestController extends Controller
         ]);
 
         if ($validator->fails()) {
+            ObservabilityService::observeOtpVerification($request->input('trip_request_id') ?? 'unknown', 'validation_failed', auth('api')->id(), json_encode($validator->errors()->toArray()));
+            ObservabilityService::observeControllerExit('TripRequestController', 'matchOtp', $controllerStartTime, 'validation_failed');
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
+        
+        ObservabilityService::observeOtpVerification($request['trip_request_id'], 'validated', auth('api')->id());
 
         // Load trip without relations for faster validation
         $trip = $this->trip->getBy(column: 'id', value: $request['trip_request_id']);
 
         if (!$trip) {
+            ObservabilityService::observeOtpVerification($request['trip_request_id'], 'trip_not_found', auth('api')->id());
+            ObservabilityService::observeControllerExit('TripRequestController', 'matchOtp', $controllerStartTime, 'trip_not_found');
             return response()->json(responseFormatter(TRIP_REQUEST_404), 403);
         }
+        
+        // OBSERVABILITY: Log trip state before OTP check
+        \Log::info('OBSERVE: OTP verification - trip found', [
+            'trip_id' => $trip->id,
+            'current_status' => $trip->current_status,
+            'trip_driver_id' => $trip->driver_id,
+            'requesting_driver_id' => auth('api')->id(),
+            'trace_id' => ObservabilityService::getTraceId()
+        ]);
+        
         if ($trip->driver_id != auth('api')->id()) {
+            ObservabilityService::observeOtpVerification($trip->id, 'driver_mismatch', auth('api')->id(), 'Driver ID does not match trip driver');
+            ObservabilityService::observeControllerExit('TripRequestController', 'matchOtp', $controllerStartTime, 'driver_mismatch', auth('api')->id(), $trip->id);
             return response()->json(responseFormatter(DEFAULT_404), 403);
         }
         if (array_key_exists('otp', $request->all()) && $request['otp'] && $trip->otp != $request['otp']) {
+            ObservabilityService::observeOtpVerification($trip->id, 'otp_mismatch', auth('api')->id(), 'OTP does not match');
+            ObservabilityService::observeControllerExit('TripRequestController', 'matchOtp', $controllerStartTime, 'otp_mismatch', auth('api')->id(), $trip->id);
             return response()->json(responseFormatter(OTP_MISMATCH_404), 403);
         }
+        
+        // OBSERVABILITY: Log OTP matched, starting DB update
+        $dbStartTime = ObservabilityService::observeDbTransactionStart('matchOtp_update_status', $trip->id);
+        ObservabilityService::observeTripStateChange($trip->id, $trip->current_status ?? 'accepted', ONGOING, $trip->driver_id, $trip->customer_id, 'otp_verified');
 
         // Update trip status to ONGOING
         DB::beginTransaction();
@@ -585,29 +692,30 @@ class TripRequestController extends Controller
         $trip->save();
         $trip->tripStatus()->update(['ongoing' => now()]);
         DB::commit();
+        
+        // OBSERVABILITY: Log DB transaction committed
+        ObservabilityService::observeDbTransactionCommit('matchOtp_update_status', $dbStartTime, $trip->id);
+
+        // ====================================================================
+        // CRITICAL FIX: Publish OTP verified event via Redis BEFORE response
+        // This ensures driver app immediately shows trip as ongoing.
+        // ====================================================================
+        try {
+            $this->realtimeEventPublisher->publishOtpVerified($trip);
+            
+            \Log::info('OTP verified event published via Redis BEFORE response', [
+                'trip_id' => $trip->id,
+                'driver_id' => $trip->driver_id,
+            ]);
+        } catch (Exception $e) {
+            \Log::error('Failed to publish OTP verified event', [
+                'trip_id' => $trip->id,
+                'error' => $e->getMessage()
+            ]);
+        }
 
         // Offload slow external API calls to background job
         dispatch(new \App\Jobs\ProcessTripOtpJob($trip->id))->onQueue('high');
-
-        // Emit Redis event for Node.js realtime service - immediate feedback
-        try {
-            $realtimeService = app(\App\Services\RealtimeEventService::class);
-            $realtimeService->publishRideStarted(
-                tripId: $trip->id,
-                driverId: $trip->driver_id,
-                customerId: $trip->customer_id
-            );
-            \Log::info('Redis event published: ride.started', [
-                'trip_id' => $trip->id,
-                'driver_id' => $trip->driver_id,
-                'trace_id' => request()?->attributes?->get('trace_id'),
-            ]);
-        } catch (Exception $e) {
-            \Log::error('Failed to publish Redis event: ride.started', [
-                'error' => $e->getMessage(),
-                'trip_id' => $trip->id,
-            ]);
-        }
 
         return response()->json(responseFormatter(constant: DEFAULT_STORE_200));
     }

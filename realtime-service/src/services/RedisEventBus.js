@@ -25,10 +25,13 @@ class RedisEventBus {
       RIDE_COMPLETED: 'laravel:ride.completed',
       RIDE_STARTED: 'laravel:ride.started',
       DRIVER_ASSIGNED: 'laravel:driver.assigned',
-      DRIVER_ACCEPTED: 'laravel:driver.accepted',
       PAYMENT_COMPLETED: 'laravel:payment.completed',
       LOST_ITEM_CREATED: 'lost_item:created',
-      LOST_ITEM_UPDATED: 'lost_item:updated'
+      LOST_ITEM_UPDATED: 'lost_item:updated',
+      // NEW: Critical channels for fixing race conditions
+      TRIP_ACCEPTED: 'laravel:trip.accepted',     // Driver accepted - notify BOTH parties immediately
+      OTP_VERIFIED: 'laravel:otp.verified',       // OTP verified - trip is now ongoing
+      DRIVER_ARRIVED: 'laravel:driver.arrived'    // Driver arrived at pickup
     };
   }
 
@@ -81,47 +84,81 @@ class RedisEventBus {
    * Route events to appropriate handlers
    */
   async handleEvent(channel, data) {
-    logger.info('Received event', { channel, data });
+    const traceId = data.trace_id || 'no-trace';
+    const startTime = Date.now();
 
-    switch (channel) {
-      case this.CHANNELS.RIDE_CREATED:
-        await this.handleRideCreated(data);
-        break;
+    logger.info('Received event from Laravel', {
+      channel,
+      trace_id: traceId,
+      ride_id: data.ride_id || data.trip_id,
+      driver_id: data.driver_id,
+      customer_id: data.customer_id
+    });
 
-      case this.CHANNELS.RIDE_CANCELLED:
-        await this.handleRideCancelled(data);
-        break;
+    try {
+      switch (channel) {
+        case this.CHANNELS.RIDE_CREATED:
+          await this.handleRideCreated(data);
+          break;
 
-      case this.CHANNELS.RIDE_COMPLETED:
-        await this.handleRideCompleted(data);
-        break;
+        case this.CHANNELS.RIDE_CANCELLED:
+          await this.handleRideCancelled(data);
+          break;
 
-      case this.CHANNELS.RIDE_STARTED:
-        await this.handleRideStarted(data);
-        break;
+        case this.CHANNELS.RIDE_COMPLETED:
+          await this.handleRideCompleted(data);
+          break;
 
-      case this.CHANNELS.DRIVER_ASSIGNED:
-        await this.handleDriverAssigned(data);
-        break;
+        case this.CHANNELS.RIDE_STARTED:
+          await this.handleRideStarted(data);
+          break;
 
-      case this.CHANNELS.DRIVER_ACCEPTED:
-        await this.handleDriverAccepted(data);
-        break;
+        case this.CHANNELS.DRIVER_ASSIGNED:
+          await this.handleDriverAssigned(data);
+          break;
 
-      case this.CHANNELS.PAYMENT_COMPLETED:
-        await this.handlePaymentCompleted(data);
-        break;
+        case this.CHANNELS.PAYMENT_COMPLETED:
+          await this.handlePaymentCompleted(data);
+          break;
 
-      case this.CHANNELS.LOST_ITEM_CREATED:
-        await this.handleLostItemCreated(data);
-        break;
+        case this.CHANNELS.LOST_ITEM_CREATED:
+          await this.handleLostItemCreated(data);
+          break;
 
-      case this.CHANNELS.LOST_ITEM_UPDATED:
-        await this.handleLostItemUpdated(data);
-        break;
+        case this.CHANNELS.LOST_ITEM_UPDATED:
+          await this.handleLostItemUpdated(data);
+          break;
 
-      default:
-        logger.warn('Unknown event channel', { channel });
+        // NEW: Critical handlers for race condition fix
+        case this.CHANNELS.TRIP_ACCEPTED:
+          await this.handleTripAccepted(data);
+          break;
+
+        case this.CHANNELS.OTP_VERIFIED:
+          await this.handleOtpVerified(data);
+          break;
+
+        case this.CHANNELS.DRIVER_ARRIVED:
+          await this.handleDriverArrived(data);
+          break;
+
+        default:
+          logger.warn('Unknown event channel', { channel, trace_id: traceId });
+      }
+
+      const duration = Date.now() - startTime;
+      logger.info('Event handled successfully', {
+        channel,
+        trace_id: traceId,
+        duration_ms: duration
+      });
+    } catch (error) {
+      logger.error('Event handler failed', {
+        channel,
+        trace_id: traceId,
+        error: error.message,
+        stack: error.stack
+      });
     }
   }
 
@@ -253,72 +290,6 @@ class RedisEventBus {
   }
 
   /**
-   * Handle driver accepted event (new - from Laravel HTTP flow)
-   * This is called when driver accepts via HTTP to Laravel
-   */
-  async handleDriverAccepted(data) {
-    const { ride_id, trip_id, driver_id, customer_id, driver, trip, trace_id } = data;
-    const rideId = ride_id || trip_id;
-
-    logger.info('Handling driver accepted', {
-      rideId,
-      driverId: driver_id,
-      customerId: customer_id,
-      traceId: trace_id
-    });
-
-    // 1. Notify customer that driver is assigned
-    if (customer_id) {
-      this.io.to(`user:${customer_id}`).emit('ride:driver_assigned', {
-        rideId,
-        driver: driver || { id: driver_id },
-        trip: trip,
-        message: 'A driver has accepted your ride',
-        traceId: trace_id
-      });
-      logger.info('Emitted ride:driver_assigned to customer', { customerId: customer_id, rideId });
-    }
-
-    // 2. Notify driver with confirmation (backup to HTTP response)
-    if (driver_id) {
-      this.io.to(`user:${driver_id}`).emit('ride:accept:success', {
-        rideId,
-        message: 'Ride accepted successfully',
-        rideDetails: trip,
-        traceId: trace_id
-      });
-      logger.info('Emitted ride:accept:success to driver', { driverId: driver_id, rideId });
-    }
-
-    // 3. Notify other drivers that ride is no longer available
-    const notifiedDrivers = await this.redis.smembers(`ride:notified:${rideId}`);
-    if (notifiedDrivers && notifiedDrivers.length > 0) {
-      for (const otherDriverId of notifiedDrivers) {
-        if (otherDriverId !== driver_id) {
-          this.io.to(`user:${otherDriverId}`).emit('ride:taken', {
-            rideId,
-            message: 'This ride has been accepted by another driver',
-            traceId: trace_id
-          });
-        }
-      }
-      logger.info('Notified other drivers ride is taken', {
-        rideId,
-        notifiedCount: notifiedDrivers.length - 1
-      });
-    }
-
-    // 4. Clean up pending ride data
-    await this.redis.del(`ride:pending:${rideId}`);
-    await this.redis.del(`ride:notified:${rideId}`);
-
-    // 5. Mark driver as busy
-    await this.locationService.assignDriverToRide(driver_id, rideId);
-
-    logger.info('Driver accepted flow complete', { rideId, driverId: driver_id, traceId: trace_id });
-  }
-
-  /**
    * Handle payment completed event
    */
   async handlePaymentCompleted(data) {
@@ -421,6 +392,206 @@ class RedisEventBus {
   }
 
   /**
+   * ========================================================================
+   * NEW: Critical handler for fixing "second press works" bug
+   * ========================================================================
+   * Handle trip accepted event - IMMEDIATELY notify driver and customer
+   * 
+   * This is called BEFORE the Laravel API returns, ensuring the driver app
+   * receives socket notification in parallel with the HTTP response.
+   */
+  async handleTripAccepted(data) {
+    const {
+      ride_id,
+      trip_id,
+      driver_id,
+      customer_id,
+      status,
+      otp,
+      driver,
+      trip,
+      trace_id,
+      accepted_at
+    } = data;
+
+    const rideId = ride_id || trip_id;
+
+    logger.rideEvent('trip_accepted', {
+      ride_id: rideId,
+      driver_id,
+      customer_id,
+      trace_id,
+      state_before: 'pending',
+      state_after: 'accepted'
+    });
+
+    // 1. NOTIFY DRIVER FIRST (this fixes the "loading" issue)
+    // CRITICAL: Emit 'ride:accept:success' which Flutter driver app listens for
+    // (see socket_io_helper.dart line 78)
+    if (driver_id) {
+      this.io.to(`user:${driver_id}`).emit('ride:accept:success', {
+        rideId,
+        ride_id: rideId,  // Flutter also checks for ride_id
+        tripId: rideId,
+        status: 'accepted',
+        otp,
+        trip,
+        message: 'Trip accepted successfully',
+        trace_id,
+        timestamp: Date.now()
+      });
+
+      logger.info('OBSERVE: Emitted ride:accept:success to driver (Flutter compatible)', {
+        driver_id,
+        ride_id: rideId,
+        trace_id
+      });
+    }
+
+    // 2. Notify customer that driver is assigned
+    if (customer_id) {
+      this.io.to(`user:${customer_id}`).emit('ride:driver_assigned', {
+        rideId,
+        driver,
+        status: 'accepted',
+        message: 'A driver has accepted your ride',
+        trace_id,
+        timestamp: Date.now()
+      });
+
+      logger.info('Emitted ride:driver_assigned to customer', {
+        customer_id,
+        ride_id: rideId,
+        trace_id
+      });
+    }
+
+    // 3. Notify other drivers that this ride is taken
+    // Remove from pending and notify all previously notified drivers
+    const notifiedDrivers = await this.redis.smembers(`ride:notified:${rideId}`);
+
+    for (const otherDriverId of notifiedDrivers) {
+      if (otherDriverId !== driver_id) {
+        this.io.to(`user:${otherDriverId}`).emit('ride:taken', {
+          rideId,
+          message: 'This ride has been accepted by another driver',
+          trace_id
+        });
+      }
+    }
+
+    // 4. Cleanup pending ride data
+    await this.redis.del(`ride:pending:${rideId}`);
+    await this.redis.del(`ride:notified:${rideId}`);
+
+    // 5. Mark driver as busy
+    if (driver_id) {
+      await this.locationService.assignDriverToRide(driver_id, rideId);
+    }
+  }
+
+  /**
+   * Handle OTP verified event - Trip is now ONGOING
+   * 
+   * This is called BEFORE the Laravel API returns, ensuring both apps
+   * update their state immediately.
+   */
+  async handleOtpVerified(data) {
+    const { ride_id, trip_id, driver_id, customer_id, status, trace_id, verified_at } = data;
+    const rideId = ride_id || trip_id;
+
+    logger.rideEvent('otp_verified', {
+      ride_id: rideId,
+      driver_id,
+      customer_id,
+      trace_id,
+      state_before: 'accepted',
+      state_after: 'ongoing'
+    });
+
+    // Notify driver that OTP was verified and trip is starting
+    // CRITICAL: Emit 'ride:started' which Flutter driver app listens for
+    // (see socket_io_helper.dart line 93)
+    if (driver_id) {
+      this.io.to(`user:${driver_id}`).emit('ride:started', {
+        rideId,
+        ride_id: rideId,  // Flutter also checks for ride_id
+        tripId: rideId,
+        status: 'ongoing',
+        message: 'OTP verified - Trip started',
+        trace_id,
+        timestamp: Date.now()
+      });
+
+      logger.info('OBSERVE: Emitted ride:started to driver (Flutter compatible)', {
+        driver_id,
+        ride_id: rideId,
+        trace_id
+      });
+    }
+
+    // Notify customer that trip has started
+    if (customer_id) {
+      this.io.to(`user:${customer_id}`).emit('ride:started', {
+        rideId,
+        ride_id: rideId,
+        status: 'ongoing',
+        message: 'Your trip has started',
+        trace_id,
+        timestamp: Date.now()
+      });
+
+      logger.info('OBSERVE: Emitted ride:started to customer', {
+        customer_id,
+        ride_id: rideId,
+        trace_id
+      });
+    }
+  }
+
+  /**
+   * Handle driver arrived at pickup event
+   */
+  async handleDriverArrived(data) {
+    const { ride_id, trip_id, driver_id, customer_id, trace_id, arrived_at } = data;
+    const rideId = ride_id || trip_id;
+
+    logger.rideEvent('driver_arrived', {
+      ride_id: rideId,
+      driver_id,
+      customer_id,
+      trace_id
+    });
+
+    // Notify customer that driver has arrived
+    if (customer_id) {
+      this.io.to(`user:${customer_id}`).emit('ride:driver_arrived', {
+        rideId,
+        message: 'Your driver has arrived at the pickup location',
+        arrivedAt: arrived_at,
+        trace_id,
+        timestamp: Date.now()
+      });
+
+      logger.info('Emitted ride:driver_arrived to customer', {
+        customer_id,
+        ride_id: rideId,
+        trace_id
+      });
+    }
+
+    // Confirm to driver
+    if (driver_id) {
+      this.io.to(`user:${driver_id}`).emit('trip:arrival:confirmed', {
+        rideId,
+        message: 'Arrival confirmed',
+        trace_id,
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  /**
    * Normalize payload from Laravel (supports legacy flat payload and new rich resource)
    */
   normalizeLostItemPayload(data) {
@@ -456,3 +627,4 @@ class RedisEventBus {
 }
 
 module.exports = RedisEventBus;
+

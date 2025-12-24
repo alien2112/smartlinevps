@@ -27,6 +27,7 @@ use Modules\Gateways\Http\Controllers\RazorPayController;
 use Modules\Gateways\Http\Controllers\SenangPayController;
 use Modules\Gateways\Http\Controllers\SslCommerzPaymentController;
 use Modules\Gateways\Http\Controllers\StripePaymentController;
+use Modules\Gateways\Http\Controllers\KashierPaymentController;
 
 /*
 
@@ -131,5 +132,14 @@ Route::group(['prefix' => 'payment'], function () {
         ->withoutMiddleware([VerifyCsrfToken::class]);
         Route::any('callback', [PvitController::class,'callBack'])->name('callBack')
         ->withoutMiddleware([VerifyCsrfToken::class]);
+    });
+
+    //KASHIER
+    Route::group(['prefix' => 'kashier', 'as' => 'kashier.'], function () {
+        Route::get('pay', [KashierPaymentController::class, 'index'])->name('pay');
+        Route::any('callback', [KashierPaymentController::class, 'callback'])->name('callback')
+            ->withoutMiddleware([VerifyCsrfToken::class]);
+        Route::post('webhook', [KashierPaymentController::class, 'webhook'])->name('webhook')
+            ->withoutMiddleware([VerifyCsrfToken::class]);
     });
 });

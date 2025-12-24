@@ -16,12 +16,21 @@ const logger = require('./utils/logger');
 const config = require('./config/config');
 const redisClient = require('./config/redis');
 const { authenticateSocket } = require('./middleware/auth');
-const { traceIdMiddleware } = require('./middleware/traceId');
 const { createRateLimiter } = require('./utils/rateLimiter');
 const LocationService = require('./services/LocationService');
 const DriverMatchingService = require('./services/DriverMatchingService');
 const RedisEventBus = require('./services/RedisEventBus');
 const RideTimeoutService = require('./services/RideTimeoutService');
+
+// OBSERVABILITY: Import deep logging utilities
+const {
+  observeConnection,
+  observeEventHandler,
+  observeBroadcast,
+  generateTraceId,
+  createLogEntry,
+  getMetrics
+} = require('./utils/observability');
 
 const app = express();
 const httpServer = createServer(app);
@@ -130,22 +139,31 @@ io.use((socket, next) => {
   next();
 });
 io.use(authenticateSocket);
-io.use(traceIdMiddleware);
 
 // Socket.IO connection handler
 io.on('connection', (socket) => {
+  const connectionStartTime = Date.now();
   const userId = socket.user.id;
   const userType = socket.user.type; // 'driver' or 'customer'
+
+  // OBSERVABILITY: Wrap socket with logging
+  const observeDisconnect = observeConnection(socket, logger);
 
   // Load security settings from config
   const enforceRideRoomAuth = config.security.enforceRideSubscriptionAuth;
   const disconnectOfflineGraceMs = config.security.disconnectOfflineGraceMs;
 
-  logger.info(`Client connected`, {
-    socketId: socket.id,
-    userId,
-    userType
-  });
+  // OBSERVABILITY: Log connection with full context
+  logger.info('OBSERVE: Client connection established', createLogEntry({
+    event_type: 'connection_established',
+    source: 'socket',
+    status: 'connected',
+    socket_id: socket.id,
+    user_id: userId,
+    user_type: userType,
+    auth_method: socket.handshake?.auth ? 'token' : 'unknown',
+    transport: socket.conn?.transport?.name
+  }));
 
   // Join user-specific room
   socket.join(`user:${userId}`);
@@ -159,36 +177,113 @@ io.on('connection', (socket) => {
   if (userType === 'driver') {
     // Driver goes online
     socket.on('driver:online', async (data) => {
+      const handlerStart = Date.now();
+      const traceId = generateTraceId();
+
+      // OBSERVABILITY: Log event received
+      logger.info('OBSERVE: driver:online received', createLogEntry({
+        event_type: 'socket_event',
+        source: 'socket',
+        status: 'started',
+        trace_id: traceId,
+        socket_id: socket.id,
+        user_id: userId,
+        event_name: 'driver:online',
+        payload: data ? JSON.stringify(data).substring(0, 200) : null
+      }));
+
       if (!(await rateLimit(socket, 'driver:online', config.rateLimiting.driverOnline))) {
+        logger.warn('OBSERVE: driver:online rate limited', createLogEntry({
+          event_type: 'rate_limited',
+          source: 'socket',
+          trace_id: traceId,
+          socket_id: socket.id,
+          user_id: userId,
+          event_name: 'driver:online'
+        }));
         return;
       }
 
       try {
         await locationService.setDriverOnline(userId, data);
-        socket.emit('driver:online:success', { message: 'You are now online' });
-        logger.info(`Driver went online`, { driverId: userId });
+        socket.emit('driver:online:success', { message: 'You are now online', trace_id: traceId });
+
+        // OBSERVABILITY: Log success
+        logger.info('OBSERVE: driver:online completed', createLogEntry({
+          event_type: 'socket_event',
+          source: 'socket',
+          status: 'success',
+          trace_id: traceId,
+          socket_id: socket.id,
+          user_id: userId,
+          event_name: 'driver:online',
+          duration_ms: Date.now() - handlerStart
+        }));
       } catch (error) {
-        logger.error('Error setting driver online', { error: error.message, userId });
-        socket.emit('error', { message: 'Failed to go online' });
+        logger.error('OBSERVE: driver:online error', createLogEntry({
+          event_type: 'socket_event',
+          source: 'socket',
+          status: 'error',
+          trace_id: traceId,
+          socket_id: socket.id,
+          user_id: userId,
+          event_name: 'driver:online',
+          error: error.message,
+          duration_ms: Date.now() - handlerStart
+        }));
+        socket.emit('error', { message: 'Failed to go online', trace_id: traceId });
       }
     });
 
     // Driver goes offline
     socket.on('driver:offline', async () => {
+      const handlerStart = Date.now();
+      const traceId = generateTraceId();
+
+      logger.info('OBSERVE: driver:offline received', createLogEntry({
+        event_type: 'socket_event',
+        source: 'socket',
+        status: 'started',
+        trace_id: traceId,
+        socket_id: socket.id,
+        user_id: userId,
+        event_name: 'driver:offline'
+      }));
+
       if (!(await rateLimit(socket, 'driver:offline', config.rateLimiting.driverOffline))) {
         return;
       }
 
       try {
         await locationService.setDriverOffline(userId);
-        socket.emit('driver:offline:success', { message: 'You are now offline' });
-        logger.info(`Driver went offline`, { driverId: userId });
+        socket.emit('driver:offline:success', { message: 'You are now offline', trace_id: traceId });
+
+        logger.info('OBSERVE: driver:offline completed', createLogEntry({
+          event_type: 'socket_event',
+          source: 'socket',
+          status: 'success',
+          trace_id: traceId,
+          socket_id: socket.id,
+          user_id: userId,
+          event_name: 'driver:offline',
+          duration_ms: Date.now() - handlerStart
+        }));
       } catch (error) {
-        logger.error('Error setting driver offline', { error: error.message, userId });
+        logger.error('OBSERVE: driver:offline error', createLogEntry({
+          event_type: 'socket_event',
+          source: 'socket',
+          status: 'error',
+          trace_id: traceId,
+          socket_id: socket.id,
+          user_id: userId,
+          event_name: 'driver:offline',
+          error: error.message,
+          duration_ms: Date.now() - handlerStart
+        }));
       }
     });
 
-    // Driver location update (high frequency)
+    // Driver location update (high frequency - minimal logging)
     socket.on('driver:location', async (data) => {
       try {
         const locationData = {
@@ -206,24 +301,97 @@ io.on('connection', (socket) => {
       }
     });
 
-    // Driver accepts ride
+    // Driver accepts ride - CRITICAL EVENT FOR OBSERVABILITY
     socket.on('driver:accept:ride', async (data) => {
+      const handlerStart = Date.now();
+      const traceId = data?.trace_id || generateTraceId();
+      const rideId = data?.rideId;
+
+      // OBSERVABILITY: Log this critical event with full detail
+      logger.info('OBSERVE: driver:accept:ride received', createLogEntry({
+        event_type: 'socket_event',
+        source: 'socket',
+        status: 'started',
+        trace_id: traceId,
+        socket_id: socket.id,
+        user_id: userId,
+        driver_id: userId,
+        event_name: 'driver:accept:ride',
+        ride_id: rideId,
+        payload: data ? JSON.stringify(data).substring(0, 500) : null,
+        timestamp_received: new Date().toISOString()
+      }));
+
       if (!(await rateLimit(socket, 'driver:accept:ride', config.rateLimiting.driverAcceptRide))) {
-        socket.emit('ride:accept:failed', { rideId: data?.rideId, message: 'Too many attempts, slow down' });
+        logger.warn('OBSERVE: driver:accept:ride rate limited', createLogEntry({
+          event_type: 'rate_limited',
+          source: 'socket',
+          trace_id: traceId,
+          socket_id: socket.id,
+          user_id: userId,
+          driver_id: userId,
+          ride_id: rideId,
+          event_name: 'driver:accept:ride'
+        }));
+        socket.emit('ride:accept:failed', { rideId: data?.rideId, message: 'Too many attempts, slow down', trace_id: traceId });
         return;
       }
 
       try {
-        const rideId = data?.rideId;
         if (!rideId) {
-          socket.emit('ride:accept:failed', { rideId: null, message: 'Missing rideId' });
+          logger.warn('OBSERVE: driver:accept:ride missing rideId', createLogEntry({
+            event_type: 'validation_error',
+            source: 'socket',
+            trace_id: traceId,
+            socket_id: socket.id,
+            user_id: userId,
+            event_name: 'driver:accept:ride'
+          }));
+          socket.emit('ride:accept:failed', { rideId: null, message: 'Missing rideId', trace_id: traceId });
           return;
         }
 
+        logger.info('OBSERVE: Calling handleDriverAcceptRide', createLogEntry({
+          event_type: 'service_call',
+          source: 'socket',
+          status: 'calling',
+          trace_id: traceId,
+          driver_id: userId,
+          ride_id: rideId,
+          service: 'DriverMatchingService',
+          method: 'handleDriverAcceptRide'
+        }));
+
         await driverMatchingService.handleDriverAcceptRide(userId, rideId);
+
+        logger.info('OBSERVE: driver:accept:ride completed', createLogEntry({
+          event_type: 'socket_event',
+          source: 'socket',
+          status: 'success',
+          trace_id: traceId,
+          socket_id: socket.id,
+          user_id: userId,
+          driver_id: userId,
+          ride_id: rideId,
+          event_name: 'driver:accept:ride',
+          duration_ms: Date.now() - handlerStart
+        }));
       } catch (error) {
-        logger.error('Error accepting ride', { error: error.message, userId, rideId: data?.rideId });
-        socket.emit('error', { message: 'Failed to accept ride' });
+        logger.error('OBSERVE: driver:accept:ride error', createLogEntry({
+          event_type: 'socket_event',
+          source: 'socket',
+          status: 'error',
+          trace_id: traceId,
+          socket_id: socket.id,
+          user_id: userId,
+          driver_id: userId,
+          ride_id: rideId,
+          event_name: 'driver:accept:ride',
+          error: error.message,
+          error_stack: error.stack?.substring(0, 500),
+          duration_ms: Date.now() - handlerStart
+        }));
+        socket.emit('error', { message: 'Failed to accept ride', trace_id: traceId });
       }
     });
   }

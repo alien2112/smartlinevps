@@ -2958,4 +2958,8 @@
   'Your trip OTP is 2524' => 'Your trip OTP is 2524',
   'Lost item report not found' => 'Lost item report not found',
   'Your trip OTP is 7184' => 'Your trip OTP is 7184',
+  'trip_accepted' => 'تم قبول الرحلة',
+  'trip_otp' => 'رمز التحقق للرحلة',
+  'your_trip_otp_is' => 'رمز التحقق للرحلة هو',
+  'you_have_successfully_accepted_the_trip_please_proceed_to_pickup_location' => 'لقد قبلت الرحلة بنجاح. يرجى التوجه إلى موقع الاستلام.',
 );

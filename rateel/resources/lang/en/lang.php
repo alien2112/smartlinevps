@@ -2791,4 +2791,8 @@
   'The bid field is required.' => 'The bid field is required.',
   'The selected payment method is invalid.' => 'The selected payment method is invalid.',
   'Lost item report not found' => 'Lost item report not found',
+  'trip_accepted' => 'Trip Accepted',
+  'trip_otp' => 'Trip OTP',
+  'your_trip_otp_is' => 'Your trip OTP is',
+  'you_have_successfully_accepted_the_trip_please_proceed_to_pickup_location' => 'You have successfully accepted the trip. Please proceed to pickup location.',
 );

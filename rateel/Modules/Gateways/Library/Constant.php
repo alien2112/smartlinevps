@@ -2,6 +2,7 @@
 
 //payment methods
 const PAYMENT_METHODS = [
+    ['key' => 'kashier', 'value' => 'Kashier'],
     ['key' => 'ssl_commerz', 'value' => 'SSLCOMMERZ'],
     ['key' => 'stripe', 'value' => 'Stripe'],
     ['key' => 'paypal', 'value' => 'PayPal'],
