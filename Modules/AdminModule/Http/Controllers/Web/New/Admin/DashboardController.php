@@ -9,6 +9,7 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 use Modules\BusinessManagement\Service\Interface\SupportSavedReplyServiceInterface;
 use Modules\ChattingManagement\Service\Interface\ChannelConversationServiceInterface;
@@ -68,38 +69,63 @@ class DashboardController extends BaseController
 
     public function index(?Request $request, string $type = null): View|Collection|LengthAwarePaginator|null|callable|RedirectResponse
     {
-        $zones = $this->zoneService->getBy(criteria: [
-            'is_active' => 1
-        ]);
+        // Cache dashboard statistics for 5 minutes to reduce database load
+        $cacheKey = 'admin_dashboard_stats';
+        $cacheTTL = 300; // 5 minutes
 
-        $totalTripsEarningCriteria = [
-            'type' => RIDE_REQUEST,
-            'payment_status' => PAID
-        ];
-        $totalParcelsEarningCriteria = [
-            'type' => PARCEL,
-            'payment_status' => PAID
-        ];
-        $whereHasRelations = [];
+        $dashboardStats = Cache::remember($cacheKey, $cacheTTL, function () {
+            $whereHasRelations = [];
+            $whereHasRelations['fee'] = function ($query) {
+                $query->whereNull('cancelled_by')
+                    ->orWhere('cancelled_by', '=', 'CUSTOMER');
+            };
 
-        // Add criteria for the `fee` relationship to filter by `cancelled_by` being either `null` or `CUSTOMER`
-        $whereHasRelations['fee'] = function ($query) {
-            $query->whereNull('cancelled_by')
-                ->orWhere('cancelled_by', '=', 'CUSTOMER'); // Handle `null` or `CUSTOMER`
-        };
+            $totalTripsEarningCriteria = [
+                'type' => RIDE_REQUEST,
+                'payment_status' => PAID
+            ];
+            $totalParcelsEarningCriteria = [
+                'type' => PARCEL,
+                'payment_status' => PAID
+            ];
+
+            return [
+                'customers' => $this->customerService->getBy(criteria: ['user_type' => CUSTOMER, 'is_active' => true])->count(),
+                'drivers' => $this->driverService->getBy(criteria: ['user_type' => DRIVER, 'is_active' => true])->count(),
+                'totalCouponAmountGiven' => $this->tripRequestService->getBy(criteria: ['payment_status' => PAID])->sum('coupon_amount'),
+                'totalDiscountAmountGiven' => $this->tripRequestService->getBy(criteria: ['payment_status' => PAID])->sum('discount_amount'),
+                'totalTrips' => $this->tripRequestService->getBy(criteria: ['type' => RIDE_REQUEST])->count(),
+                'totalParcels' => $this->tripRequestService->getBy(criteria: ['type' => PARCEL])->count(),
+                'totalEarning' => $this->tripRequestService->getBy(criteria: ['payment_status' => PAID], whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission'),
+                'totalTripsEarning' => $this->tripRequestService->getBy(criteria: $totalTripsEarningCriteria, whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission'),
+                'totalParcelsEarning' => $this->tripRequestService->getBy(criteria: $totalParcelsEarningCriteria, whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission'),
+            ];
+        });
+
+        // Cache zones for longer (15 minutes) as they change less frequently
+        $zones = Cache::remember('admin_dashboard_zones', 900, function () {
+            return $this->zoneService->getBy(criteria: ['is_active' => 1]);
+        });
+
+        // User-specific data should not be cached
         $transactions = $this->transactionService->getBy(criteria: ['user_id' => \auth()->user()->id], orderBy: ['created_at' => 'desc'])->take(7);
-        $superAdmin = $this->employeeService->findOneBy(criteria: ['user_type' => 'super-admin']);
-        $superAdminAccount = $this->userAccountService->findOneBy(criteria: ['user_id' => $superAdmin?->id]);
-        $customers = $this->customerService->getBy(criteria: ['user_type' => CUSTOMER, 'is_active' => true])->count();
-        $drivers = $this->driverService->getBy(criteria: ['user_type' => DRIVER, 'is_active' => true])->count();
-        $totalCouponAmountGiven = $this->tripRequestService->getBy(criteria: ['payment_status' => PAID])->SUM('coupon_amount');
-        $totalDiscountAmountGiven = $this->tripRequestService->getBy(criteria: ['payment_status' => PAID])->SUM('discount_amount');
-        $totalTrips = $this->tripRequestService->getBy(criteria: ['type' => RIDE_REQUEST])->count();
-        $totalParcels = $this->tripRequestService->getBy(criteria: ['type' => PARCEL])->count();
-        $totalEarning = $this->tripRequestService->getBy(criteria: ['payment_status' => PAID], whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission');
-        $totalTripsEarning = $this->tripRequestService->getBy(criteria: $totalTripsEarningCriteria, whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission');
-        $totalParcelsEarning = $this->tripRequestService->getBy(criteria: $totalParcelsEarningCriteria, whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission');
 
+        // Cache super admin account for 15 minutes
+        $superAdminAccount = Cache::remember('admin_dashboard_super_admin_account', 900, function () {
+            $superAdmin = $this->employeeService->findOneBy(criteria: ['user_type' => 'super-admin']);
+            return $this->userAccountService->findOneBy(criteria: ['user_id' => $superAdmin?->id]);
+        });
+
+        // Extract cached values
+        $customers = $dashboardStats['customers'];
+        $drivers = $dashboardStats['drivers'];
+        $totalCouponAmountGiven = $dashboardStats['totalCouponAmountGiven'];
+        $totalDiscountAmountGiven = $dashboardStats['totalDiscountAmountGiven'];
+        $totalTrips = $dashboardStats['totalTrips'];
+        $totalParcels = $dashboardStats['totalParcels'];
+        $totalEarning = $dashboardStats['totalEarning'];
+        $totalTripsEarning = $dashboardStats['totalTripsEarning'];
+        $totalParcelsEarning = $dashboardStats['totalParcelsEarning'];
 
         return view('adminmodule::dashboard', compact('zones', 'transactions', 'superAdminAccount', 'customers',
             'drivers', 'totalDiscountAmountGiven', 'totalCouponAmountGiven', 'totalTrips', 'totalParcels', 'totalEarning', 'totalTripsEarning', 'totalParcelsEarning'));
@@ -107,34 +133,53 @@ class DashboardController extends BaseController
 
     public function recentTripActivity()
     {
-        $trips = $this->tripRequestService->getBy(relations: ['customer', 'vehicle', 'vehicleCategory'], orderBy: ['created_at' => 'desc'], limit: 5, offset: 1);
+        // Cache recent trip activity for 2 minutes
+        $trips = Cache::remember('admin_recent_trip_activity', 120, function () {
+            return $this->tripRequestService->getBy(relations: ['customer', 'vehicle', 'vehicleCategory'], orderBy: ['created_at' => 'desc'], limit: 5, offset: 1);
+        });
         return response()->json(view('adminmodule::partials.dashboard._recent-trip-activity', compact('trips'))->render());
     }
 
     public function leaderBoardDriver(Request $request)
     {
         $request->merge(['user_type' => DRIVER]);
-        $leadDriver = $this->tripRequestService->getLeaderBoard($request->all(), limit: 20);
+        // Cache driver leaderboard for 5 minutes with request params
+        $cacheKey = 'admin_leaderboard_driver_' . md5(serialize($request->all()));
+        $leadDriver = Cache::remember($cacheKey, 300, function () use ($request) {
+            return $this->tripRequestService->getLeaderBoard($request->all(), limit: 20);
+        });
         return response()->json(view('adminmodule::partials.dashboard._leader-board-driver', compact('leadDriver'))->render());
     }
 
     public function leaderBoardCustomer(Request $request)
     {
         $request->merge(['user_type' => CUSTOMER]);
-        $leadCustomer = $this->tripRequestService->getLeaderBoard($request->all(), limit: 20);
+        // Cache customer leaderboard for 5 minutes with request params
+        $cacheKey = 'admin_leaderboard_customer_' . md5(serialize($request->all()));
+        $leadCustomer = Cache::remember($cacheKey, 300, function () use ($request) {
+            return $this->tripRequestService->getLeaderBoard($request->all(), limit: 20);
+        });
         return response()->json(view('adminmodule::partials.dashboard._leader-board-customer', compact('leadCustomer'))->render());
     }
 
     public function adminEarningStatistics(Request $request)
     {
-        $data = $this->tripRequestService->getAdminZoneWiseEarning($request->all());
+        // Cache earning statistics for 5 minutes with request params
+        $cacheKey = 'admin_earning_stats_' . md5(serialize($request->all()));
+        $data = Cache::remember($cacheKey, 300, function () use ($request) {
+            return $this->tripRequestService->getAdminZoneWiseEarning($request->all());
+        });
         return response()->json($data);
     }
 
 
     public function zoneWiseStatistics(Request $request)
     {
-        $data = $this->tripRequestService->getAdminZoneWiseStatistics(data: $request->all());
+        // Cache zone-wise statistics for 5 minutes with request params
+        $cacheKey = 'admin_zone_stats_' . md5(serialize($request->all()));
+        $data = Cache::remember($cacheKey, 300, function () use ($request) {
+            return $this->tripRequestService->getAdminZoneWiseStatistics(data: $request->all());
+        });
         return response()
             ->json(view('adminmodule::partials.dashboard._areawise-statistics', ['trips' => $data['zoneTripsByDate'], 'totalCount' => $data['totalTrips']])
                 ->render());

@@ -26,7 +26,7 @@ class ZoneRepository extends BaseRepository implements ZoneRepositoryInterface
     public function findOne($id, array $relations = [], array $withAvgRelations = [],array $whereHasRelations = [], array $withCountQuery = [], bool $withTrashed = false, bool $onlyTrashed = false): ?Model
     {
         return $this->prepareModelForRelationAndOrder(relations: $relations)
-            ->selectRaw("*,ST_AsText(ST_Centroid(`coordinates`)) as center")
+            ->selectRaw("*,ST_AsText(ST_Centroid(ST_SRID(`coordinates`, 0))) as center")
             ->when(!empty($withCountQuery), function ($query) use ($withCountQuery) {
                 $this->withCountQuery($query, $withCountQuery);
             })
@@ -43,7 +43,7 @@ class ZoneRepository extends BaseRepository implements ZoneRepositoryInterface
     public function findOneBy(array $criteria = [], array $whereInCriteria = [], array $whereBetweenCriteria = [], array $withAvgRelations = [], array $relations = [],array $whereHasRelations = [], array $withCountQuery = [], array $orderBy = [], bool $withTrashed = false, bool $onlyTrashed = false): ?Model
     {
         return $this->prepareModelForRelationAndOrder(relations: $relations)
-            ->selectRaw("*,ST_AsText(ST_Centroid(`coordinates`)) as center")
+            ->selectRaw("*,ST_AsText(ST_Centroid(ST_SRID(`coordinates`, 0))) as center")
             ->where($criteria)
             ->when(!empty($whereInCriteria), function ($whereInQuery) use ($whereInCriteria) {
                 foreach ($whereInCriteria as $column => $values) {
@@ -75,7 +75,7 @@ class ZoneRepository extends BaseRepository implements ZoneRepositoryInterface
     public function getAll(array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, bool $onlyTrashed = false, bool $withTrashed = false, array $withCountQuery = [], array $groupBy = []): Collection|LengthAwarePaginator
     {
         $model = $this->prepareModelForRelationAndOrder(relations: $relations, orderBy: $orderBy)
-            ->selectRaw("*,ST_AsText(ST_Centroid(`coordinates`)) as center")
+            ->selectRaw("*,ST_AsText(ST_Centroid(ST_SRID(`coordinates`, 0))) as center")
             ->when(($onlyTrashed || $withTrashed), function ($query) use ($onlyTrashed, $withTrashed) {
                 $this->withOrWithOutTrashDataQuery($query, $onlyTrashed, $withTrashed);
             })
@@ -107,7 +107,7 @@ class ZoneRepository extends BaseRepository implements ZoneRepositoryInterface
     public function getBy(array $criteria = [], array $searchCriteria = [], array $whereInCriteria = [], array $whereBetweenCriteria = [], array $whereHasRelations = [], array $withAvgRelations = [], array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, bool $onlyTrashed = false, bool $withTrashed = false, array $withCountQuery = [], array $appends = [], array $groupBy = []): Collection|LengthAwarePaginator
     {
         $model = $this->prepareModelForRelationAndOrder(relations: $relations, orderBy: $orderBy)
-            ->selectRaw("*,ST_AsText(ST_Centroid(`coordinates`)) as center")
+            ->selectRaw("*,ST_AsText(ST_Centroid(ST_SRID(`coordinates`, 0))) as center")
             ->when(!empty($criteria), function ($whereQuery) use ($criteria) {
                 $whereQuery->where($criteria);
             })->when(!empty($whereInCriteria), function ($whereInQuery) use ($whereInCriteria) {

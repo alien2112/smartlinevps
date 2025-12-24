@@ -670,10 +670,25 @@ if (!function_exists('getNotification')) {
     function getNotification($key)
     {
         $notification = FirebasePushNotification::query()->firstWhere('name', $key);
+
+        // Return default values if notification not found
+        if (!$notification) {
+            \Log::warning('Firebase notification key not found in database', [
+                'key' => $key,
+                'trace' => debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 3)
+            ]);
+
+            return [
+                'title' => ' ',
+                'description' => ' ',
+                'status' => false,
+            ];
+        }
+
         return [
             'title' => $notification['name'] ?? ' ',
             'description' => $notification['value'] ?? ' ',
-            'status' => (bool)$notification['status'] ?? 0,
+            'status' => (bool)($notification['status'] ?? 0),
         ];
     }
 }

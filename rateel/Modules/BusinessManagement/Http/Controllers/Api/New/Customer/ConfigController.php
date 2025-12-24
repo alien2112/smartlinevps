@@ -118,7 +118,7 @@ class ConfigController extends Controller
             'websocket_port' => (string)$info->firstWhere('key_name', 'websocket_port')?->value ?? 6001,
             'websocket_key' => env('PUSHER_APP_KEY'),
             'websocket_scheme' => env('PUSHER_SCHEME'),
-            'base_url' => url('/') . '/api/v1/',
+            'base_url' => url('/') . '/api/',
             'review_status' => (bool)$info->firstWhere('key_name', CUSTOMER_REVIEW)?->value ?? null,
             'level_status' => (bool)$info->firstWhere('key_name', CUSTOMER_LEVEL)?->value ?? null,
             'search_radius' => $info->firstWhere('key_name', 'search_radius')?->value ?? 10000,
@@ -772,7 +772,8 @@ class ConfigController extends Controller
                 $trip->coordinate->destination_coordinates->latitude,
                 $trip->coordinate->destination_coordinates->longitude,
             ];
-            $intermediateCoordinates = $trip->coordinate->intermediate_coordinates ? json_decode($$trip->coordinate->intermediate_coordinates, true) : [];
+            // Fixed: removed double $ sign
+            $intermediateCoordinates = $trip->coordinate->intermediate_coordinates ? json_decode($trip->coordinate->intermediate_coordinates, true) : [];
         } else {
             $destinationCoordinates = [
                 $trip->coordinate->pickup_coordinates->latitude,
@@ -780,20 +781,37 @@ class ConfigController extends Controller
             ];
         }
 
-        return getRoutes(
+        // Fixed: assigned to variable instead of returning immediately
+        $getRoutes = getRoutes(
             originCoordinates: $pickupCoordinates,
             destinationCoordinates: $destinationCoordinates,
             intermediateCoordinates: $intermediateCoordinates,
         ); //["DRIVE", "TWO_WHEELER"]
 
+        // Safely get driving mode with null checks - default to DRIVE if category not available
+        $vehicleType = $trip->driver?->vehicleCategory?->category?->type ?? null;
+        $drivingMode = ($vehicleType && $vehicleType == 'motor_bike') ? 'TWO_WHEELER' : 'DRIVE';
+
         $result = [];
         foreach ($getRoutes as $route) {
-            if ($route['drive_mode'] == $drivingMode) {
+            // Check if route has error status (from failed API call)
+            if (isset($route['status']) && $route['status'] === 'ERROR') {
+                return response()->json(responseFormatter(
+                    constant: DEFAULT_400,
+                    content: null,
+                    errors: [['error_code' => 'route_error', 'message' => $route['error_detail'] ?? 'Failed to get route information']]
+                ), 400);
+            }
+
+            if (isset($route['drive_mode']) && $route['drive_mode'] == $drivingMode) {
                 $result['is_picked'] = $trip->current_status == ONGOING;
-                return [array_merge($result, $route)];
+                $data = [array_merge($result, $route)];
+                return response()->json(responseFormatter(constant: DEFAULT_200, content: $data));
             }
         }
 
+        // If no matching route found, return empty array with success response
+        return response()->json(responseFormatter(constant: DEFAULT_200, content: []));
     }
 
     #

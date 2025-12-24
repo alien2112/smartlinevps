@@ -69,5 +69,7 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'admin' => AdminMiddleware::class,
         'maintenance_mode' => MaintenanceModeMiddleware::class,
+        'idempotency' => \App\Http\Middleware\EnsureIdempotency::class,
+        'rate_limit' => \App\Http\Middleware\ApiRateLimiter::class,
     ];
 }

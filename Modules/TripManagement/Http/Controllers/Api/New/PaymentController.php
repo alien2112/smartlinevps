@@ -115,6 +115,9 @@ class PaymentController extends Controller
 
     public function digitalPayment(Request $request)
     {
+        // Normalize payment method to lowercase for case-insensitive validation
+        $request->merge(['payment_method' => strtolower($request->payment_method)]);
+
         $validator = Validator::make($request->all(), [
             'trip_request_id' => 'required',
             'payment_method' => 'required|in:kashier'
@@ -160,7 +163,7 @@ class PaymentController extends Controller
         //hook is look for a autoloaded function to perform action after payment
         $paymentInfo = new PaymentInfo(
             hook: 'tripRequestUpdate',
-            currencyCode: 'USD',
+            currencyCode: businessConfig('currency_code')?->value ?? 'EGP',
             paymentMethod: $request->payment_method,
             paymentPlatform: 'mono',
             payerId: $customer->id,

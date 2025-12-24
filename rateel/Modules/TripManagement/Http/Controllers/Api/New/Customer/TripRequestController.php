@@ -11,6 +11,8 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Modules\BusinessManagement\Entities\BusinessSetting;
+use Modules\Gateways\Entities\Setting;
 use Modules\BusinessManagement\Http\Requests\RideListRequest;
 use Modules\FareManagement\Service\Interface\ParcelFareServiceInterface;
 use Modules\FareManagement\Service\Interface\ParcelFareWeightServiceInterface;
@@ -407,7 +409,8 @@ class TripRequestController extends Controller
         }
 
         $env = env('APP_MODE');
-        $otp = $env != "live" ? '0000' : rand(1000, 9999);
+        $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
+        $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';
 
         $assignedVehicleCategoryId = $trip->vehicle_category_id;
         if (empty($assignedVehicleCategoryId)) {
@@ -428,7 +431,6 @@ class TripRequestController extends Controller
             'otp' => $otp,
             'vehicle_id' => $driver->vehicle->id,
             'current_status' => ACCEPTED,
-            'trip_status' => ACCEPTED,
             'vehicle_category_id' => $assignedVehicleCategoryId,
         ];
 
@@ -602,17 +604,27 @@ class TripRequestController extends Controller
         if (!$trip) {
             return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 403);
         }
+        // Idempotent cancellation: if already cancelled and customer is trying to cancel, return success
         if ($trip->current_status == 'cancelled') {
+            if ($request->status == 'cancelled') {
+                $data = TripRequestResource::make($trip);
+                return response()->json(responseFormatter(DEFAULT_UPDATE_200, $data));
+            }
             return response()->json(responseFormatter(TRIP_STATUS_CANCELLED_403), 403);
         }
+        // Idempotent completion: if already completed and trying to complete, return success
         if ($trip->current_status == 'completed') {
+            if ($request->status == 'completed') {
+                $data = TripRequestResource::make($trip);
+                return response()->json(responseFormatter(DEFAULT_UPDATE_200, $data));
+            }
             return response()->json(responseFormatter(TRIP_STATUS_COMPLETED_403), 403);
         }
 
         $attributes = [
             'column' => 'id',
             'value' => $trip_request_id,
-            'trip_status' => $request['status'],
+            'current_status' => $request['status'],
         ];
 
         if ($request->status == 'cancelled' && ($trip->current_status == ACCEPTED || $trip->current_status == PENDING)) {
@@ -761,5 +773,45 @@ class TripRequestController extends Controller
         $trips = TripRequestResource::collection($trips);
 
         return response()->json(responseFormatter(constant: DEFAULT_200, content: $trips, limit: $request->limit, offset: $request->offset));
+    }
+
+    private function handleCompletedOrCancelledTrip($trip, $request, &$attributes): void
+    {
+        if ($request->status == 'cancelled') {
+            $attributes['fee']['cancelled_by'] = 'customer';
+        }
+        
+        $attributes['coordinate']['drop_coordinates'] = new Point(
+            $trip->driver->lastLocations->latitude, 
+            $trip->driver->lastLocations->longitude
+        );
+
+        // Set driver availability_status back to available
+        $driverDetails = $this->driverDetailService->findOneBy(criteria: ['user_id' => $trip->driver_id]);
+        if ($driverDetails) {
+            if ($trip->type == RIDE_REQUEST) {
+                $driverDetails->ride_count = 0;
+            } elseif ($request->status == 'completed') {
+                --$driverDetails->parcel_count;
+            }
+            $driverDetails->availability_status = 'available';
+            $driverDetails->save();
+        }
+
+        // Send notification to driver
+        $push = getNotification('ride_' . $request->status);
+        if (!is_null($trip->driver->fcm_token)) {
+            $action = ($request->status == 'cancelled' && $trip->type == PARCEL) ? 'parcel_cancelled' : 'ride_completed';
+            sendDeviceNotification(
+                fcm_token: $trip->driver->fcm_token,
+                title: translate($push['title']),
+                description: translate(textVariableDataFormat(value: $push['description'])),
+                status: $push['status'],
+                ride_request_id: $trip->id,
+                type: $trip->type,
+                action: $action,
+                user_id: $trip->driver->id
+            );
+        }
     }
 }

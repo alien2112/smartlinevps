@@ -679,8 +679,18 @@ if (!function_exists('getMainDomain')) {
 if (!function_exists('getRoutes')) {
     function getRoutes(array $originCoordinates, array $destinationCoordinates, array $intermediateCoordinates = [], array $drivingMode = ["DRIVE"])
     {
-        $apiKey = businessConfig(GOOGLE_MAP_API)?->value['map_api_key_server'] ?? '';
-        $responses = [];
+        // Create cache key based on route parameters (rounded to 4 decimal places to group nearby coordinates)
+        $cacheKey = 'route_' . md5(json_encode([
+            'origin' => [round($originCoordinates[0], 4), round($originCoordinates[1], 4)],
+            'destination' => [round($destinationCoordinates[0], 4), round($destinationCoordinates[1], 4)],
+            'intermediate' => $intermediateCoordinates,
+            'mode' => $drivingMode
+        ]));
+
+        // Cache for 10 minutes (600 seconds) - routes don't change frequently
+        return Cache::remember($cacheKey, 600, function () use ($originCoordinates, $destinationCoordinates, $intermediateCoordinates, $drivingMode) {
+            $apiKey = businessConfig(GOOGLE_MAP_API)?->value['map_api_key_server'] ?? '';
+            $responses = [];
 
         $encodePolyline = function (array $points): string {
             $result = '';
@@ -765,7 +775,7 @@ if (!function_exists('getRoutes')) {
             ];
         }
 
-        $response = Http::timeout(10)->retry(2, 100)->get(MAP_API_BASE_URI . '/api/v2/directions', $params);
+        $response = Http::timeout(5)->get(MAP_API_BASE_URI . '/api/v2/directions', $params);
         if ($response->successful()) {
             $result = $response->json();
 
@@ -830,15 +840,26 @@ if (!function_exists('getRoutes')) {
         } else {
             // Handle the error if the request was not successful
             $errorMessage = 'GeoLink API request failed with status: ' . $response->status();
-            if ($response->json()) {
-                $errorMessage = $response->json()['message'] ?? $errorMessage;
+            $responseBody = $response->json();
+
+            // Log the full error for debugging
+            \Log::error('GeoLink API Error', [
+                'status' => $response->status(),
+                'response' => $responseBody,
+                'request_params' => $params,
+                'url' => MAP_API_BASE_URI . '/api/v2/directions'
+            ]);
+
+            if ($responseBody && isset($responseBody['message'])) {
+                $errorMessage = $responseBody['message'];
             }
+
             return [
                 0 => ['status' => 'ERROR', 'error_detail' => $errorMessage],
                 1 => ['status' => 'ERROR', 'error_detail' => $errorMessage]
             ];
         }
-
+        }); // End of Cache::remember
     }
 }
 

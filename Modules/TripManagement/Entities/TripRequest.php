@@ -67,6 +67,8 @@ class TripRequest extends Model
         'tips',
         'is_paused',
         'map_screenshot',
+        'version',
+        'locked_at',
         'deleted_at',
         'created_at',
         'updated_at',
@@ -263,7 +265,17 @@ class TripRequest extends Model
             $item->ref_id = $item->withTrashed()->count() + 100000;
         });
 
+        static::created(function ($item) {
+            // Clear dashboard caches when a new trip is created
+            \Illuminate\Support\Facades\Cache::forget('admin_dashboard_stats');
+            \Illuminate\Support\Facades\Cache::forget('admin_recent_trip_activity');
+        });
+
         static::updated(function ($item) {
+            // Clear dashboard caches when trip is updated
+            \Illuminate\Support\Facades\Cache::forget('admin_dashboard_stats');
+            \Illuminate\Support\Facades\Cache::forget('admin_recent_trip_activity');
+
             $array = [];
             foreach ($item->changes as $key => $change) {
                 if (array_key_exists($key, $item->original)) {
@@ -326,6 +338,10 @@ class TripRequest extends Model
         });
 
         static::deleted(function ($item) {
+            // Clear dashboard caches when trip is deleted
+            \Illuminate\Support\Facades\Cache::forget('admin_dashboard_stats');
+            \Illuminate\Support\Facades\Cache::forget('admin_recent_trip_activity');
+
             $log = new ActivityLog();
             $log->edited_by = auth()->user()->id;
             $log->before = $item->original;

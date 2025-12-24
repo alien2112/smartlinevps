@@ -14,7 +14,7 @@ use Modules\ZoneManagement\Entities\Zone;
 
 class TripFare extends Model
 {
-    use HasFactory, HasUuid;
+    use HasFactory, HasUuid, SoftDeletes;
 
     protected $fillable = [
         'zone_wise_default_trip_fare_id',

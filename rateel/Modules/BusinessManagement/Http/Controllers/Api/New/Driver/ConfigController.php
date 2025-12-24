@@ -83,7 +83,7 @@ class ConfigController extends Controller
             'business_support_email' => $info->firstWhere('key_name', 'business_support_email')?->value ?? null,
             'conversion_status' => (bool)($loyaltyPoints['status'] ?? false),
             'conversion_rate' => (double)($loyaltyPoints['points'] ?? 0),
-            'base_url' => url('/') . '/api/v1/',
+            'base_url' => url('/') . '/api/',
             'websocket_url' => $info->firstWhere('key_name', 'websocket_url')?->value ?? null,
             'websocket_port' => (string)$info->firstWhere('key_name', 'websocket_port')?->value ?? 6001,
             'websocket_key' => env('PUSHER_APP_KEY'),
@@ -848,9 +848,22 @@ class ConfigController extends Controller
             return response()->json(responseFormatter(constant: TRIP_REQUEST_404, errors: errorProcessor($validator)), 403);
         }
 
+        // Get driver's current location - query directly to ensure we get the latest
+        $lastLocation = \Modules\UserManagement\Entities\UserLastLocation::where('user_id', auth()->id())
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if (!$lastLocation || !$lastLocation->latitude || !$lastLocation->longitude) {
+            return response()->json(responseFormatter(
+                constant: DEFAULT_400,
+                content: null,
+                errors: [['error_code' => 'location_missing', 'message' => 'Driver location not available. Please enable location services.']]
+            ), 400);
+        }
+
         $pickupCoordinates = [
-            auth()->user()->lastLocations->latitude,
-            auth()->user()->lastLocations->longitude,
+            (float) $lastLocation->latitude,
+            (float) $lastLocation->longitude,
         ];
 
         $intermediateCoordinates = [];
@@ -859,7 +872,7 @@ class ConfigController extends Controller
                 $trip->coordinate->destination_coordinates->latitude,
                 $trip->coordinate->destination_coordinates->longitude,
             ];
-            $intermediateCoordinates = $trip->coordinate->intermediate_coordinates ? json_decode($$trip->coordinate->intermediate_coordinates, true) : [];
+            $intermediateCoordinates = $trip->coordinate->intermediate_coordinates ? json_decode($trip->coordinate->intermediate_coordinates, true) : [];
         } else {
             $destinationCoordinates = [
                 $trip->coordinate->pickup_coordinates->latitude,
@@ -867,7 +880,9 @@ class ConfigController extends Controller
             ];
         }
 
-        $drivingMode = auth()->user()->vehicleCategory->category->type == 'motor_bike' ? 'TWO_WHEELER' : 'DRIVE';
+        // Safely get driving mode with null checks - default to DRIVE if category not available
+        $vehicleType = auth()->user()->vehicleCategory?->category?->type ?? null;
+        $drivingMode = ($vehicleType && $vehicleType == 'motor_bike') ? 'TWO_WHEELER' : 'DRIVE';
 
         $getRoutes = getRoutes(
             originCoordinates: $pickupCoordinates,
@@ -877,7 +892,16 @@ class ConfigController extends Controller
 
         $result = [];
         foreach ($getRoutes as $route) {
-            if ($route['drive_mode'] == $drivingMode) {
+            // Check if route has error status (from failed API call)
+            if (isset($route['status']) && $route['status'] === 'ERROR') {
+                return response()->json(responseFormatter(
+                    constant: DEFAULT_400,
+                    content: null,
+                    errors: [['error_code' => 'route_error', 'message' => $route['error_detail'] ?? 'Failed to get route information']]
+                ), 400);
+            }
+
+            if (isset($route['drive_mode']) && $route['drive_mode'] == $drivingMode) {
                 if ($trip->current_status == 'completed' || $trip->current_status == 'cancelled') {
                     $result['is_dropped'] = true;
                 } else {
@@ -888,10 +912,13 @@ class ConfigController extends Controller
                 } else {
                     $result['is_picked'] = true;
                 }
-                return [array_merge($result, $route)];
+                $data = [array_merge($result, $route)];
+                return response()->json(responseFormatter(constant: DEFAULT_200, content: $data));
             }
         }
 
+        // If no matching route found, return empty array with success response
+        return response()->json(responseFormatter(constant: DEFAULT_200, content: []));
     }
 
     public function predefinedQuestionAnswerList(): JsonResponse

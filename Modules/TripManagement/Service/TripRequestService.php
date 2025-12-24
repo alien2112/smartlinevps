@@ -305,7 +305,6 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
 
     public function getAdminZoneWiseStatistics(array $data)
     {
-
         $whereBetweenCriteria = [];
         if (array_key_exists('date', $data)) {
             $date = getDateRange($data['date']);
@@ -314,36 +313,39 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
             ];
         }
         $zones = $this->zoneRepository->getBy(criteria: ['is_active' => 1]);
-        $zoneTripsByDate = $zones->map(function ($zone) use ($whereBetweenCriteria) {
-            $completedCriteria = [
-                'zone_id' => $zone->id,
-                'current_status' => COMPLETED,
-            ];
-            $cancelledCriteria = [
-                'zone_id' => $zone->id,
-                'current_status' => CANCELLED,
-            ];
-            $ongoingCriteria = [
-                'zone_id' => $zone->id,
-            ];
-            $whereInCriteria = [
-                'current_status' => [PENDING, ACCEPTED, ONGOING],
-            ];
-            $completedTrips = $this->tripRequestRepository->getBy(criteria: $completedCriteria, whereBetweenCriteria: $whereBetweenCriteria);
-            $cancelledTrips = $this->tripRequestRepository->getBy(criteria: $cancelledCriteria, whereBetweenCriteria: $whereBetweenCriteria);
-            $ongoingTrips = $this->tripRequestRepository->getBy(criteria: $ongoingCriteria, whereInCriteria: $whereInCriteria, whereBetweenCriteria: $whereBetweenCriteria);
+        $zoneIds = $zones->pluck('id')->toArray();
 
+        // Single optimized query to get all zone statistics at once
+        $tripStats = DB::table('trip_requests')
+            ->select('zone_id', 'current_status', DB::raw('COUNT(*) as count'))
+            ->whereIn('zone_id', $zoneIds)
+            ->when(!empty($whereBetweenCriteria), function ($query) use ($whereBetweenCriteria) {
+                foreach ($whereBetweenCriteria as $column => $values) {
+                    $query->whereBetween($column, $values);
+                }
+            })
+            ->groupBy('zone_id', 'current_status')
+            ->get()
+            ->groupBy('zone_id');
+
+        $zoneTripsByDate = $zones->map(function ($zone) use ($tripStats) {
+            $zoneStats = $tripStats->get($zone->id, collect());
+
+            $completedCount = $zoneStats->where('current_status', COMPLETED)->sum('count');
+            $cancelledCount = $zoneStats->where('current_status', CANCELLED)->sum('count');
+            $ongoingCount = $zoneStats->whereIn('current_status', [PENDING, ACCEPTED, ONGOING])->sum('count');
 
             return [
                 'zone_id' => $zone->id,
                 'zone_name' => $zone->name,
-                'completed_trips' => $completedTrips->count(),
-                'cancelled_trips' => $cancelledTrips->count(),
-                'ongoing_trips' => $ongoingTrips->count(),
-                'total_trips' => $completedTrips->count() + $cancelledTrips->count() + $ongoingTrips->count(),
+                'completed_trips' => $completedCount,
+                'cancelled_trips' => $cancelledCount,
+                'ongoing_trips' => $ongoingCount,
+                'total_trips' => $completedCount + $cancelledCount + $ongoingCount,
             ];
         });
-        $totalTrips = $this->tripRequestRepository->getBy(whereInCriteria: ['zone_id' => $zones->pluck('id')], whereBetweenCriteria: $whereBetweenCriteria)->count();
+
+        $totalTrips = $zoneTripsByDate->sum('total_trips');
 
         return [
             'totalTrips' => $totalTrips,
@@ -1044,10 +1046,14 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
 
     public function getCustomerIncompleteRide(): mixed
     {
-        $trip = $this->tripRequestRepository->findOneBy(criteria: ['customer_id' => auth()->id()], relations: [
-            'customer', 'driver', 'vehicleCategory', 'vehicleCategory.tripFares', 'vehicle', 'coupon', 'time',
-            'coordinate', 'fee', 'tripStatus', 'zone', 'vehicle.model', 'fare_biddings', 'parcel', 'parcelUserInfo'
-        ]);
+        $trip = $this->tripRequestRepository->findOneBy(
+            criteria: ['customer_id' => auth()->id()],
+            relations: [
+                'customer', 'driver', 'vehicleCategory', 'vehicleCategory.tripFares', 'vehicle', 'coupon', 'time',
+                'coordinate', 'fee', 'tripStatus', 'zone', 'vehicle.model', 'fare_biddings', 'parcel', 'parcelUserInfo'
+            ],
+            orderBy: ['created_at' => 'desc']
+        );
 
         if (
             !$trip || $trip->type != 'ride_request' ||
@@ -1064,7 +1070,11 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
 
     public function getDriverIncompleteRide(): mixed
     {
-        $trip = $this->findOneWithAvg(criteria: ['driver_id' => auth()->guard('api')->id()], relations: ['tripStatus', 'customer', 'driver', 'time', 'coordinate', 'time', 'fee'], withAvgRelation: ['customerReceivedReviews', 'rating']);
+        $trip = $this->tripRequestRepository->findOneBy(
+            criteria: ['driver_id' => auth()->guard('api')->id()],
+            relations: ['tripStatus', 'customer', 'driver', 'time', 'coordinate', 'fee'],
+            orderBy: ['created_at' => 'desc']
+        );
 
         if (
             !$trip || $trip->fee->cancelled_by == 'driver' ||

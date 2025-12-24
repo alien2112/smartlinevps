@@ -76,5 +76,6 @@ class Kernel extends HttpKernel
         'admin' => AdminMiddleware::class,
         'maintenance_mode' => MaintenanceModeMiddleware::class,
         'idempotency' => EnsureIdempotency::class,
+        'rate_limit' => \App\Http\Middleware\ApiRateLimiter::class,
     ];
 }

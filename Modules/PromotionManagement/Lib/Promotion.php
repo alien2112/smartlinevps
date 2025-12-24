@@ -130,10 +130,11 @@ if (!function_exists('sendTopicNotification')) {
 function sendCurlRequest(string $url, string $postdata, array $header): string|bool
 {
     $ch = curl_init();
-    $timeout = 120;
+    $timeout = 15; // Reduced from 120s to 15s for faster failure
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $timeout);
+    curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postdata);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $header);
@@ -183,7 +184,7 @@ function sendNotificationToHttp(array|null $data): bool|string|null
             'Content-Type' => 'application/json',
         ];
         try {
-            return Http::withHeaders($headers)->post($url, $data);
+            return Http::timeout(10)->withHeaders($headers)->post($url, $data);
         } catch (\Exception $exception) {
             return false;
         }
@@ -195,6 +196,17 @@ function getAccessToken($key): array|string
         return [
             'status' => false,
             'data' => ['message' => 'Invalid server_key credentials']
+        ];
+    }
+
+    // Cache the access token for 50 minutes (token is valid for 60 minutes)
+    $cacheKey = 'fcm_access_token_' . md5($key->client_email);
+    $cachedToken = \Illuminate\Support\Facades\Cache::get($cacheKey);
+    
+    if ($cachedToken) {
+        return [
+            'status' => true,
+            'data' => $cachedToken
         ];
     }
 
@@ -211,7 +223,7 @@ function getAccessToken($key): array|string
     openssl_sign($unsignedJwt, $signature, $key->private_key, OPENSSL_ALGO_SHA256);
     $jwt = $unsignedJwt . '.' . base64_encode($signature);
 
-    $response = Http::asForm()->post('https://oauth2.googleapis.com/token', [
+    $response = Http::timeout(10)->asForm()->post('https://oauth2.googleapis.com/token', [
         'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
         'assertion' => $jwt,
     ]);
@@ -220,10 +232,15 @@ function getAccessToken($key): array|string
             'status' => false,
             'data' => $response->json()
         ];
-
     }
+    
+    $accessToken = $response->json('access_token');
+    
+    // Cache for 50 minutes
+    \Illuminate\Support\Facades\Cache::put($cacheKey, $accessToken, 3000);
+    
     return [
         'status' => true,
-        'data' => $response->json('access_token')
+        'data' => $accessToken
     ];
 }

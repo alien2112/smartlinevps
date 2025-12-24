@@ -39,6 +39,9 @@ class PaymentController extends Controller
      */
     public function digitalPayment(Request $request)
     {
+        // Normalize payment method to lowercase for case-insensitive validation
+        $request->merge(['payment_method' => strtolower($request->payment_method)]);
+
         $validator = Validator::make($request->all(), [
             'trip_request_id' => 'required',
             'payment_method' => 'required|in:kashier'

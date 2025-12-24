@@ -28,6 +28,8 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
     protected ?string $tripOtp;
     protected bool $sendOtp;
     protected ?array $parcelReceiverInfo;
+    protected string $driverId;
+    protected ?string $driverFcmToken;
 
     /**
      * Create a new job instance.
@@ -40,7 +42,9 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
         string $tripType,
         ?string $tripOtp,
         bool $sendOtp,
-        ?array $parcelReceiverInfo = null
+        ?array $parcelReceiverInfo = null,
+        string $driverId = null,
+        ?string $driverFcmToken = null
     ) {
         $this->tripId = $tripId;
         $this->customerId = $customerId;
@@ -50,7 +54,9 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
         $this->tripOtp = $tripOtp;
         $this->sendOtp = $sendOtp;
         $this->parcelReceiverInfo = $parcelReceiverInfo;
-        
+        $this->driverId = $driverId;
+        $this->driverFcmToken = $driverFcmToken;
+
         // Use high priority queue
         $this->onQueue('high');
     }
@@ -60,9 +66,33 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
      */
     public function handle(): void
     {
+        \Log::info('ProcessTripAcceptNotificationsJob started', [
+            'trip_id' => $this->tripId,
+            'driver_id' => $this->driverId,
+            'customer_id' => $this->customerId
+        ]);
+
+        $startTime = microtime(true);
+
+        // Send notification to driver confirming trip acceptance
+        if ($this->driverFcmToken) {
+            \Log::info('Sending FCM to driver', ['trip_id' => $this->tripId]);
+            sendDeviceNotification(
+                fcm_token: $this->driverFcmToken,
+                title: translate('Trip Accepted'),
+                description: translate('You have successfully accepted the trip. Please proceed to pickup location.'),
+                status: 1,
+                ride_request_id: $this->tripId,
+                type: $this->tripType,
+                action: 'trip_accepted_by_driver',
+                user_id: $this->driverId
+            );
+        }
+
         // Send "driver is on the way" notification
         $push = getNotification('driver_is_on_the_way');
         if ($this->customerFcmToken) {
+            \Log::info('Sending FCM to customer', ['trip_id' => $this->tripId]);
             sendDeviceNotification(
                 fcm_token: $this->customerFcmToken,
                 title: translate($push['title']),
@@ -77,11 +107,13 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
 
         // Send OTP if required
         if ($this->sendOtp && $this->tripOtp) {
+            \Log::info('Sending OTP', ['trip_id' => $this->tripId, 'otp' => $this->tripOtp]);
             $otpMessage = 'Your trip OTP is ' . $this->tripOtp;
-            
+
             // Send OTP via SMS
             if ($this->customerPhone) {
                 try {
+                    \Log::info('Sending OTP SMS', ['trip_id' => $this->tripId, 'phone' => $this->customerPhone]);
                     self::send($this->customerPhone, $otpMessage);
                 } catch (\Exception $exception) {
                     \Log::warning('Failed to send trip OTP SMS', [
@@ -93,6 +125,7 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
 
             // Send OTP via push notification
             if ($this->customerFcmToken) {
+                \Log::info('Sending OTP FCM', ['trip_id' => $this->tripId]);
                 sendDeviceNotification(
                     fcm_token: $this->customerFcmToken,
                     title: translate('Trip OTP'),
@@ -126,5 +159,11 @@ class ProcessTripAcceptNotificationsJob implements ShouldQueue
                 }
             }
         }
+
+        $executionTime = round((microtime(true) - $startTime) * 1000, 2);
+        \Log::info('ProcessTripAcceptNotificationsJob completed', [
+            'trip_id' => $this->tripId,
+            'execution_time_ms' => $executionTime
+        ]);
     }
 }

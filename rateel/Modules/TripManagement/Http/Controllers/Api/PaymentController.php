@@ -39,9 +39,12 @@ class PaymentController extends Controller
      */
     public function digitalPayment(Request $request)
     {
+        // Normalize payment method to lowercase for case-insensitive validation
+        $request->merge(['payment_method' => strtolower($request->payment_method)]);
+
         $validator = Validator::make($request->all(), [
             'trip_request_id' => 'required',
-            'payment_method' => 'required|in:ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash,ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash'
+            'payment_method' => 'required|in:kashier,ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash'
         ]);
         if ($validator->fails()) {
 
@@ -153,27 +156,13 @@ class PaymentController extends Controller
         $this->customerLevelUpdateChecker($trip->customer);
         DB::commit();
 
-        $push = getNotification('payment_successful');
-        sendDeviceNotification(
-            fcm_token: auth('api')->user()->user_type == 'customer' ? $trip->driver->fcm_token : $trip->customer->fcm_token,
-            title: translate($push['title']),
-            description: translate(textVariableDataFormat(value: $push['description'],paidAmount: $trip->paid_fare,methodName: $request->payment_method)),
-            status: $push['status'],
-            ride_request_id: $trip->id,
-            type: $trip->type,
-            action: 'payment_successful',
-            user_id: $trip->driver->id
-        );
-        try {
-            checkPusherConnection(DriverPaymentReceivedEvent::broadcast($trip));
-        }catch(Exception $exception){
-
-        }
-        try {
-            checkPusherConnection(CustomerTripPaymentSuccessfulEvent::broadcast($trip));
-        }catch(Exception $exception){
-
-        }
+        // Offload slow external API calls to background job
+        dispatch(new \App\Jobs\ProcessPaymentNotificationsJob(
+            $trip->id,
+            $request->payment_method,
+            auth('api')->id(),
+            auth('api')->user()->user_type
+        ));
 
         return response()->json(responseFormatter(DEFAULT_UPDATE_200));
     }

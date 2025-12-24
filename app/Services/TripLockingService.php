@@ -19,23 +19,39 @@ class TripLockingService
      * @param string $tripId
      * @param string $driverId
      * @param int $expectedVersion Optional version for optimistic locking
+     * @param array $additionalData Optional additional fields to update (otp, vehicle_id, vehicle_category_id, actual_fare)
      * @return array ['success' => bool, 'trip' => TripRequest|null, 'message' => string]
      */
-    public function lockAndAssignTrip(string $tripId, string $driverId, int $expectedVersion = null): array
+    public function lockAndAssignTrip(string $tripId, string $driverId, int $expectedVersion = null, array $additionalData = []): array
     {
-        return DB::transaction(function () use ($tripId, $driverId, $expectedVersion) {
+        Log::info('Attempting to lock and assign trip', [
+            'trip_id' => $tripId,
+            'driver_id' => $driverId,
+            'expected_version' => $expectedVersion,
+            'has_additional_data' => !empty($additionalData)
+        ]);
+
+        return DB::transaction(function () use ($tripId, $driverId, $expectedVersion, $additionalData) {
             // Pessimistic locking: Lock the row for update
             $trip = TripRequest::where('id', $tripId)
                 ->lockForUpdate() // SELECT ... FOR UPDATE
                 ->first();
 
             if (!$trip) {
+                Log::warning('Trip not found for locking', ['trip_id' => $tripId]);
                 return [
                     'success' => false,
                     'trip' => null,
                     'message' => 'Trip not found'
                 ];
             }
+
+            Log::debug('Trip found for locking', [
+                'trip_id' => $tripId,
+                'current_driver_id' => $trip->driver_id,
+                'current_status' => $trip->current_status,
+                'version' => $trip->version
+            ]);
 
             // Check if trip is already assigned
             if ($trip->driver_id && $trip->driver_id !== $driverId) {
@@ -54,6 +70,11 @@ class TripLockingService
 
             // Check if trip status is acceptable
             if (!in_array($trip->current_status, ['pending', 'searching', null])) {
+                Log::warning('Trip status not acceptable for assignment', [
+                    'trip_id' => $tripId,
+                    'current_status' => $trip->current_status,
+                    'driver_id' => $driverId
+                ]);
                 return [
                     'success' => false,
                     'trip' => $trip,
@@ -79,15 +100,31 @@ class TripLockingService
             // Assign trip to driver
             $trip->driver_id = $driverId;
             $trip->current_status = 'accepted';
-            $trip->trip_status = 'accepted';
             $trip->locked_at = now();
-            $trip->version = $trip->version + 1; // Increment version
+            $trip->version = ($trip->version ?? 0) + 1; // Increment version with null safety
+
+            // Apply additional data in the same transaction for atomicity
+            if (isset($additionalData['otp'])) {
+                $trip->otp = $additionalData['otp'];
+            }
+            if (isset($additionalData['vehicle_id'])) {
+                $trip->vehicle_id = $additionalData['vehicle_id'];
+            }
+            if (isset($additionalData['vehicle_category_id'])) {
+                $trip->vehicle_category_id = $additionalData['vehicle_category_id'];
+            }
+            if (isset($additionalData['actual_fare'])) {
+                $trip->actual_fare = $additionalData['actual_fare'];
+            }
+
             $trip->save();
 
             Log::info('Trip successfully assigned', [
                 'trip_id' => $tripId,
                 'driver_id' => $driverId,
-                'version' => $trip->version
+                'version' => $trip->version,
+                'status' => $trip->current_status,
+                'otp_set' => isset($additionalData['otp'])
             ]);
 
             return [
@@ -131,7 +168,6 @@ class TripLockingService
 
             $trip->driver_id = null;
             $trip->current_status = 'pending';
-            $trip->trip_status = 'pending';
             $trip->locked_at = null;
             $trip->version = $trip->version + 1;
             $trip->save();

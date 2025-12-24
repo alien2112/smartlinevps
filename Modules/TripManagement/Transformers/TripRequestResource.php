@@ -89,25 +89,27 @@ class TripRequestResource extends JsonResource
         ];
 
         $coordinate = [];
-        if ($this->coordinate()->exists()) {
+        // PERFORMANCE: Check if relationship is loaded before accessing to avoid N+1 queries
+        if ($this->relationLoaded('coordinate') && $this->coordinate) {
             $coordinate = [
-                'pickup_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->pickup_coordinates),
-                'pickup_address' => $this->whenLoaded('coordinate', utf8Clean($this->coordinate->pickup_address)),
-                'destination_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->destination_coordinates),
-                'destination_address' => $this->whenLoaded('coordinate', utf8Clean($this->coordinate->destination_address)),
-                'start_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->start_coordinates),
-                'drop_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->drop_coordinates),
-                'driver_accept_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->driver_accept_coordinates),
-                'customer_request_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->customer_request_coordinates),
-                'intermediate_coordinates' => ($this->whenLoaded('coordinate', $this->coordinate->intermediate_coordinates)),
-                'intermediate_addresses' => $this->whenLoaded('coordinate', utf8Clean($this->coordinate->intermediate_addresses)),
-                'is_reached_destination' => (bool)$this->whenLoaded('coordinate', $this->coordinate->is_reached_destination),
-                'is_reached_1' => (bool)$this->whenLoaded('coordinate', $this->coordinate->is_reached_1),
-                'is_reached_2' => (bool)$this->whenLoaded('coordinate', $this->coordinate->is_reached_2),
+                'pickup_coordinates' => $this->coordinate->pickup_coordinates,
+                'pickup_address' => utf8Clean($this->coordinate->pickup_address),
+                'destination_coordinates' => $this->coordinate->destination_coordinates,
+                'destination_address' => utf8Clean($this->coordinate->destination_address),
+                'start_coordinates' => $this->coordinate->start_coordinates,
+                'drop_coordinates' => $this->coordinate->drop_coordinates,
+                'driver_accept_coordinates' => $this->coordinate->driver_accept_coordinates,
+                'customer_request_coordinates' => $this->coordinate->customer_request_coordinates,
+                'intermediate_coordinates' => $this->coordinate->intermediate_coordinates,
+                'intermediate_addresses' => utf8Clean($this->coordinate->intermediate_addresses),
+                'is_reached_destination' => (bool)$this->coordinate->is_reached_destination,
+                'is_reached_1' => (bool)$this->coordinate->is_reached_1,
+                'is_reached_2' => (bool)$this->coordinate->is_reached_2,
             ];
         }
 
-        if ($this->fee()->exists()) {
+        // PERFORMANCE: Check if relationship is loaded before accessing to avoid N+1 queries
+        if ($this->relationLoaded('fee') && $this->fee) {
             $fee = [
                 'waiting_fee' => round((double)$this->fee->waiting_fee, 2),
                 'waited_by' => $this->fee->waited_by,
@@ -129,7 +131,8 @@ class TripRequestResource extends JsonResource
         }
 
         $time = [];
-        if ($this->time()->exists()) {
+        // PERFORMANCE: Check if relationship is loaded before accessing to avoid N+1 queries
+        if ($this->relationLoaded('time') && $this->time) {
             $time = [
                 'waiting_time' => round((double)$this->time->waiting_time, 2),
                 'delay_time' => round((double)$this->time->delay_time, 2),

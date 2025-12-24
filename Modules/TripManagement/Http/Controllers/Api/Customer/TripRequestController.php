@@ -1145,6 +1145,9 @@ class TripRequestController extends Controller
             ]);
         }
 
+        // Refresh trip from database to get updated status
+        $trip = $trip->fresh(['driver', 'vehicle.model', 'vehicleCategory', 'tripStatus', 'coordinate', 'fee', 'time', 'parcel', 'parcelUserInfo', 'parcelRefund']);
+        
         $resource = TripRequestResource::make($trip)->resolve();
         return response()->json(utf8Clean(responseFormatter(DEFAULT_UPDATE_200, $resource)));
     }

@@ -49,6 +49,8 @@ use Modules\UserManagement\Lib\LevelUpdateCheckerTrait;
 use Modules\UserManagement\Transformers\LastLocationResource;
 use Modules\ZoneManagement\Interfaces\ZoneInterface;
 use Modules\TransactionManagement\Traits\TransactionTrait;
+use Modules\BusinessManagement\Entities\BusinessSetting;
+use Modules\Gateways\Entities\Setting;
 use Modules\ZoneManagement\Service\Interface\ZoneServiceInterface;
 
 class TripRequestController extends Controller
@@ -781,7 +783,8 @@ class TripRequestController extends Controller
         }
 
         $env = env('APP_MODE');
-        $otp = $env != "live" ? '0000' : rand(1000, 9999);
+        $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
+        $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';
 
         $assignedVehicleCategoryId = $trip->vehicle_category_id;
         if (empty($assignedVehicleCategoryId)) {
@@ -802,7 +805,6 @@ class TripRequestController extends Controller
             'otp' => $otp,
             'vehicle_id' => $driver->vehicle->id,
             'current_status' => ACCEPTED,
-            'trip_status' => ACCEPTED,
             'vehicle_category_id' => $assignedVehicleCategoryId,
         ];
 
@@ -961,12 +963,22 @@ class TripRequestController extends Controller
 
     public function rideStatusUpdate($trip_request_id, Request $request): JsonResponse
     {
+        \Log::info('Customer rideStatusUpdate called', [
+            'trip_request_id' => $trip_request_id,
+            'status' => $request->input('status'),
+            'cancel_reason' => $request->input('cancel_reason'),
+            'user_id' => auth()->id()
+        ]);
+
         $validator = Validator::make($request->all(), [
             'status' => 'required',
         ]);
 
         if ($validator->fails()) {
-
+            \Log::warning('Customer rideStatusUpdate validation failed', [
+                'trip_request_id' => $trip_request_id,
+                'errors' => $validator->errors()->toArray()
+            ]);
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
 
@@ -974,10 +986,20 @@ class TripRequestController extends Controller
         if (!$trip) {
             return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 403);
         }
+        // Idempotent cancellation: if already cancelled and customer is trying to cancel, return success
         if ($trip->current_status == CANCELLED) {
+            if ($request->status == 'cancelled') {
+                $data = TripRequestResource::make($trip);
+                return response()->json(responseFormatter(DEFAULT_UPDATE_200, $data));
+            }
             return response()->json(responseFormatter(TRIP_STATUS_CANCELLED_403), 403);
         }
+        // Idempotent completion: if already completed and trying to complete, return success
         if ($trip->current_status == COMPLETED) {
+            if ($request->status == 'completed') {
+                $data = TripRequestResource::make($trip);
+                return response()->json(responseFormatter(DEFAULT_UPDATE_200, $data));
+            }
             return response()->json(responseFormatter(TRIP_STATUS_COMPLETED_403), 403);
         }
         if ($trip->current_status == RETURNING) {
@@ -986,7 +1008,7 @@ class TripRequestController extends Controller
         $attributes = [
             'column' => 'id',
             'value' => $trip_request_id,
-            'trip_status' => $request['status'],
+            'current_status' => $request['status'],
             'trip_cancellation_reason' => utf8Clean($request['cancel_reason'] ?? null)
         ];
 
@@ -1124,6 +1146,9 @@ class TripRequestController extends Controller
         }
 
         DB::beginTransaction();
+        // Update main trip table (current_status, trip_cancellation_reason)
+        $this->trip->update(attributes: $attributes, id: $trip_request_id);
+
         if ($request->status == 'cancelled' && $trip->driver_id && $trip->current_status == ONGOING) {
             $this->trip->updateRelationalTable($attributes);
             $this->customerLevelUpdateChecker(auth()->user());
@@ -1136,10 +1161,15 @@ class TripRequestController extends Controller
             $this->trip->updateRelationalTable($attributes);
         }
         DB::commit();
+
+        \Log::info('Customer rideStatusUpdate completed', [
+            'trip_request_id' => $trip_request_id,
+            'new_status' => $request['status']
+        ]);
         if ($trip->driver_id && $request->status == 'cancelled' && $trip->current_status == ONGOING && $trip->type == PARCEL) {
-            $env = env('APP_MODE');
-            $otp = $env != "live" ? '0000' : rand(1000, 9999);
-            $trip->otp = $otp;
+                    $env = env('APP_MODE');
+                    $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
+                    $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';            $trip->otp = $otp;
             if ($trip?->parcel?->payer == SENDER) {
                 $trip->paid_fare += $trip->return_fee;
                 $trip->due_amount = $trip->return_fee;
@@ -1161,6 +1191,9 @@ class TripRequestController extends Controller
                 RETURNING => now()
             ]);
         }
+
+        // Refresh trip from database to get updated status
+        $trip = $trip->fresh(['driver', 'vehicle.model', 'vehicleCategory', 'tripStatus', 'coordinate', 'fee', 'time', 'parcel', 'parcelUserInfo', 'parcelRefund']);
 
         $resource = TripRequestResource::make($trip)->resolve();
         return response()->json(utf8Clean(responseFormatter(DEFAULT_UPDATE_200, $resource)));

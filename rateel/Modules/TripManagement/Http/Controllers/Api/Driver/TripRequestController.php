@@ -21,6 +21,8 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Modules\BusinessManagement\Entities\BusinessSetting;
+use Modules\Gateways\Entities\Setting;
 use Modules\Gateways\Traits\SmsGatewayForMessage;
 use Modules\ReviewModule\Interfaces\ReviewInterface;
 use Modules\TransactionManagement\Traits\TransactionTrait;
@@ -39,6 +41,7 @@ use Modules\UserManagement\Interfaces\UserLastLocationInterface;
 use Modules\UserManagement\Lib\LevelHistoryManagerTrait;
 use Modules\UserManagement\Lib\LevelUpdateCheckerTrait;
 use Modules\VehicleManagement\Entities\Vehicle;
+use App\Services\TripLockingService;
 use Ramsey\Uuid\Nonstandard\Uuid;
 
 class TripRequestController extends Controller
@@ -55,6 +58,7 @@ class TripRequestController extends Controller
         private TempTripNotificationInterface  $tempNotification,
         private ReviewInterface                $review,
         private TripRequestTimeInterface       $time,
+        private TripLockingService             $tripLockingService,
     )
     {
     }
@@ -145,7 +149,6 @@ class TripRequestController extends Controller
         ]);
 
         if ($validator->fails()) {
-
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
 
@@ -153,30 +156,11 @@ class TripRequestController extends Controller
         $trip = $this->trip->getBy('id', $request['trip_request_id'], [
             'relations' => ['customer', 'coordinate', 'parcelUserInfo', 'tripStatus']
         ]);
-        $user_status = $user->driverDetails->availability_status;
-
-        if ($user_status == 'unavailable' || !$user->driverDetails->is_online) {
-
-            return response()->json(responseFormatter(constant: DRIVER_UNAVAILABLE_403), 403);
-        }
-
-        if ($trip->current_status == ACCEPTED && $trip->driver_id != $user->id) {
-
-            return response()->json(responseFormatter(TRIP_REQUEST_DRIVER_403), 403);
-        }
-        if ($trip->current_status == ACCEPTED && $trip->driver_id == $user->id) {
-
-            return response()->json(responseFormatter(DEFAULT_UPDATE_200));
-        }
 
         if (!$trip) {
+            \Log::warning('Trip not found, trip_request_id: ' . $request['trip_request_id']);
             return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 403);
         }
-        if ($trip->driver_id && $trip->driver_id != $user->id) {
-
-            return response()->json(responseFormatter(TRIP_REQUEST_DRIVER_403), 403);
-        }
-
 
         if ($request['action'] != ACCEPTED) {
             if (get_cache('bid_on_fare') ?? 0) {
@@ -202,8 +186,6 @@ class TripRequestController extends Controller
                         'ids' => $allBidding->pluck('id')
                     ]);
                 }
-
-
             }
             $data = $this->tempNotification->getBy([
                 'trip_request_id' => $request->trip_request_id,
@@ -221,9 +203,37 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(constant: DEFAULT_UPDATE_200));
         }
 
+        // ATOMIC TRIP ASSIGNMENT
+        $lockResult = $this->tripLockingService->lockAndAssignTrip(
+            tripId: $request['trip_request_id'],
+            driverId: $user->id
+        );
+
+        if (!$lockResult['success']) {
+            if ($lockResult['trip'] && $lockResult['trip']->driver_id == $user->id) {
+                // Trip already assigned to this driver, check if acceptance was completed
+                $existingTrip = $this->trip->getBy('id', $request['trip_request_id'], [
+                    'relations' => ['customer', 'coordinate', 'parcelUserInfo', 'tripStatus', 'time', 'vehicle.model', 'vehicleCategory']
+                ]);
+
+                // If trip has OTP and vehicle assigned, acceptance was completed
+                if ($existingTrip->otp && $existingTrip->vehicle_id) {
+                    $data = TripRequestResource::make($existingTrip);
+                    return response()->json(responseFormatter(DEFAULT_UPDATE_200, content: $data));
+                }
+
+                // Otherwise, continue with acceptance flow to complete it
+                $trip = $existingTrip;
+            } else {
+                return response()->json(responseFormatter(TRIP_REQUEST_DRIVER_403, $lockResult['message']), 403);
+            }
+        } else {
+            $trip = $lockResult['trip'];
+        }
 
         $env = env('APP_MODE');
-        $otp = $env != "live" ? '0000' : rand(1000, 9999);
+        $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
+        $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';
 
         $driverCurrentStatus = $this->driverDetails->getBy(column: 'user_id', value: $user->id, attributes: [
             'whereInColumn' => 'availability_status',
@@ -232,12 +242,12 @@ class TripRequestController extends Controller
         if (!$driverCurrentStatus) {
             return response()->json(responseFormatter(DRIVER_403), 403);
         }
+
         if ($trip->current_status === "cancelled") {
             return response()->json(responseFormatter(DRIVER_REQUEST_ACCEPT_TIMEOUT_408), 403);
         }
 
         $bid_on_fare = get_cache('bid_on_fare') ?? 0;
-
         $assignedVehicleCategoryId = $trip->vehicle_category_id;
         if (empty($assignedVehicleCategoryId)) {
             $assignedVehicleCategoryId = $user->vehicle->category_id ?? null;
@@ -253,20 +263,13 @@ class TripRequestController extends Controller
 
         $attributes = [
             'column' => 'id',
-            'driver_id' => $user->id,
             'otp' => $otp,
             'vehicle_id' => $user->vehicle->id,
             'vehicle_category_id' => $assignedVehicleCategoryId,
-            'current_status' => ACCEPTED,
-            'trip_status' => ACCEPTED,
+            'current_status' => 'accepted', // Set status after all validations pass
         ];
+
         if ($bid_on_fare) {
-            $bidding = $this->bidding->getBy(column: 'trip_request_id', value: $request['trip_request_id'],
-                attributes: ['additionalColumn' => 'driver_id', 'additionalValue' => $user->id, 'additionalColumn2' => 'is_ignored', 'additionalValue2' => 0],
-            );
-            if ($bidding) {
-                return response()->json(responseFormatter(constant: BIDDING_SUBMITTED_403), 403);
-            }
             if ($trip->estimated_fare != $trip->actual_fare) {
                 $this->bidding->store(attributes: [
                     'trip_request_id' => $request['trip_request_id'],
@@ -277,96 +280,23 @@ class TripRequestController extends Controller
             }
             $attributes['actual_fare'] = $trip->actual_fare;
         }
-        Cache::put($trip->id, ACCEPTED, now()->addHour());
-        
-        // Calculate driver arrival time with fallback
-        $driverArrivalTimeMinutes = 10; // Default fallback: 10 minutes
-        try {
-            $driverArrivalTime = getRoutes(
-                originCoordinates: [
-                    $trip->coordinate->pickup_coordinates->latitude,
-                    $trip->coordinate->pickup_coordinates->longitude
-                ],
-                destinationCoordinates: [
-                    $user->lastLocations->latitude,
-                    $user->lastLocations->longitude
-                ],
-            );
-            
-            // Check if getRoutes returned valid data
-            if (is_array($driverArrivalTime) && isset($driverArrivalTime[0]['duration'])) {
-                $driverArrivalTimeMinutes = (double)($driverArrivalTime[0]['duration']) / 60;
-            } else {
-                // Fallback: Calculate using haversine distance (assuming 30 km/h average speed)
-                $distanceMeters = haversineDistance(
-                    $trip->coordinate->pickup_coordinates->latitude,
-                    $trip->coordinate->pickup_coordinates->longitude,
-                    $user->lastLocations->latitude,
-                    $user->lastLocations->longitude
-                );
-                $driverArrivalTimeMinutes = ($distanceMeters / 1000) / 30 * 60; // distance / speed * 60 for minutes
-                $driverArrivalTimeMinutes = max($driverArrivalTimeMinutes, 5); // Minimum 5 minutes
-            }
-        } catch (\Exception $e) {
-            // Fallback: Calculate using haversine distance
-            $distanceMeters = haversineDistance(
-                $trip->coordinate->pickup_coordinates->latitude,
-                $trip->coordinate->pickup_coordinates->longitude,
-                $user->lastLocations->latitude,
-                $user->lastLocations->longitude
-            );
-            $driverArrivalTimeMinutes = ($distanceMeters / 1000) / 30 * 60; // distance / speed * 60 for minutes
-            $driverArrivalTimeMinutes = max($driverArrivalTimeMinutes, 5); // Minimum 5 minutes
-        }
 
-        $attributes['driver_arrival_time'] = $driverArrivalTimeMinutes;
-
-        //notify other driver about ride started
-
-        $data = $this->tempNotification->get([
-            'relations' => 'user',
-            'trip_request_id' => $request['trip_request_id'],
-            'whereNotInColumn' => 'user_id',
-            'whereNotInValue' => [auth('api')->id()]
-        ]);
-
-        if (!empty($data)) {
-            $push = getNotification('ride_is_started');
-            $notification = [
-                'title' => translate($push['title']),
-                'description' => translate($push['description']),
-                'status' => $push['status'],
-                'ride_request_id' => $trip->id,
-                'type' => $trip->type,
-                'action' => 'ride_started'
-            ];
-            dispatch(new SendPushNotificationJob($notification, $data))->onQueue('high');
-            foreach ($data as $tempNotification) {
-                try {
-                    checkPusherConnection(AnotherDriverTripAcceptedEvent::broadcast($tempNotification->user, $trip));
-                } catch (Exception $exception) {
-
-                }
-            }
-            $this->tempNotification->delete($trip->id);
-            TempTripNotification::where('user_id', $user->id)->delete();
-        }
-        //Trip update
+        // Update trip
         $trip = $this->trip->update(attributes: $attributes, id: $request['trip_request_id']);
-        
+
         $trip->tripStatus()->update([
             'accepted' => now()
         ]);
-        //deleting exiting rejected driver request for this trip
+
         $this->rejectedRequest->destroyData([
             'column' => 'trip_request_id',
             'value' => $trip->id,
         ]);
 
-        // Prepare parcel receiver info if applicable
+        // Offload slow external API calls (Routing, FCM, OTP, etc.)
         $parcelReceiverInfo = null;
-        if ($trip->type == PARCEL && $trip->parcelUserInfo?->firstWhere('user_type', RECEIVER)?->contact_number 
-            && businessConfig('parcel_tracking_message')?->value 
+        if ($trip->type == PARCEL && $trip->parcelUserInfo?->firstWhere('user_type', RECEIVER)?->contact_number
+            && businessConfig('parcel_tracking_message')?->value
             && businessConfig('parcel_tracking_status')?->value == 1) {
             $receiver = $trip->parcelUserInfo->firstWhere('user_type', RECEIVER);
             $parcelReceiverInfo = [
@@ -377,11 +307,9 @@ class TripRequestController extends Controller
             ];
         }
 
-        // Check if OTP is required
         $otpRequired = (bool)businessConfig(key: 'driver_otp_confirmation_for_trip', settingsType: TRIP_SETTINGS)?->value == 1;
         $sendOtp = $otpRequired && $trip->type === RIDE_REQUEST && $trip->otp;
 
-        // Dispatch all notifications asynchronously for fast response
         ProcessTripAcceptNotificationsJob::dispatch(
             tripId: $trip->id,
             customerId: $trip->customer->id,
@@ -390,19 +318,24 @@ class TripRequestController extends Controller
             tripType: $trip->type,
             tripOtp: $trip->otp,
             sendOtp: $sendOtp,
-            parcelReceiverInfo: $parcelReceiverInfo
+            parcelReceiverInfo: $parcelReceiverInfo,
+            driverId: $user->id,
+            driverFcmToken: $user->fcm_token
         )->onQueue('high');
 
-        // Broadcast event (non-blocking with try-catch)
+        // Broadcast non-blocking
         try {
             checkPusherConnection(DriverTripAcceptedEvent::broadcast($trip));
-        } catch (Exception $exception) {
-            // Silently fail - don't block the response
-        }
-        
-        return response()->json(responseFormatter(constant: DEFAULT_UPDATE_200));
-    }
+        } catch (Exception $exception) {}
 
+        // Refresh trip from database to ensure latest data and return it in response
+        $trip = $this->trip->getBy('id', $request['trip_request_id'], [
+            'relations' => ['customer', 'coordinate', 'parcelUserInfo', 'tripStatus', 'time', 'vehicle.model', 'vehicleCategory']
+        ]);
+        $data = TripRequestResource::make($trip);
+
+        return response()->json(responseFormatter(constant: DEFAULT_UPDATE_200, content: $data));
+    }
 
     /**
      * @param Request $request
@@ -427,10 +360,20 @@ class TripRequestController extends Controller
         if ($trip->driver_id != auth('api')->id()) {
             return response()->json(responseFormatter(DEFAULT_400), 403);
         }
+        // Idempotent cancellation: if already cancelled and driver is trying to cancel, return success
         if ($trip->current_status == 'cancelled') {
+            if ($request->status == 'cancelled') {
+                $data = TripRequestResource::make($trip);
+                return response()->json(responseFormatter(DEFAULT_UPDATE_200, $data));
+            }
             return response()->json(responseFormatter(TRIP_STATUS_CANCELLED_403), 403);
         }
+        // Idempotent completion: if already completed and driver is trying to complete, return success
         if ($trip->current_status == 'completed') {
+            if ($request->status == 'completed') {
+                $data = TripRequestResource::make($trip);
+                return response()->json(responseFormatter(DEFAULT_UPDATE_200, $data));
+            }
             return response()->json(responseFormatter(TRIP_STATUS_COMPLETED_403), 403);
         }
         if ($trip->current_status == RETURNING) {
@@ -460,15 +403,11 @@ class TripRequestController extends Controller
                         $shareReferralUser = $trip->customer?->referralCustomerDetails?->shareRefferalCustomer;
                         $this->customerReferralEarningTransaction($shareReferralUser, $trip->customer?->referralCustomerDetails?->ref_by_earning_amount);
 
-                        $push = getNotification('referral_reward_received');
-                        sendDeviceNotification(fcm_token: $shareReferralUser?->fcm_token,
-                            title: translate($push['title']),
-                            description: translate(textVariableDataFormat(value: $push['description'], referralRewardAmount: getCurrencyFormat($trip->customer?->referralCustomerDetails?->ref_by_earning_amount))),
-                            status: $push['status'],
-                            ride_request_id: $shareReferralUser?->id,
-                            action: 'referral_reward_received',
-                            user_id: $shareReferralUser?->id
-                        );
+                        $referralData = [
+                            'fcm_token' => $shareReferralUser?->fcm_token,
+                            'amount' => getCurrencyFormat($trip->customer?->referralCustomerDetails?->ref_by_earning_amount),
+                            'user_id' => $shareReferralUser?->id
+                        ];
                     }
                 }
             }
@@ -495,12 +434,13 @@ class TripRequestController extends Controller
         }
         DB::commit();
 
+        // Offload slow external API calls to background job
+        dispatch(new \App\Jobs\ProcessRideStatusUpdateNotificationsJob($trip->id, $request->status, $referralData ?? null));
 
         if ($trip->driver_id && $request->status == 'cancelled' && $trip->current_status == ONGOING && $trip->type == PARCEL) {
-            $env = env('APP_MODE');
-            $otp = $env != "live" ? '0000' : rand(1000, 9999);
-            $trip->otp = $otp;
-            $trip->return_fee = 0;
+                            $env = env('APP_MODE');
+                            $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
+                            $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';            $trip->otp = $otp;            $trip->return_fee = 0;
             $trip->current_status = RETURNING;
             $trip->return_time = Carbon::parse($request->return_time);
             $trip->save();
@@ -561,7 +501,11 @@ class TripRequestController extends Controller
 
             }
         }
-        return response()->json(responseFormatter(DEFAULT_UPDATE_200, $data));
+
+        // Return the refreshed trip with updated status (not the old $data)
+        $trip = $trip->fresh(['driver', 'vehicle.model', 'vehicleCategory', 'tripStatus', 'coordinate', 'fee', 'time', 'parcel', 'parcelUserInfo', 'parcelRefund']);
+        $resource = TripRequestResource::make($trip);
+        return response()->json(responseFormatter(DEFAULT_UPDATE_200, $resource));
     }
 
 
@@ -581,11 +525,11 @@ class TripRequestController extends Controller
         ]);
 
         if ($validator->fails()) {
-
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
-        $trip = $this->trip->getBy(column: 'id', value: $request['trip_request_id'], attributes: ['relations' => 'customer', 'coordinate']);
 
+        // Load trip without relations for faster validation
+        $trip = $this->trip->getBy(column: 'id', value: $request['trip_request_id']);
 
         if (!$trip) {
             return response()->json(responseFormatter(TRIP_REQUEST_404), 403);
@@ -593,39 +537,21 @@ class TripRequestController extends Controller
         if ($trip->driver_id != auth('api')->id()) {
             return response()->json(responseFormatter(DEFAULT_404), 403);
         }
-        if (array_key_exists('otp', $request->all()) && $request['otp'] && $trip->otp !== $request['otp']) {
-
+        if (array_key_exists('otp', $request->all()) && $request['otp'] && $trip->otp != $request['otp']) {
             return response()->json(responseFormatter(OTP_MISMATCH_404), 403);
         }
+
+        // Update trip status to ONGOING
         DB::beginTransaction();
-        $attributes = [
-            'column' => 'id',
-            'current_status' => ONGOING,
-            'trip_status' => now()
-        ];
-
-        $trip = $this->trip->update(attributes: $attributes, id: $request['trip_request_id']);
+        $trip->current_status = ONGOING;
+        $trip->save();
         $trip->tripStatus()->update(['ongoing' => now()]);
-        if ($trip->customer->fcm_token) {
-            $push = getNotification('trip_started');
-            sendDeviceNotification(
-                fcm_token: $trip->customer->fcm_token,
-                title: translate($push['title']),
-                description: translate(textVariableDataFormat(value: $push['description'])),
-                status: $push['status'],
-                ride_request_id: $request['trip_request_id'],
-                type: $trip['type'],
-                action: 'otp_matched',
-                user_id: $trip->customer->id
-            );
-        }
-        try {
-            checkPusherConnection(DriverTripStartedEvent::broadcast($trip));
-        } catch (Exception $exception) {
-
-        }
         DB::commit();
-        return response()->json(responseFormatter(DEFAULT_STORE_200));
+
+        // Offload slow external API calls to background job
+        dispatch(new \App\Jobs\ProcessTripOtpJob($trip->id))->onQueue('high');
+
+        return response()->json(responseFormatter(constant: DEFAULT_STORE_200));
     }
 
     /**
@@ -1052,7 +978,8 @@ class TripRequestController extends Controller
         if ($trip->current_status == RETURNED) {
             return response()->json(responseFormatter(TRIP_STATUS_RETURNED_403), 403);
         }
-        if ($trip->otp !== $request['otp']) {
+        \Log::info('OTP Debug', ['trip_otp' => $trip->otp, 'request_otp' => $request['otp'], 'trip_otp_type' => gettype($trip->otp), 'request_otp_type' => gettype($request['otp'])]);
+        if ($trip->otp != $request['otp']) {
 
             return response()->json(responseFormatter(OTP_MISMATCH_404), 403);
         }

@@ -2,6 +2,7 @@
 
 namespace Modules\ZoneManagement\Observers;
 
+use Illuminate\Support\Facades\Cache;
 use Modules\ZoneManagement\Entities\Zone;
 
 class ZoneObserver
@@ -11,6 +12,9 @@ class ZoneObserver
      */
     public function created(Zone $zone): void
     {
+        // Clear dashboard zone cache
+        Cache::forget('admin_dashboard_zones');
+
         // Get the latest Zone with a readable_id
         $latestZone = Zone::withTrashed()->whereNotNull('readable_id')->orderBy('readable_id', 'desc')->first();
         $newId = $latestZone ? ((int) $latestZone->readable_id + 1) : 1;
@@ -24,7 +28,8 @@ class ZoneObserver
      */
     public function updated(Zone $zone): void
     {
-        //
+        // Clear dashboard zone cache
+        Cache::forget('admin_dashboard_zones');
     }
 
     /**
@@ -32,7 +37,8 @@ class ZoneObserver
      */
     public function deleted(Zone $zone): void
     {
-        //
+        // Clear dashboard zone cache
+        Cache::forget('admin_dashboard_zones');
     }
 
     /**
@@ -40,7 +46,8 @@ class ZoneObserver
      */
     public function restored(Zone $zone): void
     {
-        //
+        // Clear dashboard zone cache
+        Cache::forget('admin_dashboard_zones');
     }
 
     /**
@@ -48,6 +55,7 @@ class ZoneObserver
      */
     public function forceDeleted(Zone $zone): void
     {
-        //
+        // Clear dashboard zone cache
+        Cache::forget('admin_dashboard_zones');
     }
 }

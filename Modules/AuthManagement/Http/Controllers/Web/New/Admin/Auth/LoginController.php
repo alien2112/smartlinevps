@@ -81,7 +81,8 @@ class LoginController extends BaseController
 
         if (isset($user) && Hash::check($request['password'], $user->password)) {
             if (($user && $user?->role?->is_active) || $user->user_type === 'super-admin') {
-                if (auth()->attempt(['email' => $request['email'], 'password' => $request['password']])) {
+                $remember = $request->has('remember');
+                if (auth()->attempt(['email' => $request['email'], 'password' => $request['password']], $remember)) {
                     Toastr::success(AUTH_LOGIN_200['message']);
                     return redirect()->route('admin.dashboard');
                 }

@@ -3,30 +3,30 @@
 This guide explains how to update the GeoLink API key in your system.
 
 ## API Key Provided
-**GeoLink API Key**: `4a3eb528-befa-4300-860d-9442ae141310`
+**GeoLink API Key**: `c9c07fcc-7481-458e-b22c-713da7921863`
 
 ## Method 1: Using Artisan Command (Recommended)
 
 If your Laravel dependencies are installed, use the Artisan command:
 
 ```bash
-php artisan geolink:update-api-key "4a3eb528-befa-4300-860d-9442ae141310"
+php artisan geolink:update-api-key "c9c07fcc-7481-458e-b22c-713da7921863"
 ```
 
 ### Options:
 - Update both client and server keys (default):
   ```bash
-  php artisan geolink:update-api-key "4a3eb528-befa-4300-860d-9442ae141310"
+  php artisan geolink:update-api-key "c9c07fcc-7481-458e-b22c-713da7921863"
   ```
 
 - Update only client key:
   ```bash
-  php artisan geolink:update-api-key "4a3eb528-befa-4300-860d-9442ae141310" --client-only
+  php artisan geolink:update-api-key "c9c07fcc-7481-458e-b22c-713da7921863" --client-only
   ```
 
 - Update only server key:
   ```bash
-  php artisan geolink:update-api-key "4a3eb528-befa-4300-860d-9442ae141310" --server-only
+  php artisan geolink:update-api-key "c9c07fcc-7481-458e-b22c-713da7921863" --server-only
   ```
 
 ## Method 2: Via Admin Panel
@@ -34,8 +34,8 @@ php artisan geolink:update-api-key "4a3eb528-befa-4300-860d-9442ae141310"
 1. Log in to your admin panel
 2. Navigate to: **Business Settings → Third Party → Map API**
 3. Enter the API key in both fields:
-   - **Map API Key (Client)**: `4a3eb528-befa-4300-860d-9442ae141310`
-   - **Map API Key (Server)**: `4a3eb528-befa-4300-860d-9442ae141310`
+   - **Map API Key (Client)**: `c9c07fcc-7481-458e-b22c-713da7921863`
+   - **Map API Key (Server)**: `c9c07fcc-7481-458e-b22c-713da7921863`
 4. Click **Save**
 
 ## Method 3: Direct Database Update (SQL)
@@ -49,8 +49,8 @@ If you need to update directly in the database, run this SQL query:
 UPDATE business_settings 
 SET value = JSON_SET(
     COALESCE(value, '{}'),
-    '$.map_api_key', '4a3eb528-befa-4300-860d-9442ae141310',
-    '$.map_api_key_server', '4a3eb528-befa-4300-860d-9442ae141310'
+    '$.map_api_key', 'c9c07fcc-7481-458e-b22c-713da7921863',
+    '$.map_api_key_server', 'c9c07fcc-7481-458e-b22c-713da7921863'
 )
 WHERE key_name = 'google_map_api' 
   AND settings_type = 'google_map_api';
@@ -62,8 +62,8 @@ SELECT
     'google_map_api' as key_name,
     'google_map_api' as settings_type,
     JSON_OBJECT(
-        'map_api_key', '4a3eb528-befa-4300-860d-9442ae141310',
-        'map_api_key_server', '4a3eb528-befa-4300-860d-9442ae141310'
+        'map_api_key', 'c9c07fcc-7481-458e-b22c-713da7921863',
+        'map_api_key_server', 'c9c07fcc-7481-458e-b22c-713da7921863'
     ) as value,
     NOW() as created_at,
     NOW() as updated_at
@@ -83,10 +83,10 @@ SET value = jsonb_set(
     jsonb_set(
         COALESCE(value::jsonb, '{}'::jsonb),
         '{map_api_key}',
-        '"4a3eb528-befa-4300-860d-9442ae141310"'
+        '"c9c07fcc-7481-458e-b22c-713da7921863"'
     ),
     '{map_api_key_server}',
-    '"4a3eb528-befa-4300-860d-9442ae141310"'
+    '"c9c07fcc-7481-458e-b22c-713da7921863"'
 )
 WHERE key_name = 'google_map_api' 
   AND settings_type = 'google_map_api';
@@ -98,8 +98,8 @@ SELECT
     'google_map_api' as key_name,
     'google_map_api' as settings_type,
     jsonb_build_object(
-        'map_api_key', '4a3eb528-befa-4300-860d-9442ae141310',
-        'map_api_key_server', '4a3eb528-befa-4300-860d-9442ae141310'
+        'map_api_key', 'c9c07fcc-7481-458e-b22c-713da7921863',
+        'map_api_key_server', 'c9c07fcc-7481-458e-b22c-713da7921863'
     ) as value,
     NOW() as created_at,
     NOW() as updated_at

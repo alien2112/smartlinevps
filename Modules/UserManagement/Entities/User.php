@@ -317,6 +317,9 @@ class User extends Authenticatable
 
         static::created(function ($item) {
             if (in_array($item->user_type, ['customer', 'driver'])) {
+                // Clear dashboard cache when customer/driver is created
+                \Illuminate\Support\Facades\Cache::forget('admin_dashboard_stats');
+
                 $notification = new AdminNotification();
                 $notification->model = 'user';
                 $notification->model_id = $item->getAttributes()['id'];
@@ -326,6 +329,11 @@ class User extends Authenticatable
         });
 
         static::updated(function ($item) {
+            // Clear dashboard cache when customer/driver is_active status changes
+            if (in_array($item->user_type, ['customer', 'driver']) && $item->isDirty('is_active')) {
+                \Illuminate\Support\Facades\Cache::forget('admin_dashboard_stats');
+            }
+
             $array = [];
             foreach ($item->changes as $key => $change) {
                 $array[$key] = $item->original[$key];
@@ -341,6 +349,11 @@ class User extends Authenticatable
         });
 
         static::deleted(function ($item) {
+            // Clear dashboard cache when customer/driver is deleted
+            if (in_array($item->user_type, ['customer', 'driver'])) {
+                \Illuminate\Support\Facades\Cache::forget('admin_dashboard_stats');
+            }
+
             $log = new ActivityLog();
             $log->edited_by = auth()->user()->id;
             $log->before = $item->original;

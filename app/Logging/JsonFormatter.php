@@ -31,7 +31,7 @@ class JsonFormatter extends NormalizerFormatter
         ];
 
         // Add exception details if present
-        if (isset($normalized['context']['exception'])) {
+        if (isset($normalized['context']['exception']) && $normalized['context']['exception'] instanceof \Throwable) {
             $output['exception'] = [
                 'class' => get_class($normalized['context']['exception']),
                 'message' => $normalized['context']['exception']->getMessage(),

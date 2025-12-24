@@ -80,29 +80,13 @@ class PaymentController extends Controller
         $this->amountChecker($trip->customer, $trip->paid_fare);
         DB::commit();
 
-        $push = getNotification('payment_successful');
-        sendDeviceNotification(
-            fcm_token: auth('api')->user()->user_type == 'customer' ? $trip->driver->fcm_token : $trip->customer->fcm_token,
-            title: translate($push['title']),
-            description: translate(textVariableDataFormat($push['description'],paidAmount: $trip->paid_fare,methodName:$method )),
-            status: $push['status'],
-            ride_request_id: $trip->id,
-            type: $trip->type,
-            action: 'payment_successful',
-            user_id: $trip->driver->id
-        );
-        $pushTips = getNotification("tips_from_customer");
-        if ($trip->tips > 0) {
-            sendDeviceNotification(
-                fcm_token: $trip->driver->fcm_token,
-                title: translate($pushTips['title']),
-                description: translate(textVariableDataFormat(value: $pushTips['description'],tipsAmount: $trip->tips)) ,
-                status: $push['status'],
-                ride_request_id: $trip->id,
-                action: 'got_tipped',
-                user_id: $trip->driver->id,
-            );
-        }
+        // Offload slow external API calls to background job
+        dispatch(new \App\Jobs\ProcessPaymentNotificationsJob(
+            $trip->id,
+            $request->payment_method,
+            auth('api')->id(),
+            auth('api')->user()->user_type
+        ));
 
         return response()->json(responseFormatter(DEFAULT_UPDATE_200));
     }
@@ -110,9 +94,12 @@ class PaymentController extends Controller
 
     public function digitalPayment(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        // Normalize payment method to lowercase for case-insensitive validation
+        $request->merge(['payment_method' => strtolower($request->payment_method)]);
+
+        $validator = Validator::make($request->query(), [
             'trip_request_id' => 'required',
-            'payment_method' => 'required|in:ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash,ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash'
+            'payment_method' => 'required|in:kashier,ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash'
         ]);
         if ($validator->fails()) {
 
@@ -155,7 +142,7 @@ class PaymentController extends Controller
         //hook is look for a autoloaded function to perform action after payment
         $paymentInfo = new PaymentInfo(
             hook: 'tripRequestUpdate',
-            currencyCode: 'USD',
+            currencyCode: businessConfig('currency_code')?->value ?? 'EGP',
             paymentMethod: $request->payment_method,
             paymentPlatform: 'mono',
             payerId: $customer->id,

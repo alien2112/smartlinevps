@@ -103,12 +103,25 @@ class TripRequestRepository extends BaseRepository implements TripRequestReposit
     {
         $trip = $this->findOne(id: $attributes['value']);
 
-        if ($attributes['trip_status'] ?? null) {
-            $tripData['current_status'] = $attributes['trip_status'];
+        // Support both 'trip_status' and 'current_status' keys for status updates
+        $statusKey = $attributes['trip_status'] ?? $attributes['current_status'] ?? null;
+        if ($statusKey) {
+            $tripData = ['current_status' => $statusKey];
+            
+            // Also update trip_cancellation_reason if provided
+            if (isset($attributes['trip_cancellation_reason'])) {
+                $tripData['trip_cancellation_reason'] = $attributes['trip_cancellation_reason'];
+            }
 
             $trip->update($tripData);
             $trip->tripStatus()->update([
-                $attributes['trip_status'] => now()
+                $statusKey => now()
+            ]);
+            
+            \Log::info('Trip status updated via updateRelationalTable', [
+                'trip_id' => $trip->id,
+                'new_status' => $statusKey,
+                'cancellation_reason' => $attributes['trip_cancellation_reason'] ?? null
             ]);
         }
         if ($attributes['driver_id'] ?? null) {

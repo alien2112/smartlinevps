@@ -37,12 +37,13 @@ Route::group(['prefix' => 'customer'], function () {
         });
 
         Route::group(['prefix' => 'address'], function () {
-            Route::get('all-address', [AddressController::class, 'getAddresses']);
-            Route::post('add', [AddressController::class, 'store']);
-            Route::get('edit/{id}', [AddressController::class, 'edit']);
-            Route::put('update', [AddressController::class, 'update']);
-            Route::delete('delete', [AddressController::class, 'destroy']);
-
+            Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Customer\AddressController::class)->group(function () {
+                Route::get('all-address', 'getAddresses');
+                Route::post('add', 'store');
+                Route::get('edit/{id}', 'edit');
+                Route::put('update', 'update');
+                Route::delete('delete', 'destroy');
+            });
         });
 
         Route::group(['prefix' => 'wallet'], function () {

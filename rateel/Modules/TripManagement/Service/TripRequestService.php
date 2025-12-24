@@ -1034,6 +1034,9 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
             $this->updateRelationalTable($attributes);
         }
         DB::commit();
+        
+        // Refresh trip to get updated current_status
+        $trip->refresh();
         return $trip;
     }
 
@@ -1062,10 +1065,14 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
 
     public function getCustomerIncompleteRide(): mixed
     {
-        $trip = $this->tripRequestRepository->findOneBy(criteria: ['customer_id' => auth()->id()], relations: [
-            'customer', 'driver', 'vehicleCategory', 'vehicleCategory.tripFares', 'vehicle', 'coupon', 'time',
-            'coordinate', 'fee', 'tripStatus', 'zone', 'vehicle.model', 'fare_biddings', 'parcel', 'parcelUserInfo'
-        ]);
+        $trip = $this->tripRequestRepository->findOneBy(
+            criteria: ['customer_id' => auth()->id()],
+            relations: [
+                'customer', 'driver', 'vehicleCategory', 'vehicleCategory.tripFares', 'vehicle', 'coupon', 'time',
+                'coordinate', 'fee', 'tripStatus', 'zone', 'vehicle.model', 'fare_biddings', 'parcel', 'parcelUserInfo'
+            ],
+            orderBy: ['created_at' => 'desc']
+        );
 
         if (
             !$trip || $trip->type != 'ride_request' ||
@@ -1082,7 +1089,11 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
 
     public function getDriverIncompleteRide(): mixed
     {
-        $trip = $this->findOneWithAvg(criteria: ['driver_id' => auth()->guard('api')->id()], relations: ['tripStatus', 'customer', 'driver', 'time', 'coordinate', 'time', 'fee'], withAvgRelation: ['customerReceivedReviews', 'rating']);
+        $trip = $this->tripRequestRepository->findOneBy(
+            criteria: ['driver_id' => auth()->guard('api')->id()],
+            relations: ['tripStatus', 'customer', 'driver', 'time', 'coordinate', 'fee'],
+            orderBy: ['created_at' => 'desc']
+        );
 
         if (
             !$trip || $trip->fee->cancelled_by == 'driver' ||

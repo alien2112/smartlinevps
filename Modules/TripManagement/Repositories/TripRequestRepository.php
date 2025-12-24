@@ -468,12 +468,12 @@ class TripRequestRepository implements TripRequestInterfaces
         return $this->trip
             ->query()
             ->when(($attributes['relations'] ?? null), fn($query) => $query->with($attributes['relations']))
-            ->where(fn($query) => $query->whereNotIn('current_status', ['completed', 'cancelled'])
+            ->where(fn($query) => $query->whereNotIn('current_status', ['completed', 'cancelled', 'returning', 'returned'])
                 ->orWhere(fn($query) => $query->whereNotNull('driver_id')
                     ->whereHas('fee', function ($query) {
                         $query->where('cancelled_by', '!=', 'driver');
                     })
-                    ->whereIn('current_status', ['completed', 'cancelled'])
+                    ->whereIn('current_status', ['completed'])
                     ->where('payment_status', 'unpaid')
                 ))
             ->when(($attributes['type'] ?? null), fn($query) => $query->where('type', $attributes['type']))

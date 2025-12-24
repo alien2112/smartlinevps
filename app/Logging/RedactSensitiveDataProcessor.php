@@ -3,10 +3,34 @@
 namespace App\Logging;
 
 use App\Services\LogRedactionService;
+use Illuminate\Log\Logger;
 use Monolog\LogRecord;
 use Monolog\Processor\ProcessorInterface;
 
-class RedactSensitiveDataProcessor implements ProcessorInterface
+/**
+ * Laravel Logger Tap that adds a Monolog processor for redacting sensitive data.
+ * Used in config/logging.php 'tap' configuration.
+ */
+class RedactSensitiveDataProcessor
+{
+    /**
+     * Customize the given logger instance (Laravel tap interface).
+     *
+     * @param  \Illuminate\Log\Logger  $logger
+     * @return void
+     */
+    public function __invoke(Logger $logger): void
+    {
+        foreach ($logger->getHandlers() as $handler) {
+            $handler->pushProcessor(new RedactProcessor());
+        }
+    }
+}
+
+/**
+ * Monolog Processor that redacts sensitive data from log records.
+ */
+class RedactProcessor implements ProcessorInterface
 {
     protected LogRedactionService $redactionService;
 
@@ -23,22 +47,34 @@ class RedactSensitiveDataProcessor implements ProcessorInterface
      */
     public function __invoke(LogRecord $record): LogRecord
     {
+        $context = $record->context;
+        $extra = $record->extra;
+        $message = $record->message;
+
         // Redact context data
-        if (!empty($record->context)) {
-            $record->context = $this->redactionService->redactArray($record->context);
+        if (!empty($context)) {
+            $context = $this->redactionService->redactArray($context);
         }
 
         // Redact extra data
-        if (!empty($record->extra)) {
-            $record->extra = $this->redactionService->redactArray($record->extra);
+        if (!empty($extra)) {
+            $extra = $this->redactionService->redactArray($extra);
         }
 
         // Redact message if it contains sensitive patterns
-        if (is_string($record->message)) {
-            $record->message = $this->redactSensitivePatterns($record->message);
+        if (is_string($message)) {
+            $message = $this->redactSensitivePatterns($message);
         }
 
-        return $record;
+        return new LogRecord(
+            $record->datetime,
+            $record->channel,
+            $record->level,
+            $message,
+            $context,
+            $extra,
+            $record->formatted
+        );
     }
 
     /**
