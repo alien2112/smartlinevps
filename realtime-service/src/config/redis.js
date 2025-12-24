@@ -453,6 +453,9 @@ class MockRedisClient extends EventEmitter {
   }
 }
 
+// Import resilient wrapper
+const ResilientRedisClient = require('./ResilientRedisClient');
+
 // Create Redis client based on configuration
 let redisClient;
 
@@ -478,26 +481,20 @@ if (REDIS_ENABLED) {
     }
   };
 
-  redisClient = new Redis(redisConfig);
+  const rawRedisClient = new Redis(redisConfig);
 
-  redisClient.on('connect', () => {
-    logger.info('Redis client connected');
+  // Wrap with resilient client for automatic in-memory fallback
+  redisClient = new ResilientRedisClient(rawRedisClient, MockRedisClient);
+
+  logger.info('Redis client initialized with automatic in-memory fallback on connection failure');
+
+  // Listen to resilience events
+  redisClient.on('fallback', (data) => {
+    logger.warn('🔄 Redis failover activated - switched to IN-MEMORY mode', data);
   });
 
-  redisClient.on('ready', () => {
-    logger.info('Redis client ready');
-  });
-
-  redisClient.on('error', (err) => {
-    logger.error('Redis client error', { error: err.message });
-  });
-
-  redisClient.on('close', () => {
-    logger.warn('Redis client connection closed');
-  });
-
-  redisClient.on('reconnecting', () => {
-    logger.info('Redis client reconnecting');
+  redisClient.on('recovery', (data) => {
+    logger.info('✅ Redis recovery complete - switched back to Redis mode', data);
   });
 } else {
   // Use in-memory mock

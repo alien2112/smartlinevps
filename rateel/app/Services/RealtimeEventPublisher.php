@@ -241,6 +241,45 @@ class RealtimeEventPublisher
     }
 
     /**
+     * Publish trip completed event
+     *
+     * @param \Modules\TripManagement\Entities\TripRequest $trip
+     * @return void
+     */
+    public function publishTripCompleted($trip): void
+    {
+        $this->publish(self::CHANNEL_RIDE_COMPLETED, [
+            'ride_id' => $trip->id,
+            'trip_id' => $trip->id,
+            'customer_id' => $trip->customer_id,
+            'driver_id' => $trip->driver_id,
+            'status' => 'completed',
+            'completed_at' => now()->toIso8601String(),
+            'paid_fare' => $trip->paid_fare ?? null,
+            'payment_status' => $trip->payment_status ?? null,
+        ]);
+    }
+
+    /**
+     * Publish trip cancelled event
+     *
+     * @param \Modules\TripManagement\Entities\TripRequest $trip
+     * @return void
+     */
+    public function publishTripCancelled($trip): void
+    {
+        $this->publish(self::CHANNEL_RIDE_CANCELLED, [
+            'ride_id' => $trip->id,
+            'trip_id' => $trip->id,
+            'customer_id' => $trip->customer_id,
+            'driver_id' => $trip->driver_id,
+            'status' => 'cancelled',
+            'cancelled_at' => now()->toIso8601String(),
+            'cancelled_by' => $trip->fee?->cancelled_by ?? 'driver',
+        ]);
+    }
+
+    /**
      * Publish message to Redis channel
      *
      * @param string $channel

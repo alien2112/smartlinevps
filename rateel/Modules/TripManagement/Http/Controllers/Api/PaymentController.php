@@ -162,7 +162,7 @@ class PaymentController extends Controller
             $request->payment_method,
             auth('api')->id(),
             auth('api')->user()->user_type
-        ));
+        ))->afterResponse();
 
         return response()->json(responseFormatter(DEFAULT_UPDATE_200));
     }

@@ -138,7 +138,7 @@ class RealtimeEventPublisher
     protected function publish(string $channel, array $data): void
     {
         try {
-            Redis::publish($channel, json_encode($data));
+            Redis::connection()->publish($channel, json_encode($data));
 
             Log::info('Published realtime event', [
                 'channel' => $channel,

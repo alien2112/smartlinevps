@@ -23,7 +23,7 @@ class ChannelConversationResource extends JsonResource
             'updated_at' => $this->updated_at,
             'conversation_files' => ConversationFileResource::collection($this->whenLoaded('conversation_files')),
             'channel' => ChannelListResource::make($this->whenLoaded('channel')),
-            'user' => CustomerResource::make($this->whenLoaded('user')),
+            'user' => ChatUserResource::make($this->whenLoaded('user')),
 
         ];
     }

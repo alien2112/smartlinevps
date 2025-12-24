@@ -752,9 +752,9 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
             if (!is_null($int_coordinates)) {
                 foreach ($int_coordinates as $key => $ic) {
                     if ($key == 0) {
-                        $coordinates['int_coordinate_1'] = new Point($ic[0], $ic[1]);
+                        $coordinates['int_coordinate_1'] = new Point($ic[1], $ic[0]);
                     } elseif ($key == 1) {
-                        $coordinates['int_coordinate_2'] = new Point($ic[0], $ic[1]);
+                        $coordinates['int_coordinate_2'] = new Point($ic[1], $ic[0]);
                     }
                 }
             }
@@ -999,7 +999,7 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
         if ($request->status == 'cancelled') {
             $attributes['fee']['cancelled_by'] = 'customer';
         }
-        $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->latitude, $trip->driver->lastLocations->longitude);
+        $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->longitude, $trip->driver->lastLocations->latitude);
 
         $this->driverDetailService->updateBy(criteria: ['user_id' => $trip->driver_id], data: ['availability_status' => 'available']);
         //Get status wise notification message
@@ -1118,7 +1118,7 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
             if ($request->status == 'cancelled') {
                 $attributes['fee']['cancelled_by'] = 'driver';
             }
-            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->latitude, $trip->driver->lastLocations->longitude);
+            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->longitude, $trip->driver->lastLocations->latitude);
 
             $this->driverDetailService->updateBy(criteria: ['user_id' => auth('api')->id()], data: ['availability_status' => 'available']);
         }

@@ -48,19 +48,16 @@
         cursor: pointer;
         width: 100%;
         transition: transform 0.2s, box-shadow 0.2s;
+        text-decoration: none;
+        display: block;
+        text-align: center;
     }
     .btn-pay:hover {
         transform: translateY(-2px);
         box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-    }
-    .btn-pay:disabled {
-        background: #ccc;
-        cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
+        color: white;
     }
     .loading-spinner {
-        display: none;
         text-align: center;
         margin: 20px 0;
     }
@@ -87,73 +84,62 @@
         color: #2ecc71;
         margin-right: 5px;
     }
-    .kashier-iframe-container {
-        display: none;
-        width: 100%;
-        min-height: 500px;
-        border: none;
-    }
 </style>
 
 <div class="payment-container">
     <div class="payment-header">
-        <h2>Complete Your Payment</h2>
+        <h2>{{ __('Complete Your Payment') }}</h2>
         <div class="payment-amount">{{ $currency }} {{ number_format($amount, 2) }}</div>
     </div>
 
     <div class="payment-info">
-        <p><strong>Order ID:</strong> {{ $orderId }}</p>
-        <p><strong>Customer:</strong> {{ $payer->name ?? 'N/A' }}</p>
-        <p><strong>Email:</strong> {{ $payer->email ?? 'N/A' }}</p>
+        <p><strong>{{ __('Order ID') }}:</strong> {{ $orderId }}</p>
+        <p><strong>{{ __('Customer') }}:</strong> {{ $payer->name ?? 'N/A' }}</p>
+        <p><strong>{{ __('Email') }}:</strong> {{ $payer->email ?? 'N/A' }}</p>
     </div>
 
     <div class="loading-spinner" id="loadingSpinner">
         <div class="spinner"></div>
-        <p>Redirecting to Kashier...</p>
+        <p>{{ __('Redirecting to Kashier checkout...') }}</p>
     </div>
 
-    <div id="paymentFormContainer">
-        <form id="kashierPaymentForm" method="POST" action="https://checkout.kashier.io/">
-            <input type="hidden" name="merchantId" value="{{ $merchantId }}">
-            <input type="hidden" name="orderId" value="{{ $orderId }}">
-            <input type="hidden" name="amount" value="{{ $amount }}">
-            <input type="hidden" name="currency" value="{{ $currency }}">
-            <input type="hidden" name="hash" value="{{ $hash }}">
-            <input type="hidden" name="mode" value="{{ config('app.env') === 'production' ? 'live' : 'test' }}">
-            <input type="hidden" name="merchantRedirect" value="{{ $redirectUrl }}">
-            <input type="hidden" name="serverWebhook" value="{{ route('kashier.webhook') }}">
-            <input type="hidden" name="allowedMethods" value="card,wallet">
-            <input type="hidden" name="display" value="en">
-            <input type="hidden" name="brandColor" value="#667eea">
-            
-            @if(isset($payer->email))
-            <input type="hidden" name="customerEmail" value="{{ $payer->email }}">
-            @endif
-            @if(isset($payer->phone))
-            <input type="hidden" name="customerPhone" value="{{ $payer->phone }}">
-            @endif
-            @if(isset($payer->name))
-            <input type="hidden" name="customerName" value="{{ $payer->name }}">
-            @endif
+    <form id="kashierForm" action="{{ $mode === 'live' ? 'https://checkout.kashier.io' : 'https://checkout.kashier.io' }}" method="GET" style="display: none;">
+        <input type="hidden" name="merchantId" value="{{ $merchantId }}">
+        <input type="hidden" name="orderId" value="{{ $orderId }}">
+        <input type="hidden" name="amount" value="{{ $amount }}">
+        <input type="hidden" name="currency" value="{{ $currency }}">
+        <input type="hidden" name="hash" value="{{ $hash }}">
+        <input type="hidden" name="mode" value="{{ $mode }}">
+        <input type="hidden" name="merchantRedirect" value="{{ $callbackUrl }}">
+        <input type="hidden" name="serverWebhook" value="{{ $webhookUrl }}">
+        <input type="hidden" name="display" value="{{ $display }}">
+        <input type="hidden" name="type" value="external">
+        <input type="hidden" name="redirectMethod" value="get">
+        <input type="hidden" name="failureRedirect" value="true">
 
-            <button type="submit" class="btn-pay" id="payButton">
-                Pay Now ({{ $currency }} {{ number_format($amount, 2) }})
-            </button>
-        </form>
-    </div>
-
-    <!-- Alternative: Kashier iFrame Container -->
-    <div id="kashierIframeContainer" class="kashier-iframe-container"></div>
+        <button type="submit" class="btn-pay">
+            {{ __('Pay Now') }} ({{ $currency }} {{ number_format($amount, 2) }})
+        </button>
+    </form>
 
     <div class="secure-badge">
-        <i class="fas fa-lock"></i> Secured by Kashier
+        <i class="fas fa-lock"></i> {{ __('Secured by Kashier') }}
     </div>
 </div>
 
 <script>
-document.getElementById('kashierPaymentForm').addEventListener('submit', function(e) {
-    document.getElementById('payButton').disabled = true;
-    document.getElementById('loadingSpinner').style.display = 'block';
-});
+(function() {
+    // Auto-submit form after a brief delay to show loading state
+    setTimeout(function() {
+        var form = document.getElementById('kashierForm');
+        form.style.display = 'block';
+        document.getElementById('loadingSpinner').style.display = 'none';
+
+        // Auto-submit after showing the button briefly
+        setTimeout(function() {
+            form.submit();
+        }, 500);
+    }, 1000);
+})();
 </script>
 @endsection

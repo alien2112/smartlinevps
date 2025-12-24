@@ -20,7 +20,12 @@
       "Bash(ls:*)",
       "Bash(sudo supervisorctl status:*)",
       "Bash(sudo service:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(chmod:*)",
+      "Bash(php:*)",
+      "Bash(pm2 restart:*)",
+      "Bash(pm2 logs:*)",
+      "Bash(redis-cli ping:*)"
     ]
   }
 }

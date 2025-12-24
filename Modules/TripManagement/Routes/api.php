@@ -18,7 +18,7 @@ Route::group(['prefix' => 'customer', 'middleware' => ['auth:api', 'maintenance_
             Route::post('create', 'createRideRequest');
             Route::put('ignore-bidding', 'ignoreBidding');
             Route::get('bidding-list/{trip_request_id}', 'biddingList');
-            Route::put('update-status/{trip_request_id}', 'rideStatusUpdate');
+            Route::middleware(['idempotency'])->put('update-status/{trip_request_id}', 'rideStatusUpdate');
             Route::get('details/{trip_request_id}', 'rideDetails');
             Route::get('list', 'rideList');
             Route::get('final-fare', 'finalFareCalculation');
@@ -72,8 +72,8 @@ Route::group(['prefix' => 'driver', 'middleware' => ['auth:api', 'maintenance_mo
         Route::controller(DriverTripController::class)->group(function () {
             Route::post('bid', 'bid');
             Route::middleware(['idempotency', 'rate_limit:trip_accept'])->post('trip-action', 'requestAction');
-            Route::put('update-status', 'rideStatusUpdate');
-            Route::post('match-otp', 'matchOtp');
+            Route::middleware(['idempotency'])->put('update-status', 'rideStatusUpdate');
+            Route::middleware(['idempotency'])->post('match-otp', 'matchOtp');
             Route::post('track-location', 'trackLocation');
             Route::get('details/{ride_request_id}', 'rideDetails');
             Route::get('list', 'rideList');

@@ -112,6 +112,7 @@ Route::group(['prefix' => 'driver', 'middleware' => ['auth:api', 'maintenance_mo
             Route::get('/pending', 'pending');
             Route::get('/{id}', 'show');
             Route::patch('/{id}', 'update');
+            Route::post('/{id}/status', 'updateStatus');
         });
     });
 });

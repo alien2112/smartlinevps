@@ -44,12 +44,60 @@ class KashierPaymentController extends Controller
     }
 
     /**
-     * Generate Kashier hash for payment verification
+     * Generate Kashier order hash for payment verification
+     * Format as per Kashier docs: /?payment={mid}.{orderId}.{amount}.{currency}
      */
-    private function generateHash(array $data, string $secretKey): string
+    private function generateOrderHash(string $merchantId, string $orderId, string $amount, string $currency, string $apiKey, ?string $customerReference = null): string
     {
-        $queryString = http_build_query($data);
-        return hash_hmac('sha256', $queryString, $secretKey);
+        $path = "/?payment={$merchantId}.{$orderId}.{$amount}.{$currency}";
+
+        // Add customer reference if provided (for card saving)
+        if ($customerReference) {
+            $path .= ".{$customerReference}";
+        }
+
+        return hash_hmac('sha256', $path, $apiKey);
+    }
+
+    /**
+     * Validate Kashier response signature
+     */
+    private function validateSignature(array $params, string $apiKey): bool
+    {
+        if (!isset($params['signature'])) {
+            \Log::warning('Kashier: No signature in response');
+            return false;
+        }
+
+        $signature = $params['signature'];
+        unset($params['signature']);
+        unset($params['mode']); // mode is not included in signature
+
+        // Build query string from remaining parameters
+        $queryString = '';
+        foreach ($params as $key => $value) {
+            if ($value !== null && $value !== '') {
+                $queryString .= "&{$key}={$value}";
+            }
+        }
+
+        // Remove leading '&'
+        $queryString = ltrim($queryString, '&');
+
+        // Generate expected signature
+        $expectedSignature = hash_hmac('sha256', $queryString, $apiKey);
+
+        $isValid = hash_equals($expectedSignature, $signature);
+
+        if (!$isValid) {
+            \Log::warning('Kashier signature validation failed', [
+                'expected' => $expectedSignature,
+                'received' => $signature,
+                'query_string' => $queryString
+            ]);
+        }
+
+        return $isValid;
     }
 
     /**
@@ -71,27 +119,45 @@ class KashierPaymentController extends Controller
         }
 
         $payer = json_decode($data['payer_information']);
-        
-        // Kashier configuration - HARDCODED VALUES
-        $merchantId = 'MID-36316-436';
-        $publicKey = '20627b6e-3b07-4bab-a89c-0128a99ff96f';
-        $secretKey = 'e9430e4868e42d951f5d041b0ff17cec$d93f44c6462e08ec97059b966d3ffbc02ba40fc1f93498afdec95254cbaf3809283b1fa69e5c5f3409d310e1e175b315';
-        $callbackUrl = 'https://smartlinetest.scopehrd.com/payment/kashier/callback';
-        
+
+        // Kashier configuration from database
+        $config = $this->getConfigValues();
+        if (!$config) {
+            return response()->json($this->responseFormatter(GATEWAYS_DEFAULT_400, null, [['error_code' => 'kashier', 'message' => 'Kashier configuration not found']]), 400);
+        }
+
+        $merchantId = $config->merchant_id ?? '';
+        $apiKey = $config->api_key ?? $config->secret_key ?? '';
+
+        if (empty($merchantId) || empty($apiKey)) {
+            \Log::error('Kashier configuration incomplete', ['merchant_id' => $merchantId, 'has_api_key' => !empty($apiKey)]);
+            return response()->json($this->responseFormatter(GATEWAYS_DEFAULT_400, null, [['error_code' => 'kashier', 'message' => 'Kashier configuration incomplete']]), 400);
+        }
+
         // Payment details
         $orderId = $data->id;
         $amount = number_format($data->payment_amount, 2, '.', '');
         $currency = $data->currency_code ?? 'EGP';
-        
-        // Generate hash for security (Kashier format: mid.amount.currency.orderId)
-        $hashString = $merchantId . '.' . $amount . '.' . $currency . '.' . $orderId;
-        $hash = hash_hmac('sha256', $hashString, $secretKey);
-        
-        // Redirect URL
-        $redirectUrl = $callbackUrl;
-        
-        // API Key for view (using public_key)
-        $apiKey = $publicKey;
+
+        // Mode (test or live)
+        $mode = $this->config->mode ?? 'test';
+
+        // Generate hash for Kashier - CORRECT format as per documentation
+        $hash = $this->generateOrderHash($merchantId, $orderId, $amount, $currency, $apiKey);
+
+        // URLs
+        $callbackUrl = url('/payment/kashier/callback');
+        $webhookUrl = url('/payment/kashier/webhook');
+
+        // Display language
+        $display = app()->getLocale() === 'ar' ? 'ar' : 'en';
+
+        \Log::info('Kashier payment initiated', [
+            'order_id' => $orderId,
+            'amount' => $amount,
+            'currency' => $currency,
+            'mode' => $mode
+        ]);
 
         return view('Gateways::payment.kashier', compact(
             'data',
@@ -103,7 +169,9 @@ class KashierPaymentController extends Controller
             'orderId',
             'hash',
             'callbackUrl',
-            'redirectUrl'
+            'webhookUrl',
+            'mode',
+            'display'
         ));
     }
 
@@ -115,30 +183,53 @@ class KashierPaymentController extends Controller
         $paymentStatus = $request->input('paymentStatus');
         $orderId = $request->input('merchantOrderId') ?? $request->input('orderId');
         $transactionId = $request->input('transactionId');
-        $signature = $request->input('signature') ?? $request->input('hash');
-        
+        $signature = $request->input('signature');
+
+        \Log::info('Kashier callback received', [
+            'paymentStatus' => $paymentStatus,
+            'orderId' => $orderId,
+            'transactionId' => $transactionId,
+            'has_signature' => !empty($signature),
+            'all_params' => $request->all()
+        ]);
+
         if (!$orderId) {
+            \Log::warning('Kashier callback: No orderId provided');
             return $this->paymentResponse(null, 'fail');
         }
 
         $payment_data = $this->payment::where(['id' => $orderId])->first();
-        
+
         if (!$payment_data) {
+            \Log::warning('Kashier callback: Payment not found for orderId: ' . $orderId);
             return $this->paymentResponse(null, 'fail');
         }
 
-        // Verify the payment signature - HARDCODED SECRET KEY
-        $secretKey = 'e9430e4868e42d951f5d041b0ff17cec$d93f44c6462e08ec97059b966d3ffbc02ba40fc1f93498afdec95254cbaf3809283b1fa69e5c5f3409d310e1e175b315';
-        
-        // Kashier sends signature in format: orderId-amount-currency-status
-        $expectedDataString = $orderId . '-' . $payment_data->payment_amount . '-' . ($payment_data->currency_code ?? 'EGP') . '-' . $paymentStatus;
-        $expectedHash = hash_hmac('sha256', $expectedDataString, $secretKey);
-        
-        // For security, verify signature (optional - depends on Kashier's implementation)
-        // if ($signature !== $expectedHash) {
-        //     return $this->paymentResponse($payment_data, 'fail');
-        // }
+        // Get Kashier configuration
+        $config = $this->getConfigValues();
+        if (!$config) {
+            \Log::error('Kashier callback: Configuration not found');
+            return $this->paymentResponse($payment_data, 'fail');
+        }
 
+        $apiKey = $config->api_key ?? $config->secret_key ?? '';
+
+        // Validate signature for security (only if signature is present)
+        if ($signature && !$this->validateSignature($request->all(), $apiKey)) {
+            \Log::error('Kashier callback: Invalid signature - possible tampering detected', [
+                'orderId' => $orderId,
+                'paymentStatus' => $paymentStatus
+            ]);
+            return $this->paymentResponse($payment_data, 'fail');
+        }
+
+        // Check if already paid to prevent double processing
+        if ($payment_data->is_paid == 1) {
+            \Log::info('Kashier callback: Payment already processed for orderId: ' . $orderId);
+            return $this->paymentResponse($payment_data, 'success');
+        }
+
+        // Only process successful payments
         if (strtoupper($paymentStatus) === 'SUCCESS' || strtoupper($paymentStatus) === 'CAPTURED') {
             $this->payment::where(['id' => $orderId])->update([
                 'payment_method' => 'kashier',
@@ -147,15 +238,18 @@ class KashierPaymentController extends Controller
             ]);
 
             $data = $this->payment::where(['id' => $orderId])->first();
-            if (isset($data) && function_exists($data->hook)) {
+
+            // Call the hook function to update trip payment status
+            if (isset($data) && !empty($data->hook) && function_exists($data->hook)) {
+                \Log::info('Kashier callback: Calling hook ' . $data->hook . ' for orderId: ' . $orderId);
                 call_user_func($data->hook, $data);
             }
+
             return $this->paymentResponse($data, 'success');
         }
 
-        if (isset($payment_data) && function_exists($payment_data->hook)) {
-            call_user_func($payment_data->hook, $payment_data);
-        }
+        // Payment failed - do NOT call the hook, just return fail response
+        \Log::warning('Kashier callback: Payment failed with status: ' . $paymentStatus . ' for orderId: ' . $orderId);
         return $this->paymentResponse($payment_data, 'fail');
     }
 
@@ -165,19 +259,52 @@ class KashierPaymentController extends Controller
     public function webhook(Request $request): JsonResponse
     {
         $payload = $request->all();
-        
+
+        \Log::info('Kashier webhook received', [
+            'has_signature' => isset($payload['signature']),
+            'payment_status' => $payload['paymentStatus'] ?? null,
+            'order_id' => $payload['merchantOrderId'] ?? $payload['orderId'] ?? null
+        ]);
+
         $orderId = $payload['merchantOrderId'] ?? $payload['orderId'] ?? null;
         $paymentStatus = $payload['paymentStatus'] ?? null;
         $transactionId = $payload['transactionId'] ?? null;
-        
+        $signature = $payload['signature'] ?? null;
+
         if (!$orderId) {
+            \Log::warning('Kashier webhook: No orderId provided');
             return response()->json(['status' => 'error', 'message' => 'Invalid order ID'], 400);
         }
 
         $payment_data = $this->payment::where(['id' => $orderId])->first();
-        
+
         if (!$payment_data) {
+            \Log::warning('Kashier webhook: Payment not found for orderId: ' . $orderId);
             return response()->json(['status' => 'error', 'message' => 'Payment not found'], 404);
+        }
+
+        // Get Kashier configuration
+        $config = $this->getConfigValues();
+        if (!$config) {
+            \Log::error('Kashier webhook: Configuration not found');
+            return response()->json(['status' => 'error', 'message' => 'Configuration error'], 500);
+        }
+
+        $apiKey = $config->api_key ?? $config->secret_key ?? '';
+
+        // Validate signature for security (only if signature is present)
+        if ($signature && !$this->validateSignature($payload, $apiKey)) {
+            \Log::error('Kashier webhook: Invalid signature - possible tampering detected', [
+                'orderId' => $orderId,
+                'paymentStatus' => $paymentStatus
+            ]);
+            return response()->json(['status' => 'error', 'message' => 'Invalid signature'], 403);
+        }
+
+        // Check if already paid to prevent double processing
+        if ($payment_data->is_paid == 1) {
+            \Log::info('Kashier webhook: Payment already processed for orderId: ' . $orderId);
+            return response()->json(['status' => 'success', 'message' => 'Payment already processed']);
         }
 
         if (strtoupper($paymentStatus) === 'SUCCESS' || strtoupper($paymentStatus) === 'CAPTURED') {
@@ -188,13 +315,15 @@ class KashierPaymentController extends Controller
             ]);
 
             $data = $this->payment::where(['id' => $orderId])->first();
-            if (isset($data) && function_exists($data->hook)) {
+            if (isset($data) && !empty($data->hook) && function_exists($data->hook)) {
+                \Log::info('Kashier webhook: Calling hook ' . $data->hook . ' for orderId: ' . $orderId);
                 call_user_func($data->hook, $data);
             }
-            
+
             return response()->json(['status' => 'success', 'message' => 'Payment processed']);
         }
 
+        \Log::warning('Kashier webhook: Payment not successful, status: ' . $paymentStatus);
         return response()->json(['status' => 'error', 'message' => 'Payment not successful'], 400);
     }
 }

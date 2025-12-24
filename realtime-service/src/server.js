@@ -56,13 +56,22 @@ const requireMetricsAuth = (req, res) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   if (!requireMetricsAuth(req, res)) return;
+
+  // Get Redis health status if using resilient client
+  const redisHealth = redisClient.getHealthStatus ? redisClient.getHealthStatus() : {
+    mode: config.redis.enabled ? 'redis' : 'in-memory',
+    redisHealthy: true,
+    isUsingFallback: false
+  };
+
   res.json({
     status: 'ok',
     service: 'smartline-realtime',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     connections: io.engine.clientsCount,
-    redisAdapter: config.redis.enabled
+    redisAdapter: config.redis.enabled,
+    redis: redisHealth
   });
 });
 
@@ -74,13 +83,21 @@ app.get('/metrics', async (req, res) => {
     locationService.getActiveRidesCount()
   ]);
 
+  // Get Redis health status
+  const redisHealth = redisClient.getHealthStatus ? redisClient.getHealthStatus() : {
+    mode: config.redis.enabled ? 'redis' : 'in-memory',
+    redisHealthy: true,
+    isUsingFallback: false
+  };
+
   res.json({
     connections: io.engine.clientsCount,
     activeDrivers,
     activeRides,
     memory: process.memoryUsage(),
     uptime: process.uptime(),
-    redisAdapter: config.redis.enabled
+    redisAdapter: config.redis.enabled,
+    redis: redisHealth
   });
 });
 
@@ -481,15 +498,26 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start Redis event listener
-redisEventBus.start();
-rideTimeoutService.start();
+// Start Redis event listener (only on worker 0 to avoid duplicate event processing)
+// PM2 cluster mode sets NODE_APP_INSTANCE (0, 1, 2, etc.)
+const workerId = process.env.NODE_APP_INSTANCE || '0';
+if (workerId === '0') {
+  logger.info('Starting Redis Event Bus on worker 0 (single subscriber pattern)');
+  redisEventBus.start();
+  rideTimeoutService.start();
+} else {
+  logger.info(`Worker ${workerId} - Skipping Redis Event Bus (handled by worker 0 to prevent duplicates)`);
+}
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully');
 
-  rideTimeoutService.stop();
+  // Only stop Redis services on worker 0 (they only run there)
+  if (workerId === '0') {
+    rideTimeoutService.stop();
+  }
+
   io.close(() => {
     logger.info('All Socket.IO connections closed');
   });
@@ -504,7 +532,11 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   logger.info('SIGINT received, shutting down gracefully');
 
-  rideTimeoutService.stop();
+  // Only stop Redis services on worker 0 (they only run there)
+  if (workerId === '0') {
+    rideTimeoutService.stop();
+  }
+
   io.close(() => {
     logger.info('All Socket.IO connections closed');
   });

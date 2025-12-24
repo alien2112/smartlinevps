@@ -128,8 +128,8 @@ class TripRequestController extends Controller
         $destination_coordinates = is_array($request['destination_coordinates'])
             ? $request['destination_coordinates']
             : json_decode($request['destination_coordinates'], true);
-        $pickup_point = new Point($pickup_coordinates[0], $pickup_coordinates[1], 4326);
-        $destination_point = new Point($destination_coordinates[0], $destination_coordinates[1], 4326);
+        $pickup_point = new Point($pickup_coordinates[1], $pickup_coordinates[0], 4326);
+        $destination_point = new Point($destination_coordinates[1], $destination_coordinates[0], 4326);
 
 
         $intermediate_coordinates = [];
@@ -512,8 +512,8 @@ class TripRequestController extends Controller
         } else {
             $pickup_coordinates = json_decode($request['pickup_coordinates'], true);
             $destination_coordinates = json_decode($request['destination_coordinates'], true);
-            $pickup_point = new Point($pickup_coordinates[0], $pickup_coordinates[1], 4326);
-            $destination_point = new Point($destination_coordinates[0], $destination_coordinates[1], 4326);
+            $pickup_point = new Point($pickup_coordinates[1], $pickup_coordinates[0], 4326);
+            $destination_point = new Point($destination_coordinates[1], $destination_coordinates[0], 4326);
         }
 //        dd($pickup_coordinates);
 
@@ -570,7 +570,7 @@ class TripRequestController extends Controller
             $save_trip->save();
         } else {
             $customer_coordinates = json_decode($request['customer_coordinates'], true);
-            $customer_point = new Point($customer_coordinates[0], $customer_coordinates[1], 4326);
+            $customer_point = new Point($customer_coordinates[1], $customer_coordinates[0], 4326);
             $request->merge([
                 'customer_id' => auth('api')->id(),
                 'zone_id' => $zone->id,
@@ -633,7 +633,7 @@ class TripRequestController extends Controller
             ];
             if (!empty($notify)) {
 
-                dispatch(new SendPushNotificationJob($notification, $find_drivers))->onQueue('high');
+                dispatch(new SendPushNotificationJob($notification, $find_drivers))->onQueue('high')->afterResponse();
                 $this->temp_notification->store(['data' => $notify]);
             }
             foreach ($find_drivers as $key => $value) {
@@ -858,7 +858,7 @@ class TripRequestController extends Controller
                 $notification['type'] = $trip->type;
                 $notification['action'] = 'ride_started';
 
-                dispatch(new SendPushNotificationJob($notification, $data))->onQueue('high');
+                dispatch(new SendPushNotificationJob($notification, $data))->onQueue('high')->afterResponse();
                 $this->temp_notification->delete($trip->id);
             }
             $driver_arrival_time = getRoutes(
@@ -963,22 +963,11 @@ class TripRequestController extends Controller
 
     public function rideStatusUpdate($trip_request_id, Request $request): JsonResponse
     {
-        \Log::info('Customer rideStatusUpdate called', [
-            'trip_request_id' => $trip_request_id,
-            'status' => $request->input('status'),
-            'cancel_reason' => $request->input('cancel_reason'),
-            'user_id' => auth()->id()
-        ]);
-
         $validator = Validator::make($request->all(), [
             'status' => 'required',
         ]);
 
         if ($validator->fails()) {
-            \Log::warning('Customer rideStatusUpdate validation failed', [
-                'trip_request_id' => $trip_request_id,
-                'errors' => $validator->errors()->toArray()
-            ]);
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
 
@@ -986,6 +975,7 @@ class TripRequestController extends Controller
         if (!$trip) {
             return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 403);
         }
+        
         // Idempotent cancellation: if already cancelled and customer is trying to cancel, return success
         if ($trip->current_status == CANCELLED) {
             if ($request->status == 'cancelled') {
@@ -1005,6 +995,10 @@ class TripRequestController extends Controller
         if ($trip->current_status == RETURNING) {
             return response()->json(responseFormatter(TRIP_STATUS_RETURNING_403), 403);
         }
+        if ($trip->is_paused) {
+            return response()->json(responseFormatter(TRIP_REQUEST_PAUSED_404), 403);
+        }
+
         $attributes = [
             'column' => 'id',
             'value' => $trip_request_id,
@@ -1012,94 +1006,51 @@ class TripRequestController extends Controller
             'trip_cancellation_reason' => utf8Clean($request['cancel_reason'] ?? null)
         ];
 
+        $referralData = null;
+        $previousStatus = $trip->current_status;
 
+        // Handle cancellation from ACCEPTED/PENDING (before trip starts)
         if ($request->status == 'cancelled' && ($trip->current_status == ACCEPTED || $trip->current_status == PENDING)) {
-            //referral
+            // Handle referral (sync - quick DB update)
             if ($trip->customer->referralCustomerDetails && $trip->customer->referralCustomerDetails->is_used == 0) {
-                $trip->customer->referralCustomerDetails()->update([
-                    'is_used' => 1
-                ]);
+                $trip->customer->referralCustomerDetails()->update(['is_used' => 1]);
                 if ($trip->customer?->referralCustomerDetails?->ref_by_earning_amount && $trip->customer?->referralCustomerDetails?->ref_by_earning_amount > 0) {
                     $shareReferralUser = $trip->customer?->referralCustomerDetails?->shareRefferalCustomer;
                     $this->customerReferralEarningTransaction($shareReferralUser, $trip->customer?->referralCustomerDetails?->ref_by_earning_amount);
-
-                    $push = getNotification('referral_reward_received');
-                    sendDeviceNotification(fcm_token: $shareReferralUser?->fcm_token,
-                        title: translate($push['title']),
-                        description: translate(textVariableDataFormat(value: $push['description'], referralRewardAmount: getCurrencyFormat($trip->customer?->referralCustomerDetails?->ref_by_earning_amount))),
-                        status: $push['status'],
-                        ride_request_id: $shareReferralUser?->id,
-                        action: 'referral_reward_received',
-                        user_id: $shareReferralUser?->id
-                    );
-                }
-            }
-            $data = $this->temp_notification->get([
-                'trip_request_id' => $request['trip_request_id'],
-                'relations' => 'user'
-            ]);
-            $push = getNotification('ride_cancelled');
-            if (!empty($data)) {
-                if ($trip->driver_id) {
-                    if (!is_null($trip->driver->fcm_token)) {
-                        sendDeviceNotification(fcm_token: $trip->driver->fcm_token,
-                            title: translate($push['title']),
-                            description: translate(textVariableDataFormat(value: $push['description'])),
-                            status: $push['status'],
-                            ride_request_id: $request['trip_request_id'],
-                            type: $trip->type,
-                            action: 'ride_cancelled',
-                            user_id: $trip->driver->id
-                        );
-                    }
-                    try {
-                        checkPusherConnection(CustomerTripCancelledEvent::broadcast($trip->driver, $trip));
-                    } catch (Exception $exception) {
-
-                    }
-                    //set driver availability_status as on_trip
-                    $driverDetails = $this->driverDetails->getBy(column: 'user_id', value: $trip->driver_id);
-                    if ($trip->type == RIDE_REQUEST) {
-                        $driverDetails->ride_count = 0;
-                    } else {
-                        --$driverDetails->parcel_count;
-                    }
-                    $driverDetails->availability_status = 'available';
-                    $driverDetails->save();
-                    $attributes['driver_id'] = $trip->driver_id;
-                } else {
-                    $notification = [
-                        'title' => translate($push['title']),
-                        'description' => translate($push['description']),
-                        'status' => $push['status'],
-                        'ride_request_id' => $trip->id,
-                        'type' => $trip->type,
-                        'action' => 'ride_cancelled'
+                    $referralData = [
+                        'fcm_token' => $shareReferralUser?->fcm_token,
+                        'amount' => getCurrencyFormat($trip->customer?->referralCustomerDetails?->ref_by_earning_amount),
+                        'user_id' => $shareReferralUser?->id,
+                        'language' => $shareReferralUser?->current_language_key ?? 'en'
                     ];
-                    dispatch(new SendPushNotificationJob($notification, $data))->onQueue('high');
-                    foreach ($data as $tempNotification) {
-                        try {
-                            checkPusherConnection(CustomerTripCancelledEvent::broadcast($tempNotification->user, $trip));
-                        } catch (Exception $exception) {
-
-                        }
-                    }
                 }
-                $this->temp_notification->delete($trip->id);
             }
-        }
-        if ($trip->is_paused) {
 
-            return response()->json(responseFormatter(TRIP_REQUEST_PAUSED_404), 403);
+            // Update driver availability (sync - quick DB update)
+            if ($trip->driver_id) {
+                $driverDetails = $this->driverDetails->getBy(column: 'user_id', value: $trip->driver_id);
+                if ($trip->type == RIDE_REQUEST) {
+                    $driverDetails->ride_count = 0;
+                } else {
+                    --$driverDetails->parcel_count;
+                }
+                $driverDetails->availability_status = 'available';
+                $driverDetails->save();
+                $attributes['driver_id'] = $trip->driver_id;
+            }
+
+            // Delete temp notifications (sync - quick)
+            $this->temp_notification->delete($trip->id);
         }
 
+        // Handle cancellation/completion from ONGOING status
         if ($trip->driver_id && ($request->status == 'completed' || $request->status == 'cancelled') && $trip->current_status == ONGOING) {
             if ($request->status == 'cancelled') {
                 $attributes['fee']['cancelled_by'] = 'customer';
             }
-            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->latitude, $trip->driver->lastLocations->longitude);
+            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->longitude, $trip->driver->lastLocations->latitude);
 
-            //set driver availability_status as on_trip
+            // Update driver availability (sync - quick)
             $driverDetails = $this->driverDetails->getBy(column: 'user_id', value: $trip->driver_id);
             if ($trip->type == RIDE_REQUEST) {
                 $driverDetails->ride_count = 0;
@@ -1108,68 +1059,42 @@ class TripRequestController extends Controller
             }
             $driverDetails->availability_status = 'available';
             $driverDetails->save();
-
-            if ($request->status == 'cancelled' && $trip->type == PARCEL) {
-                $push = getNotification('ride_' . $request->status);
-                if (!is_null($trip->driver->fcm_token)) {
-                    sendDeviceNotification(fcm_token: $trip->driver->fcm_token,
-                        title: translate($push['title']),
-                        description: translate(textVariableDataFormat(value: $push['description'])),
-                        status: $push['status'],
-                        ride_request_id: $request['trip_request_id'],
-                        type: $trip->type,
-                        action: 'parcel_cancelled',
-                        user_id: $trip->driver->id
-                    );
-                }
-            } else {
-                //Get status wise notification message
-                $push = getNotification('ride_' . $request->status);
-                if (!is_null($trip->driver->fcm_token)) {
-                    sendDeviceNotification(fcm_token: $trip->driver->fcm_token,
-                        title: translate($push['title']),
-                        description: translate(textVariableDataFormat(value: $push['description'])),
-                        status: $push['status'],
-                        ride_request_id: $request['trip_request_id'],
-                        type: $trip->type,
-                        action: 'ride_completed',
-                        user_id: $trip->driver->id
-                    );
-                }
-                try {
-                    checkPusherConnection(CustomerTripCancelledAfterOngoingEvent::broadcast($trip));
-                } catch (Exception $exception) {
-
-                }
-            }
-
         }
 
+        // DB Transaction - quick operations only
         DB::beginTransaction();
-        // Update main trip table (current_status, trip_cancellation_reason)
         $this->trip->update(attributes: $attributes, id: $trip_request_id);
-
-        if ($request->status == 'cancelled' && $trip->driver_id && $trip->current_status == ONGOING) {
-            $this->trip->updateRelationalTable($attributes);
-            $this->customerLevelUpdateChecker(auth()->user());
-            $this->driverLevelUpdateChecker($trip->driver);
-        } elseif ($request->status == 'completed' && $trip->driver_id && $trip->current_status == ONGOING) {
-            $this->trip->updateRelationalTable($attributes);
-            $this->customerLevelUpdateChecker(auth()->user());
-            $this->driverLevelUpdateChecker($trip->driver);
-        } else {
-            $this->trip->updateRelationalTable($attributes);
-        }
+        $this->trip->updateRelationalTable($attributes);
         DB::commit();
 
-        \Log::info('Customer rideStatusUpdate completed', [
-            'trip_request_id' => $trip_request_id,
-            'new_status' => $request['status']
-        ]);
+        // ⚡ INSTANT Redis publish for realtime updates (fast ~2-5ms)
+        try {
+            if ($request->status == 'cancelled') {
+                app(\App\Services\RealtimeEventPublisher::class)->publishTripCancelled($trip);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Failed to publish customer trip cancel event', [
+                'trip_id' => $trip->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        // Offload ALL slow operations to background job (FCM, Pusher, level checks)
+        dispatch(new \App\Jobs\ProcessCustomerCancelNotificationsJob(
+            $trip->id,
+            $request->status,
+            $previousStatus,
+            $referralData,
+            auth()->id(),
+            $trip->driver_id
+        ))->onQueue('high')->afterResponse();
+
+        // Handle parcel returning status (must be sync for data integrity)
         if ($trip->driver_id && $request->status == 'cancelled' && $trip->current_status == ONGOING && $trip->type == PARCEL) {
-                    $env = env('APP_MODE');
-                    $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
-                    $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';            $trip->otp = $otp;
+            $env = env('APP_MODE');
+            $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
+            $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';
+            $trip->otp = $otp;
             if ($trip?->parcel?->payer == SENDER) {
                 $trip->paid_fare += $trip->return_fee;
                 $trip->due_amount = $trip->return_fee;
@@ -1187,14 +1112,11 @@ class TripRequestController extends Controller
                 }
             }
             $trip->save();
-            $trip->tripStatus()->update([
-                RETURNING => now()
-            ]);
+            $trip->tripStatus()->update([RETURNING => now()]);
         }
 
-        // Refresh trip from database to get updated status
+        // ⚡⚡⚡ INSTANT RESPONSE
         $trip = $trip->fresh(['driver', 'vehicle.model', 'vehicleCategory', 'tripStatus', 'coordinate', 'fee', 'time', 'parcel', 'parcelUserInfo', 'parcelRefund']);
-
         $resource = TripRequestResource::make($trip)->resolve();
         return response()->json(utf8Clean(responseFormatter(DEFAULT_UPDATE_200, $resource)));
     }

@@ -23,7 +23,30 @@ class EnsureIdempotency
     {
         $idempotencyKey = $request->header('Idempotency-Key');
 
-        // If no idempotency key provided, proceed normally
+        // Auto-generate idempotency key for critical endpoints if not provided
+        // This prevents duplicate requests from Flutter retries
+        if (!$idempotencyKey) {
+            $tripId = $request->input('trip_request_id') ?? $request->route('trip_request_id');
+            $userId = auth()->id();
+            $status = $request->input('status');
+            
+            if ($request->is('*/trip-action')) {
+                $action = $request->input('action');
+                if ($tripId && $action && $userId) {
+                    $idempotencyKey = "auto:{$userId}:{$tripId}:{$action}";
+                }
+            } elseif ($request->is('*/match-otp')) {
+                if ($tripId && $userId) {
+                    $idempotencyKey = "auto:otp:{$userId}:{$tripId}";
+                }
+            } elseif ($request->is('*/update-status/*')) {
+                if ($tripId && $status && $userId) {
+                    $idempotencyKey = "auto:status:{$userId}:{$tripId}:{$status}";
+                }
+            }
+        }
+
+        // If still no idempotency key, proceed normally
         if (!$idempotencyKey) {
             return $next($request);
         }

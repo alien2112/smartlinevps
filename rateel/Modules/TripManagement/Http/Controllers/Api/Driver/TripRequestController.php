@@ -381,6 +381,7 @@ class TripRequestController extends Controller
         $otpRequired = (bool)businessConfig(key: 'driver_otp_confirmation_for_trip', settingsType: TRIP_SETTINGS)?->value == 1;
         $sendOtp = $otpRequired && $trip->type === RIDE_REQUEST && $trip->otp;
 
+        // ⚙️ CRITICAL PERFORMANCE FIX: Dispatch notifications to background
         ProcessTripAcceptNotificationsJob::dispatch(
             tripId: $trip->id,
             customerId: $trip->customer->id,
@@ -394,57 +395,85 @@ class TripRequestController extends Controller
             driverFcmToken: $user->fcm_token,
             customerLanguage: $trip->customer?->current_language_key ?? 'en',
             driverLanguage: $user->current_language_key ?? 'en'
-        )->onQueue('high');
+        )->onQueue('high')->afterResponse();
 
-        // Refresh trip from database to ensure latest data
-        $trip = $this->trip->getBy('id', $request['trip_request_id'], [
-            'relations' => ['customer', 'coordinate', 'parcelUserInfo', 'tripStatus', 'time', 'vehicle.model', 'vehicleCategory', 'driver']
+        // ⚡ PERFORMANCE FIX: Move ALL heavy operations AFTER response
+        // Dispatch Redis/Pusher events in background - DON'T block HTTP response!
+        $tripId = $trip->id;
+        $userId = $user->id;
+        $userFirstName = $user->first_name ?? '';
+        $userLastName = $user->last_name ?? '';
+        $userPhone = $user->phone ?? '';
+        $userProfileImage = $user->profile_image ?? '';
+        $vehicleData = [
+            'brand' => $user->vehicle?->model?->brand?->name ?? '',
+            'model' => $user->vehicle?->model?->name ?? '',
+            'licence_plate' => $user->vehicle?->licence_plate_number ?? '',
+            'color' => $user->vehicle?->color ?? '',
+        ];
+
+        dispatch(function () use ($tripId, $userId, $userFirstName, $userLastName, $userPhone, $userProfileImage, $vehicleData, $request) {
+            try {
+                // Load trip with all relations for broadcasting
+                $trip = app(\Modules\TripManagement\Interfaces\TripRequestInterfaces::class)->getBy('id', $tripId, [
+                    'relations' => ['customer', 'coordinate', 'parcelUserInfo', 'tripStatus', 'time', 'vehicle.model', 'vehicleCategory', 'driver']
+                ]);
+
+                if (!$trip) {
+                    \Log::warning('Trip not found in afterResponse broadcast', ['trip_id' => $tripId]);
+                    return;
+                }
+
+                $data = \Modules\TripManagement\Transformers\TripRequestResource::make($trip);
+
+                // Publish Redis event
+                $driverData = [
+                    'id' => $userId,
+                    'first_name' => $userFirstName,
+                    'last_name' => $userLastName,
+                    'phone' => $userPhone,
+                    'profile_image' => $userProfileImage,
+                    'vehicle' => $vehicleData,
+                ];
+
+                app(\App\Services\RealtimeEventPublisher::class)->publishTripAccepted(
+                    $trip,
+                    $driverData,
+                    $data->resolve()
+                );
+
+                \Log::info('📡 Trip accepted event published via Redis (async)', [
+                    'trip_id' => $tripId,
+                    'driver_id' => $userId,
+                ]);
+
+                // Pusher broadcast
+                checkPusherConnection(\App\Events\DriverTripAcceptedEvent::broadcast($trip));
+
+            } catch (\Exception $e) {
+                \Log::error('Failed to publish trip accepted event (async)', [
+                    'trip_id' => $tripId,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        })->afterResponse();
+
+        // ⚡⚡⚡ INSTANT RESPONSE - Return immediately without heavy data loading
+        $totalTime = round((microtime(true) - $controllerStartTime) * 1000, 2);
+        \Log::info('✅ Trip acceptance INSTANT response sent', [
+            'trip_id' => $trip->id,
+            'driver_id' => $user->id,
+            'total_time_ms' => $totalTime,
+            'performance' => $totalTime < 200 ? '⚡⚡⚡ EXCELLENT' : ($totalTime < 500 ? '⚡⚡ GOOD' : '⚠️ SLOW')
         ]);
-        $data = TripRequestResource::make($trip);
 
-        // ====================================================================
-        // CRITICAL FIX: Publish trip accepted event via Redis BEFORE response
-        // This ensures driver app receives socket notification immediately,
-        // fixing the "second press works" bug.
-        // ====================================================================
-        try {
-            $driverData = [
-                'id' => $user->id,
-                'first_name' => $user->first_name ?? '',
-                'last_name' => $user->last_name ?? '',
-                'phone' => $user->phone ?? '',
-                'profile_image' => $user->profile_image ?? '',
-                'vehicle' => [
-                    'brand' => $user->vehicle?->model?->brand?->name ?? '',
-                    'model' => $user->vehicle?->model?->name ?? '',
-                    'licence_plate' => $user->vehicle?->licence_plate_number ?? '',
-                    'color' => $user->vehicle?->color ?? '',
-                ],
-            ];
+        ObservabilityService::observeControllerExit('TripRequestController', 'requestAction', $controllerStartTime, 'success', $user->id, $request['trip_request_id']);
 
-            $this->realtimeEventPublisher->publishTripAccepted(
-                $trip,
-                $driverData,
-                $data->resolve()
-            );
-
-            \Log::info('Trip accepted event published via Redis BEFORE response', [
-                'trip_id' => $trip->id,
-                'driver_id' => $user->id,
-            ]);
-        } catch (Exception $e) {
-            \Log::error('Failed to publish trip accepted event', [
-                'trip_id' => $trip->id,
-                'error' => $e->getMessage()
-            ]);
-        }
-
-        // Legacy Pusher broadcast (keep for backward compatibility)
-        try {
-            checkPusherConnection(DriverTripAcceptedEvent::broadcast($trip));
-        } catch (Exception $exception) {}
-
-        return response()->json(responseFormatter(constant: DEFAULT_UPDATE_200, content: $data));
+        return response()->json(responseFormatter(constant: DEFAULT_UPDATE_200, content: [
+            'trip_id' => $trip->id,
+            'status' => 'accepted',
+            'message' => 'Trip accepted successfully'
+        ]));
     }
 
     /**
@@ -521,7 +550,7 @@ class TripRequestController extends Controller
                     }
                 }
             }
-            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->latitude, $trip->driver->lastLocations->longitude);
+            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->longitude, $trip->driver->lastLocations->latitude);
 
             //set driver availability_status as on_trip
             $driverDetails = $this->driverDetails->getBy(column: 'user_id', value: $user?->id);
@@ -535,22 +564,39 @@ class TripRequestController extends Controller
         }
 
         $data = $this->trip->updateRelationalTable($attributes);
-        if ($request->status == 'cancelled') {
-            $this->customerLevelUpdateChecker($trip->customer);
-            $this->driverLevelUpdateChecker(auth()->user());
-        } elseif ($request->status == 'completed') {
-            $this->customerLevelUpdateChecker($trip->customer);
-            $this->driverLevelUpdateChecker(auth()->user());
-        }
         DB::commit();
 
-        // Offload slow external API calls to background job
-        dispatch(new \App\Jobs\ProcessRideStatusUpdateNotificationsJob($trip->id, $request->status, $referralData ?? null));
+        // ⚡ INSTANT Redis publish for realtime updates (fast ~2-5ms)
+        try {
+            if ($request->status == 'completed') {
+                app(\App\Services\RealtimeEventPublisher::class)->publishTripCompleted($trip);
+            } elseif ($request->status == 'cancelled') {
+                app(\App\Services\RealtimeEventPublisher::class)->publishTripCancelled($trip);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Failed to publish trip status event', [
+                'trip_id' => $trip->id,
+                'status' => $request->status,
+                'error' => $e->getMessage()
+            ]);
+        }
 
+        // Offload ALL slow operations to background job (FCM, Pusher, level checks)
+        dispatch(new \App\Jobs\ProcessRideStatusUpdateNotificationsJob(
+            $trip->id, 
+            $request->status, 
+            $referralData ?? null,
+            $trip->customer_id,
+            auth()->id()
+        ))->onQueue('high')->afterResponse();
+
+        // Handle parcel returning status (must be sync for data integrity)
         if ($trip->driver_id && $request->status == 'cancelled' && $trip->current_status == ONGOING && $trip->type == PARCEL) {
-                            $env = env('APP_MODE');
-                            $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
-                            $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';            $trip->otp = $otp;            $trip->return_fee = 0;
+            $env = env('APP_MODE');
+            $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
+            $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';
+            $trip->otp = $otp;
+            $trip->return_fee = 0;
             $trip->current_status = RETURNING;
             $trip->return_time = Carbon::parse($request->return_time);
             $trip->save();
@@ -571,47 +617,7 @@ class TripRequestController extends Controller
             }
         }
 
-
-        //Get status wise notification message
-        if ($request->status == 'cancelled' && $trip->type == PARCEL) {
-            $push = getNotification('ride_' . $request->status);
-            sendDeviceNotification(fcm_token: $trip->customer->fcm_token,
-                title: translate($push['title']),
-                description: translate(textVariableDataFormat(value: $push['description'])),
-                status: $push['status'],
-                ride_request_id: $request['trip_request_id'],
-                type: $trip->type,
-                action: 'parcel_cancelled',
-                user_id: $trip->customer->id
-            );
-        } else {
-            $action = 'ride_' . $request->status;
-            $push = getNotification($action);
-            sendDeviceNotification(fcm_token: $trip->customer->fcm_token,
-                title: translate($push['title']),
-                description: translate(textVariableDataFormat(value: $push['description'])),
-                status: $push['status'],
-                ride_request_id: $request['trip_request_id'],
-                type: $trip->type,
-                action: $action,
-                user_id: $trip->customer->id
-            );
-        }
-        if ($request->status == "completed") {
-            try {
-                checkPusherConnection(DriverTripCompletedEvent::broadcast($trip));
-            } catch (Exception $exception) {
-
-            }
-        }
-        if ($request->status == "cancelled") {
-            try {
-                checkPusherConnection(DriverTripCancelledEvent::broadcast($trip));
-            } catch (Exception $exception) {
-
-            }
-        }
-
+        // ⚡⚡⚡ INSTANT RESPONSE - all slow operations moved to background job
         // Return the refreshed trip with updated status (not the old $data)
         $trip = $trip->fresh(['driver', 'vehicle.model', 'vehicleCategory', 'tripStatus', 'coordinate', 'fee', 'time', 'parcel', 'parcelUserInfo', 'parcelRefund']);
         $resource = TripRequestResource::make($trip);
@@ -692,32 +698,44 @@ class TripRequestController extends Controller
         $trip->save();
         $trip->tripStatus()->update(['ongoing' => now()]);
         DB::commit();
-        
+
         // OBSERVABILITY: Log DB transaction committed
         ObservabilityService::observeDbTransactionCommit('matchOtp_update_status', $dbStartTime, $trip->id);
 
-        // ====================================================================
-        // CRITICAL FIX: Publish OTP verified event via Redis BEFORE response
-        // This ensures driver app immediately shows trip as ongoing.
-        // ====================================================================
+        // Offload slow external API calls to background job
+        dispatch(new \App\Jobs\ProcessTripOtpJob($trip->id))->onQueue('high')->afterResponse();
+
+        // ⚡ INSTANT Redis publish (same as driver accept - fast ~2-5ms)
         try {
-            $this->realtimeEventPublisher->publishOtpVerified($trip);
-            
-            \Log::info('OTP verified event published via Redis BEFORE response', [
+            app(\App\Services\RealtimeEventPublisher::class)->publishOtpVerified($trip);
+            \Log::info('📡 OTP verified event published via Redis (sync)', [
                 'trip_id' => $trip->id,
                 'driver_id' => $trip->driver_id,
             ]);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             \Log::error('Failed to publish OTP verified event', [
                 'trip_id' => $trip->id,
                 'error' => $e->getMessage()
             ]);
         }
 
-        // Offload slow external API calls to background job
-        dispatch(new \App\Jobs\ProcessTripOtpJob($trip->id))->onQueue('high');
+        // ⚡⚡⚡ INSTANT RESPONSE
+        $totalTime = round((microtime(true) - $controllerStartTime) * 1000, 2);
+        \Log::info('✅ OTP matched - INSTANT response', [
+            'trip_id' => $trip->id,
+            'driver_id' => $trip->driver_id,
+            'total_time_ms' => $totalTime,
+            'performance' => $totalTime < 50 ? '⚡⚡⚡⚡ BLAZING' : ($totalTime < 100 ? '⚡⚡⚡ EXCELLENT' : ($totalTime < 200 ? '⚡⚡ GOOD' : '⚠️ SLOW'))
+        ]);
 
-        return response()->json(responseFormatter(constant: DEFAULT_STORE_200));
+        ObservabilityService::observeOtpVerification($trip->id, 'success', auth('api')->id());
+        ObservabilityService::observeControllerExit('TripRequestController', 'matchOtp', $controllerStartTime, 'success', auth('api')->id(), $trip->id);
+
+        return response()->json(responseFormatter(constant: DEFAULT_STORE_200, content: [
+            'trip_id' => $trip->id,
+            'status' => ONGOING,
+            'message' => 'OTP verified. Trip started.'
+        ]));
     }
 
     /**

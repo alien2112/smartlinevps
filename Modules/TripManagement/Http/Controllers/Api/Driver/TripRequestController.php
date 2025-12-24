@@ -9,6 +9,7 @@ use App\Events\DriverTripCancelledEvent;
 use App\Events\DriverTripCompletedEvent;
 use App\Events\DriverTripStartedEvent;
 use App\Jobs\SendPushNotificationJob;
+use App\Services\RealtimeEventPublisher;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Exception;
@@ -39,6 +40,8 @@ use Modules\UserManagement\Lib\LevelHistoryManagerTrait;
 use Modules\UserManagement\Lib\LevelUpdateCheckerTrait;
 use Modules\VehicleManagement\Entities\Vehicle;
 use App\Services\TripLockingService;
+use App\Services\TripAtomicLockService;
+use App\Jobs\ProcessTripAcceptanceJob;
 use Ramsey\Uuid\Nonstandard\Uuid;
 
 class TripRequestController extends Controller
@@ -56,6 +59,7 @@ class TripRequestController extends Controller
         private ReviewInterface                $review,
         private TripRequestTimeInterface       $time,
         private TripLockingService             $tripLockingService,
+        private TripAtomicLockService          $atomicLock,
     )
     {
     }
@@ -135,11 +139,18 @@ class TripRequestController extends Controller
     /**
      * Summary of requestAction
      *
+     * OPTIMIZED FOR PERFORMANCE:
+     * - Early validation to fail fast
+     * - Single trip query instead of multiple
+     * - Reduced redundant database calls
+     *
      * @param Request $request
      * @return JsonResponse
      */
      public function requestAction(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+
         $validator = Validator::make($request->all(), [
             'trip_request_id' => 'required',
             'action' => 'required|in:accepted,rejected',
@@ -156,30 +167,21 @@ class TripRequestController extends Controller
         $user = auth('api')->user();
         $tripRequestId = $request['trip_request_id'];
         $action = $request['action'];
-        
+
         \Log::info('Driver trip action request', [
             'driver_id' => $user->id,
             'trip_request_id' => $tripRequestId,
-            'action' => $action
+            'action' => $action,
+            'request_time' => now()->toDateTimeString()
         ]);
 
-        // Load trip with customer relation for notifications
-        $trip = $this->trip->getBy('id', $tripRequestId, ['relations' => ['customer', 'vehicleCategory']]);
-        
-        if (!$trip) {
-            \Log::warning('Trip not found for action', [
-                'trip_request_id' => $tripRequestId,
-                'driver_id' => $user->id
-            ]);
-            return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 403);
-        }
-
-        // Check driver status
+        // === EARLY VALIDATION - FAIL FAST ===
+        // Check driver status BEFORE loading trip (saves DB query if driver unavailable)
         if (!$user->driverDetails) {
             \Log::error('Driver details not found', ['driver_id' => $user->id]);
             return response()->json(responseFormatter(constant: DRIVER_UNAVAILABLE_403), 403);
         }
-        
+
         $user_status = $user->driverDetails->availability_status;
         if ($user_status == 'unavailable' || !$user->driverDetails->is_online) {
             \Log::warning('Driver unavailable or offline', [
@@ -188,6 +190,23 @@ class TripRequestController extends Controller
                 'is_online' => $user->driverDetails->is_online
             ]);
             return response()->json(responseFormatter(constant: DRIVER_UNAVAILABLE_403), 403);
+        }
+
+        // Check vehicle BEFORE loading trip (saves DB query)
+        if (!$user->vehicle) {
+            \Log::error('Driver has no vehicle', ['driver_id' => $user->id]);
+            return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404), 403);
+        }
+
+        // Load trip ONCE with all needed relations
+        $trip = $this->trip->getBy('id', $tripRequestId, ['relations' => ['customer', 'vehicleCategory']]);
+
+        if (!$trip) {
+            \Log::warning('Trip not found for action', [
+                'trip_request_id' => $tripRequestId,
+                'driver_id' => $user->id
+            ]);
+            return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 403);
         }
 
         // Handle rejection
@@ -242,22 +261,21 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(constant: DEFAULT_UPDATE_200));
         }
 
-        // === ACCEPTANCE FLOW ===
-        \Log::info('Driver attempting to accept trip', [
+        // ⚡ === ATOMIC ACCEPTANCE FLOW (LAYER 1 + LAYER 2) === ⚡
+        $acceptStartTime = microtime(true);
+
+        \Log::info('🚀 Driver attempting to accept trip', [
             'driver_id' => $user->id,
             'trip_id' => $trip->id,
-            'trip_status' => $trip->current_status
+            'trip_status' => $trip->current_status,
+            'validation_time_ms' => round((microtime(true) - $startTime) * 1000, 2)
         ]);
 
-        // Check driver availability status again
-        $driverCurrentStatus = $this->driverDetails->getBy(column: 'user_id', value: $user->id, attributes: [
-            'whereInColumn' => 'availability_status',
-            'whereInValue' => ['available', 'on_bidding'],
-        ]);
-        if (!$driverCurrentStatus) {
+        // Check driver availability status (already loaded, just validate)
+        if (!in_array($user_status, ['available', 'on_bidding'])) {
             \Log::warning('Driver not in available status for acceptance', [
                 'driver_id' => $user->id,
-                'current_status' => $user->driverDetails->availability_status
+                'current_status' => $user_status
             ]);
             return response()->json(responseFormatter(DRIVER_403), 403);
         }
@@ -271,26 +289,15 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(DRIVER_REQUEST_ACCEPT_TIMEOUT_408), 403);
         }
 
-        // Validate vehicle category
-        if (!$user->vehicle) {
-            \Log::error('Driver has no vehicle', ['driver_id' => $user->id]);
-            return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404), 403);
-        }
-
+        // Validate vehicle category (vehicle already checked earlier)
         $customer_vehicle_category_id = $trip->vehicle_category_id;
-        $vehicle_category_ids = is_string($user->vehicle->category_id) 
-            ? json_decode($user->vehicle->category_id, true) 
+        $vehicle_category_ids = is_string($user->vehicle->category_id)
+            ? json_decode($user->vehicle->category_id, true)
             : $user->vehicle->category_id;
 
         if (!is_array($vehicle_category_ids)) {
             $vehicle_category_ids = [$vehicle_category_ids];
         }
-
-        \Log::debug('Vehicle category validation', [
-            'trip_id' => $trip->id,
-            'required_category' => $customer_vehicle_category_id,
-            'driver_categories' => $vehicle_category_ids
-        ]);
 
         if (!in_array($customer_vehicle_category_id, $vehicle_category_ids ?? [])) {
             \Log::warning('Vehicle category mismatch', [
@@ -306,7 +313,7 @@ class TripRequestController extends Controller
         $env = env('APP_MODE');
         $otp = $env != 'live' ? '0000' : rand(1000, 9999);
 
-        // Prepare additional data for atomic update
+        // Prepare additional data for async job
         $bid_on_fare = get_cache('bid_on_fare') ?? 0;
         $additionalData = [
             'otp' => $otp,
@@ -319,141 +326,93 @@ class TripRequestController extends Controller
             $additionalData['actual_fare'] = $trip->actual_fare;
         }
 
-        // ATOMIC TRIP ASSIGNMENT with proper error handling
+        // ⚡ LAYER 1: ATOMIC LOCK (Redis SETNX) ⚡
+        // This MUST complete in < 100ms
         try {
-            $lockResult = $this->tripLockingService->lockAndAssignTrip(
+            $lockResult = $this->atomicLock->acquireTripLock(
                 tripId: $tripRequestId,
-                driverId: $user->id,
-                expectedVersion: $request->input('version'),
-                additionalData: $additionalData
+                driverId: $user->id
             );
         } catch (\Exception $e) {
-            \Log::error('Trip locking service exception', [
+            \Log::error('❌ Atomic lock service exception', [
                 'trip_id' => $tripRequestId,
                 'driver_id' => $user->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
             ]);
             return response()->json(responseFormatter(DEFAULT_400, 'Failed to process trip acceptance'), 500);
         }
 
+        // Handle lock failure
         if (!$lockResult['success']) {
-            // Check if already assigned to this driver (idempotent)
-            if ($lockResult['trip'] && $lockResult['trip']->driver_id == $user->id) {
-                \Log::info('Trip already assigned to this driver (idempotent)', [
+            $elapsed = round((microtime(true) - $startTime) * 1000, 2);
+
+            // IDEMPOTENT RETRY: Same driver already accepted
+            if ($lockResult['is_retry']) {
+                \Log::info('✅ Idempotent retry - trip already accepted by this driver', [
                     'trip_id' => $tripRequestId,
-                    'driver_id' => $user->id
+                    'driver_id' => $user->id,
+                    'elapsed_ms' => $elapsed
                 ]);
-                $trip = $lockResult['trip']->fresh(['customer', 'vehicleCategory', 'tripStatus', 'coordinate', 'fee', 'time', 'parcel', 'parcelUserInfo']);
+
+                // Load fresh trip data and return success
+                $trip = $this->trip->getBy('id', $tripRequestId, [
+                    'relations' => ['customer', 'vehicleCategory', 'tripStatus', 'coordinate', 'fee', 'time', 'parcel', 'parcelUserInfo']
+                ]);
+
                 $resource = TripRequestResource::make($trip);
                 return response()->json(responseFormatter(DEFAULT_UPDATE_200, content: $resource));
             }
 
-            \Log::warning('Trip lock failed', [
+            // LOCK FAILED: Another driver won
+            \Log::warning('❌ Trip already accepted by another driver', [
                 'trip_id' => $tripRequestId,
                 'driver_id' => $user->id,
                 'reason' => $lockResult['message'],
-                'trip_current_driver' => $lockResult['trip']?->driver_id,
-                'trip_current_status' => $lockResult['trip']?->current_status
+                'elapsed_ms' => $elapsed
             ]);
 
             return response()->json(responseFormatter(TRIP_REQUEST_DRIVER_403, $lockResult['message']), 403);
         }
 
-        \Log::info('Trip lock acquired successfully', [
+        // 🎉 LOCK ACQUIRED! Return success immediately
+        $lockElapsed = round((microtime(true) - $acceptStartTime) * 1000, 2);
+        \Log::info('🎉 Trip lock acquired successfully', [
+            'trip_id' => $tripRequestId,
+            'driver_id' => $user->id,
+            'lock_time_ms' => $lockElapsed,
+            'performance' => $lockElapsed < 100 ? '⚡ FAST' : '⚠️ SLOW'
+        ]);
+
+        // ⚙️ LAYER 2: ASYNC PROCESSING (Background Job) ⚙️
+        // Dispatch ALL heavy work to background
+        dispatch(new ProcessTripAcceptanceJob($tripRequestId, $user->id, $additionalData))
+            ->onQueue('high-priority');
+
+        \Log::info('⚙️ Background job dispatched for trip acceptance', [
             'trip_id' => $tripRequestId,
             'driver_id' => $user->id
         ]);
 
-        $trip = $lockResult['trip'];
-
-        // Handle bidding if enabled
-        if ($bid_on_fare) {
-            $bidding = $this->bidding->getBy(column: 'trip_request_id', value: $tripRequestId,
-                attributes: ['additionalColumn' => 'driver_id', 'additionalValue' => $user->id, 'additionalColumn2' => 'is_ignored', 'additionalValue2' => 0],
-            );
-            if (!$bidding && $trip->estimated_fare != $trip->actual_fare) {
-                $this->bidding->store(attributes: [
-                    'trip_request_id' => $tripRequestId,
-                    'driver_id' => $user->id,
-                    'customer_id' => $trip->customer_id,
-                    'bid_fare' => $trip->actual_fare
-                ]);
-            }
-        }
-
-        // Handle parcel SMS notification
-        if ($trip->type == PARCEL && $trip->parcelUserInfo?->firstWhere('user_type', RECEIVER)?->contact_number) {
-            if (businessConfig('parcel_tracking_message')?->value && businessConfig('parcel_tracking_status')?->value == 1) {
-                $parcelTemplateMessage = businessConfig('parcel_tracking_message')->value;
-                $smsTemplate = smsTemplateDataFormat(
-                    value: $parcelTemplateMessage,
-                    customerName: $trip->parcelUserInfo->firstWhere('user_type', RECEIVER)?->name,
-                    parcelId: $trip->ref_id,
-                    trackingLink: route('track-parcel', $trip->ref_id)
-                );
-                try {
-                    self::send($trip->parcelUserInfo->firstWhere('user_type', RECEIVER)->contact_number, $smsTemplate);
-                } catch (\Exception $exception) {
-                    \Log::warning('SMS send failed for parcel', [
-                        'trip_id' => $trip->id,
-                        'error' => $exception->getMessage()
-                    ]);
-                }
-            }
-        }
-
-        // Update trip status timestamp
-        $trip->tripStatus()->update(['accepted' => now()]);
-
-        // Cleanup rejected requests
-        $this->rejectedRequest->destroyData([
-            'column' => 'trip_request_id',
-            'value' => $trip->id,
-        ]);
-
-        // Send OTP notification IMMEDIATELY to customer (critical - don't wait for background job)
-        $otpRequired = (bool)businessConfig(key: 'driver_otp_confirmation_for_trip', settingsType: TRIP_SETTINGS)?->value == 1;
-        if ($otpRequired && $trip->type === RIDE_REQUEST && $trip->customer?->fcm_token) {
-            $otpMessage = 'Your trip OTP is ' . $otp;
-
-            // Send FCM notification immediately
-            sendDeviceNotification(
-                fcm_token: $trip->customer->fcm_token,
-                title: translate('Trip OTP'),
-                description: translate($otpMessage),
-                status: 1,
-                ride_request_id: $trip->id,
-                type: $trip->type,
-                action: 'trip_otp',
-                user_id: $trip->customer->id
-            );
-
-            // Send SMS in background (non-critical)
-            if ($trip->customer->phone) {
-                try {
-                    self::send($trip->customer->phone, $otpMessage);
-                } catch (\Exception $e) {
-                    \Log::warning('SMS OTP send failed', ['trip_id' => $trip->id, 'error' => $e->getMessage()]);
-                }
-            }
-        }
-
-        // Dispatch background jobs (route calculation and other notifications)
-        dispatch(new \App\Jobs\CalculateDriverArrivalTimeJob($trip->id, $user->id));
-        dispatch(new \App\Jobs\NotifyOtherDriversJob($trip->id, $user->id));
-
-        // Refresh trip with all relations for response
-        $trip = $trip->fresh(['customer', 'vehicleCategory', 'tripStatus', 'coordinate', 'fee', 'time', 'parcel', 'parcelUserInfo']);
-
-        \Log::info('Trip acceptance completed successfully', [
+        $totalElapsed = round((microtime(true) - $startTime) * 1000, 2);
+        \Log::info('✅ Trip acceptance response sent', [
             'trip_id' => $tripRequestId,
             'driver_id' => $user->id,
-            'otp' => $otp
+            'total_time_ms' => $totalElapsed,
+            'lock_time_ms' => $lockElapsed,
+            'performance' => $totalElapsed < 200 ? '⚡⚡⚡ EXCELLENT' : ($totalElapsed < 500 ? '⚡⚡ GOOD' : '⚠️ NEEDS OPTIMIZATION')
         ]);
 
-        $resource = TripRequestResource::make($trip);
-        return response()->json(responseFormatter(constant: DEFAULT_UPDATE_200, content: $resource));
+        // CRITICAL PERFORMANCE: Return SUCCESS immediately without heavy resource transformation
+        // The background job will handle all notifications and updates
+        // The driver app will call /ride/details separately to get full trip data
+        return response()->json(responseFormatter(
+            constant: DEFAULT_UPDATE_200,
+            content: [
+                'trip_id' => $tripRequestId,
+                'status' => 'accepted',
+                'message' => 'Trip accepted successfully. Fetching details...'
+            ]
+        ));
     }
 
 
@@ -594,33 +553,24 @@ class TripRequestController extends Controller
             // Store original status for parcel cancellation check
             $originalStatus = $trip->current_status;
 
+            // Store data for post-transaction processing
+            $referralData = null;
+
             if ($status == 'completed' || $status == 'cancelled') {
                 if ($status == 'cancelled') {
                     $attributes['fee']['cancelled_by'] = 'driver';
-                    // Handle referral
+                    // Collect referral data but process AFTER transaction commit (non-blocking)
                     if ($trip->customer->referralCustomerDetails && $trip->customer->referralCustomerDetails->is_used == 0) {
-                        $trip->customer->referralCustomerDetails()->update([
-                            'is_used' => 1
-                        ]);
-                        if ($trip->customer?->referralCustomerDetails?->ref_by_earning_amount && $trip->customer?->referralCustomerDetails?->ref_by_earning_amount > 0) {
-                            $shareReferralUser = $trip->customer?->referralCustomerDetails?->shareRefferalCustomer;
-                            $this->customerReferralEarningTransaction($shareReferralUser, $trip->customer?->referralCustomerDetails?->ref_by_earning_amount);
-
-                            $push = getNotification('referral_reward_received');
-                            if ($shareReferralUser?->fcm_token) {
-                                SendPushNotificationJob::dispatch([
-                                    'title' => translate($push['title']),
-                                    'description' => translate(textVariableDataFormat(value: $push['description'], referralRewardAmount: getCurrencyFormat($trip->customer?->referralCustomerDetails?->ref_by_earning_amount))),
-                                    'status' => $push['status'],
-                                    'ride_request_id' => $shareReferralUser->id,
-                                    'action' => 'referral_reward_received',
-                                    'user' => [[
-                                        'fcm_token' => $shareReferralUser->fcm_token,
-                                        'user_id' => $shareReferralUser->id,
-                                    ]]
-                                ])->onQueue('notifications');
-                            }
-                        }
+                        $referralDetails = $trip->customer->referralCustomerDetails;
+                        $referralData = [
+                            'customer_id' => $trip->customer_id,
+                            'referral_id' => $referralDetails->id,
+                            'ref_by_earning_amount' => $referralDetails->ref_by_earning_amount,
+                            'share_referral_user_id' => $referralDetails->shareRefferalCustomer?->id,
+                            'share_referral_fcm_token' => $referralDetails->shareRefferalCustomer?->fcm_token
+                        ];
+                        // Mark as used immediately to prevent duplicate processing
+                        $trip->customer->referralCustomerDetails()->update(['is_used' => 1]);
                     }
                 }
 
@@ -644,25 +594,74 @@ class TripRequestController extends Controller
 
             $data = $this->trip->updateRelationalTable($attributes);
 
-            // Refresh the trip model to get updated values with necessary relations
-            $trip->refresh();
-            $trip->load(['customer', 'driver', 'fee', 'parcel', 'tripStatus']);
-
-            if ($status == 'cancelled') {
-                $this->customerLevelUpdateChecker($trip->customer);
-                $this->driverLevelUpdateChecker($user);
-            } elseif ($status == 'completed') {
-                $this->customerLevelUpdateChecker($trip->customer);
-                $this->driverLevelUpdateChecker($user);
-            }
-
             DB::commit();
 
-            \Log::info('Trip status updated successfully', [
+            \Log::info('Trip status updated successfully (transaction committed)', [
                 'trip_id' => $trip->id,
                 'new_status' => $status,
-                'previous_status' => $originalStatus
+                'previous_status' => $originalStatus,
+                'has_referral_data' => $referralData !== null
             ]);
+
+            // Process referral rewards AFTER commit (non-blocking)
+            if ($referralData && $referralData['ref_by_earning_amount'] > 0 && $referralData['share_referral_user_id']) {
+                dispatch(function () use ($referralData) {
+                    try {
+                        $shareReferralUser = \Modules\UserManagement\Entities\User::find($referralData['share_referral_user_id']);
+                        if ($shareReferralUser) {
+                            // Process transaction
+                            app(TripRequestController::class)->customerReferralEarningTransaction(
+                                $shareReferralUser,
+                                $referralData['ref_by_earning_amount']
+                            );
+
+                            // Send notification
+                            if ($referralData['share_referral_fcm_token']) {
+                                $push = getNotification('referral_reward_received');
+                                SendPushNotificationJob::dispatch([
+                                    'title' => translate($push['title']),
+                                    'description' => translate(textVariableDataFormat(
+                                        value: $push['description'],
+                                        referralRewardAmount: getCurrencyFormat($referralData['ref_by_earning_amount'])
+                                    )),
+                                    'status' => $push['status'],
+                                    'ride_request_id' => $shareReferralUser->id,
+                                    'action' => 'referral_reward_received',
+                                    'user' => [[
+                                        'fcm_token' => $referralData['share_referral_fcm_token'],
+                                        'user_id' => $shareReferralUser->id,
+                                    ]]
+                                ])->onQueue('notifications');
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        \Log::error('Referral processing failed (non-critical)', [
+                            'error' => $e->getMessage(),
+                            'referral_data' => $referralData
+                        ]);
+                    }
+                })->afterResponse();
+            }
+
+            // Move level checks to background (non-critical)
+            $customerId = $trip->customer_id;
+            $driverId = $user->id;
+            dispatch(function () use ($customerId, $driverId, $status) {
+                try {
+                    if ($status == 'cancelled' || $status == 'completed') {
+                        $customer = \Modules\UserManagement\Entities\User::find($customerId);
+                        $driver = \Modules\UserManagement\Entities\User::find($driverId);
+                        if ($customer) {
+                            app()->call([\Modules\UserManagement\Lib\LevelUpdateCheckerTrait::class, 'customerLevelUpdateChecker'], ['user' => $customer]);
+                        }
+                        if ($driver) {
+                            app()->call([\Modules\UserManagement\Lib\LevelUpdateCheckerTrait::class, 'driverLevelUpdateChecker'], ['user' => $driver]);
+                        }
+                    }
+                } catch (\Exception $e) {
+                    \Log::warning('Level update check failed', ['error' => $e->getMessage()]);
+                }
+            })->afterResponse();
 
         } catch (\Illuminate\Database\QueryException $e) {
             DB::rollBack();
@@ -750,22 +749,49 @@ class TripRequestController extends Controller
             }
         })->afterResponse();
 
-        // Return the refreshed trip with updated status (not the old $data)
-        $trip->refresh();
-        $trip->load(['driver', 'vehicle.model', 'vehicleCategory', 'tripStatus', 'coordinate', 'fee', 'time', 'parcel', 'parcelUserInfo', 'parcelRefund']);
+        // Publish to Redis for real-time UI updates (do this early, before heavy DB operations)
+        try {
+            $realtimePublisher = app(RealtimeEventPublisher::class);
+            if ($status == 'cancelled') {
+                $realtimePublisher->publishRideCancelled($trip, 'driver');
+            } elseif ($status == 'completed') {
+                $realtimePublisher->publishRideCompleted($trip);
+            }
+        } catch (\Exception $e) {
+            \Log::warning('Failed to publish ride event to Redis', ['error' => $e->getMessage()]);
+        }
+
+        // Load only essential relations for response (optimized)
+        $trip = \Modules\TripManagement\Entities\TripRequest::with([
+            'driver:id,first_name,last_name,phone,profile_image',
+            'vehicleCategory:id,name,type',
+            'tripStatus',
+            'fee',
+            'time'
+        ])->find($tripRequestId);
+        
         $resource = TripRequestResource::make($trip);
         return response()->json(responseFormatter(DEFAULT_UPDATE_200, $resource));
     }
 
 
     /**
-     * Trip otp submit - OPTIMIZED for speed
+     * Trip otp submit - ULTRA OPTIMIZED for speed
+     *
+     * CRITICAL PERFORMANCE FIX:
+     * - Validate with MINIMAL query (only 5 fields)
+     * - Update status immediately
+     * - Return SUCCESS instantly (< 50ms target)
+     * - ALL notifications/events in background queue
+     * - Driver app fetches full trip data separately
      *
      * @param Request $request
      * @return JsonResponse
      */
     public function matchOtp(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+
         $tripRequestId = $request['trip_request_id'];
         $otp = $request['otp'];
         $driverId = auth('api')->id();
@@ -775,10 +801,12 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: ['trip_request_id required']), 403);
         }
 
-        // Direct query for speed - only get what we need for validation
+        // ULTRA-FAST: Load ONLY what we need for validation (5 fields, no relations)
         $trip = \Modules\TripManagement\Entities\TripRequest::where('id', $tripRequestId)
-            ->select(['id', 'driver_id', 'otp', 'current_status', 'customer_id', 'type'])
+            ->select(['id', 'driver_id', 'otp', 'current_status', 'type', 'customer_id'])
             ->first();
+
+        $queryTime = round((microtime(true) - $startTime) * 1000, 2);
 
         if (!$trip) {
             return response()->json(responseFormatter(TRIP_REQUEST_404), 403);
@@ -790,59 +818,41 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(OTP_MISMATCH_404), 403);
         }
 
-        // Quick update - direct query for speed
-        \Modules\TripManagement\Entities\TripRequest::where('id', $tripRequestId)
-            ->update(['current_status' => ONGOING]);
+        $updateStart = microtime(true);
 
-        \Modules\TripManagement\Entities\TripStatus::where('trip_request_id', $tripRequestId)
-            ->update(['ongoing' => now()]);
+        // ATOMIC: Update both tables in one go
+        DB::transaction(function () use ($tripRequestId) {
+            \Modules\TripManagement\Entities\TripRequest::where('id', $tripRequestId)
+                ->update(['current_status' => ONGOING]);
 
-        // Get customer FCM token for notification
-        $customer = \Modules\UserManagement\Entities\User::where('id', $trip->customer_id)
-            ->select(['id', 'fcm_token'])
-            ->first();
+            \Modules\TripManagement\Entities\TripStatus::where('trip_request_id', $tripRequestId)
+                ->update(['ongoing' => now()]);
+        }, 3);
 
-        // Queue ALL post-processing to background
-        dispatch(function () use ($tripRequestId, $customer, $trip) {
-            try {
-                // Send push notification
-                if ($customer?->fcm_token) {
-                    $push = getNotification('trip_started');
-                    sendDeviceNotification(
-                        fcm_token: $customer->fcm_token,
-                        title: translate($push['title']),
-                        description: translate(textVariableDataFormat(value: $push['description'])),
-                        status: $push['status'],
-                        ride_request_id: $tripRequestId,
-                        type: $trip->type,
-                        action: 'otp_matched',
-                        user_id: $customer->id
-                    );
-                }
+        $updateTime = round((microtime(true) - $updateStart) * 1000, 2);
 
-                // Broadcast Pusher event
-                $fullTrip = \Modules\TripManagement\Entities\TripRequest::with(['customer', 'driver'])->find($tripRequestId);
-                if ($fullTrip) {
-                    checkPusherConnection(DriverTripStartedEvent::broadcast($fullTrip));
-                }
-            } catch (\Exception $e) {
-                \Log::warning('OTP match post-processing failed', ['error' => $e->getMessage()]);
-            }
-        })->afterResponse();
+        // Dispatch ALL heavy work to background job (notifications, broadcasts, etc.)
+        dispatch(new \App\Jobs\ProcessTripOtpJob($tripRequestId, $driverId))
+            ->onQueue('high-priority');
 
-        // PERFORMANCE: Load only essential relationships with optimized queries
-        // Limit fields selected from each relationship to reduce data transfer
-        $trip = \Modules\TripManagement\Entities\TripRequest::with([
-            'customer:id,first_name,last_name,phone,profile_image,fcm_token',
-            'vehicleCategory:id,name,description,type',
-            'tripStatus',
-            'coordinate',
-            'fee',
-            'time'
-        ])->find($tripRequestId);
+        $totalTime = round((microtime(true) - $startTime) * 1000, 2);
 
-        $resource = TripRequestResource::make($trip);
-        return response()->json(responseFormatter(DEFAULT_STORE_200, content: $resource));
+        \Log::info('✅ OTP matched - INSTANT RESPONSE', [
+            'trip_id' => $tripRequestId,
+            'driver_id' => $driverId,
+            'total_time_ms' => $totalTime,
+            'query_time_ms' => $queryTime,
+            'update_time_ms' => $updateTime,
+            'performance' => $totalTime < 50 ? '⚡⚡⚡⚡ BLAZING' : ($totalTime < 100 ? '⚡⚡⚡ EXCELLENT' : ($totalTime < 200 ? '⚡⚡ GOOD' : '⚠️ SLOW'))
+        ]);
+
+        // INSTANT RESPONSE: Just confirm success, don't load heavy trip data
+        // Driver app will call /ride/details to get full trip info
+        return response()->json(responseFormatter(DEFAULT_STORE_200, content: [
+            'trip_id' => $tripRequestId,
+            'status' => ONGOING,
+            'message' => 'OTP verified. Trip started.'
+        ]));
     }
 
     /**

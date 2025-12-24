@@ -9,6 +9,7 @@ use App\Events\CustomerTripCancelledAfterOngoingEvent;
 use App\Events\CustomerTripCancelledEvent;
 use App\Events\CustomerTripRequestEvent;
 use App\Jobs\SendPushNotificationJob;
+use App\Services\RealtimeEventPublisher;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Validation\Rule;
@@ -1143,6 +1144,16 @@ class TripRequestController extends Controller
             $trip->tripStatus()->update([
                 RETURNING => now()
             ]);
+        }
+
+        // Publish to Redis for real-time UI updates
+        if ($request->status == 'cancelled') {
+            try {
+                $realtimePublisher = app(RealtimeEventPublisher::class);
+                $realtimePublisher->publishRideCancelled($trip, 'customer');
+            } catch (\Exception $e) {
+                \Log::warning('Failed to publish ride cancelled event', ['error' => $e->getMessage()]);
+            }
         }
 
         // Refresh trip from database to get updated status

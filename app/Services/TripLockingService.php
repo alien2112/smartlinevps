@@ -68,6 +68,19 @@ class TripLockingService
                 ];
             }
 
+            // Idempotent check: if same driver already assigned, return success
+            if ($trip->driver_id === $driverId && $trip->current_status === 'accepted') {
+                Log::info('Idempotent request: trip already assigned to this driver', [
+                    'trip_id' => $tripId,
+                    'driver_id' => $driverId
+                ]);
+                return [
+                    'success' => false, // Return false so controller handles idempotent case
+                    'trip' => $trip,
+                    'message' => 'Already assigned to you'
+                ];
+            }
+
             // Check if trip status is acceptable
             if (!in_array($trip->current_status, ['pending', 'searching', null])) {
                 Log::warning('Trip status not acceptable for assignment', [

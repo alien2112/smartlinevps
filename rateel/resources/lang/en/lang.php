@@ -2795,4 +2795,9 @@
   'trip_otp' => 'Trip OTP',
   'your_trip_otp_is' => 'Your trip OTP is',
   'you_have_successfully_accepted_the_trip_please_proceed_to_pickup_location' => 'You have successfully accepted the trip. Please proceed to pickup location.',
+  'Driver is on the way to pickup location' => 'Driver is on the way to pickup location',
+  'Your ride has been cancelled' => 'Your ride has been cancelled',
+  'Your trip has started' => 'Your trip has started',
+  'Your ride has been completed' => 'Your ride has been completed',
+  'Already paid' => 'Already paid',
 );

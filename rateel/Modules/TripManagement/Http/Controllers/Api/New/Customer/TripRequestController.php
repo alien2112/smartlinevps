@@ -115,9 +115,9 @@ class TripRequestController extends Controller
         $customer_coordinates = is_array($request['customer_coordinates'])
             ? $request['customer_coordinates']
             : json_decode($request['customer_coordinates'], true);
-        $pickup_point = new Point($pickupCoordinates[0], $pickupCoordinates[1], 4326);
-        $destination_point = new Point($destinationCoordinates[0], $destinationCoordinates[1], 4326);
-        $customer_point = new Point($customer_coordinates[0], $customer_coordinates[1], 4326);
+        $pickup_point = new Point($pickupCoordinates[1], $pickupCoordinates[0], 4326);
+        $destination_point = new Point($destinationCoordinates[1], $destinationCoordinates[0], 4326);
+        $customer_point = new Point($customer_coordinates[1], $customer_coordinates[0], 4326);
 
         $request->merge([
             'customer_id' => auth('api')->id(),
@@ -169,10 +169,10 @@ class TripRequestController extends Controller
             }
         }
 
-        $pickupCoordinatesPoints = new Point($pickupCoordinates[0], $pickupCoordinates[1], 4326);
+        $pickupCoordinatesPoints = new Point($pickupCoordinates[1], $pickupCoordinates[0], 4326);
         $pickup_location_coverage = $this->zoneService->getByPoints($pickupCoordinatesPoints)->whereId($zoneId)->first();
 
-        $destinationCoordinatesPoints = new Point($destinationCoordinates[0], $destinationCoordinates[1], 4326);
+        $destinationCoordinatesPoints = new Point($destinationCoordinates[1], $destinationCoordinates[0], 4326);
         $destination_location_coverage = $this->zoneService->getByPoints($destinationCoordinatesPoints)->whereId($zoneId)->first();
 
         if (!$pickup_location_coverage || !$destination_location_coverage) {
@@ -782,8 +782,8 @@ class TripRequestController extends Controller
         }
         
         $attributes['coordinate']['drop_coordinates'] = new Point(
-            $trip->driver->lastLocations->latitude, 
-            $trip->driver->lastLocations->longitude
+            $trip->driver->lastLocations->longitude,
+            $trip->driver->lastLocations->latitude
         );
 
         // Set driver availability_status back to available

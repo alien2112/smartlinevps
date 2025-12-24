@@ -3,6 +3,7 @@
 namespace Modules\ChattingManagement\Transformers;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\ChattingManagement\Transformers\ChatUserResource;
 use Modules\UserManagement\Transformers\CustomerResource;
 
 class ChannelUserResource extends JsonResource
@@ -21,7 +22,7 @@ class ChannelUserResource extends JsonResource
             'user_id' => $this->user_id,
             'is_read' => $this->is_read,
             'updated_at' => $this->updated_at,
-            'user' => CustomerResource::make($this->whenLoaded('user')),
+            'user' => ChatUserResource::make($this->whenLoaded('user')),
         ];
     }
 }

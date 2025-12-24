@@ -145,9 +145,9 @@ class TripRequestRepository implements TripRequestInterfaces
             if (!is_null($int_coordinates)) {
                 foreach ($int_coordinates as $key => $ic) {
                     if ($key == 0) {
-                        $coordinates['int_coordinate_1'] = new Point($ic[0], $ic[1]);
+                        $coordinates['int_coordinate_1'] = new Point($ic[1], $ic[0]);
                     } elseif ($key == 1) {
-                        $coordinates['int_coordinate_2'] = new Point($ic[0], $ic[1]);
+                        $coordinates['int_coordinate_2'] = new Point($ic[1], $ic[0]);
                     }
                 }
 
@@ -308,26 +308,51 @@ class TripRequestRepository implements TripRequestInterfaces
             ->where('zone_id', $attributes['zone_id'])
             ->where('current_status', PENDING)
             ->where(function ($query) use ($attributes) {
+                // For new drivers (ride_count < 1), only show ride requests
                 if ($attributes['ride_count'] < 1) {
+                    \Log::info('getPendingRides: New driver - showing only ride requests', [
+                        'ride_count' => $attributes['ride_count']
+                    ]);
                     $query->where('type', RIDE_REQUEST);
-                }
+                } else {
+                    // For experienced drivers (ride_count >= 1), show both rides and parcels
+                    \Log::info('getPendingRides: Experienced driver - showing rides and parcels', [
+                        'ride_count' => $attributes['ride_count'],
+                        'parcel_follow_status' => $attributes['parcel_follow_status'],
+                        'parcel_count' => $attributes['parcel_count'],
+                        'max_parcel_limit' => $attributes['max_parcel_request_accept_limit']
+                    ]);
 
-                // 2. Parcel request logic based on parcel follow status and parcel count
-                $query->orWhere(function ($query) use ($attributes) {
-                    if ($attributes['parcel_follow_status']) {
-                        // Only include parcels if parcel_count < 2
-                        if ($attributes['parcel_count'] < $attributes['max_parcel_request_accept_limit']) {
-                            $query->where('type', PARCEL);
-                        } else {
-                            $query->whereNotIn('type', [PARCEL, RIDE_REQUEST]);
-                        }
-                    } else {
-                        // Include all parcels when parcel_follow_status is false
-                        $query->where('type', PARCEL);
-                    }
-                });
+                    $query->where(function ($q) use ($attributes) {
+                        // Always include ride requests for experienced drivers
+                        $q->where('type', RIDE_REQUEST);
+
+                        // Add parcel requests based on limits
+                        $q->orWhere(function ($parcelQuery) use ($attributes) {
+                            $parcelQuery->where('type', PARCEL);
+
+                            // If parcel limit is enabled, check if driver can accept more parcels
+                            if ($attributes['parcel_follow_status']) {
+                                if ($attributes['parcel_count'] >= $attributes['max_parcel_request_accept_limit']) {
+                                    // Driver has reached parcel limit, exclude parcels
+                                    \Log::info('getPendingRides: Driver reached parcel limit, excluding parcels', [
+                                        'parcel_count' => $attributes['parcel_count'],
+                                        'limit' => $attributes['max_parcel_request_accept_limit']
+                                    ]);
+                                    $parcelQuery->whereRaw('1 = 0'); // Never match
+                                }
+                            }
+                        });
+                    });
+                }
             });
 
+        \Log::info('getPendingRides: Final query parameters', [
+            'zone_id' => $attributes['zone_id'],
+            'vehicle_category_ids' => $attributes['vehicle_category_id'],
+            'driver_id' => auth()->id(),
+            'distance' => $attributes['distance']
+        ]);
 
         return $query->orderBy('created_at', 'desc')
             ->paginate(perPage: $attributes['limit'], page: $attributes['offset']);

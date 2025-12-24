@@ -130,6 +130,92 @@ class LostItemController extends Controller
     }
 
     /**
+     * Update lost item status (for driver actions like marking as found/returned)
+     * POST /api/driver/lost-items/{id}/status
+     */
+    public function updateStatus(string $id, Request $request): JsonResponse
+    {
+        $request->validate([
+            'status' => 'required|in:found,returned,closed',
+        ]);
+
+        $lostItem = $this->lostItemService->findOne(id: $id);
+
+        if (!$lostItem) {
+            return response()->json(responseFormatter(LOST_ITEM_NOT_FOUND_404), 404);
+        }
+
+        // Verify belongs to current driver
+        if ($lostItem->driver_id !== auth('api')->id()) {
+            return response()->json(responseFormatter(ACCESS_DENIED_403), 403);
+        }
+
+        $newStatus = $request->status;
+
+        // Update the status using the service method which handles logging
+        $lostItem = $this->lostItemService->updateStatus(
+            id: $id,
+            status: $newStatus,
+            notes: 'Driver changed status to ' . $newStatus,
+            userId: auth('api')->id()
+        );
+
+        if (!$lostItem) {
+            return response()->json(responseFormatter(DEFAULT_400), 400);
+        }
+
+        // Load customer relationship before notifying
+        $lostItem->load(['customer', 'trip.coordinate', 'statusLogs']);
+
+        // Notify customer about status change
+        $this->notifyCustomerStatusChange($lostItem, $newStatus);
+
+        return response()->json(responseFormatter(
+            constant: DEFAULT_UPDATE_200,
+            content: new LostItemResource($lostItem)
+        ));
+    }
+
+    /**
+     * Notify customer about status change
+     */
+    protected function notifyCustomerStatusChange($lostItem, string $status): void
+    {
+        try {
+            $titleMap = [
+                'found' => 'Lost Item Found!',
+                'returned' => 'Item Returned',
+                'closed' => 'Report Closed',
+            ];
+            
+            $descriptionMap = [
+                'found' => 'Great news! The driver has found your lost item. Please arrange pickup.',
+                'returned' => 'Your lost item has been returned successfully.',
+                'closed' => 'Your lost item report has been closed.',
+            ];
+            
+            $title = $titleMap[$status] ?? 'Lost Item Update';
+            $description = $descriptionMap[$status] ?? 'Your lost item status has been updated.';
+
+            if ($lostItem->customer && $lostItem->customer->fcm_token) {
+                sendDeviceNotification(
+                    fcm_token: $lostItem->customer->fcm_token,
+                    title: translate($title),
+                    description: translate($description),
+                    status: 1,
+                    ride_request_id: $lostItem->trip_request_id,
+                    type: 'lost_item',
+                    action: 'lost_item_status_' . $status,
+                    user_id: $lostItem->customer->id
+                );
+            }
+        } catch (\Exception $e) {
+            \Log::warning('Failed to send lost item status notification: ' . $e->getMessage());
+        }
+    }
+
+
+    /**
      * Notify customer about driver's response
      */
     protected function notifyCustomer($lostItem, string $response): void

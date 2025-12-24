@@ -283,10 +283,35 @@ class RedisEventBus {
   async handleDriverAssigned(data) {
     logger.info('Handling driver assigned', { rideId: data.ride_id, driverId: data.driver_id });
 
-    const { ride_id, driver_id } = data;
+    const { ride_id, driver_id, customer_id } = data;
 
     // Mark driver as busy in location service
     await this.locationService.assignDriverToRide(driver_id, ride_id);
+
+    // CRITICAL: Notify driver that trip was accepted successfully
+    // This updates the driver's Flutter UI
+    if (driver_id) {
+      this.io.to(`user:${driver_id}`).emit('ride:accept:success', {
+        rideId: ride_id,
+        ride_id: ride_id,
+        tripId: ride_id,
+        status: 'accepted',
+        message: 'Trip accepted successfully',
+        timestamp: Date.now()
+      });
+      logger.info('Emitted ride:accept:success to driver', { driver_id, ride_id });
+    }
+
+    // Notify customer that driver is assigned
+    if (customer_id) {
+      this.io.to(`user:${customer_id}`).emit('ride:driver_assigned', {
+        rideId: ride_id,
+        status: 'accepted',
+        message: 'A driver has accepted your ride',
+        timestamp: Date.now()
+      });
+      logger.info('Emitted ride:driver_assigned to customer', { customer_id, ride_id });
+    }
   }
 
   /**
