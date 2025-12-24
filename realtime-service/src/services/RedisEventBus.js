@@ -25,6 +25,7 @@ class RedisEventBus {
       RIDE_COMPLETED: 'laravel:ride.completed',
       RIDE_STARTED: 'laravel:ride.started',
       DRIVER_ASSIGNED: 'laravel:driver.assigned',
+      DRIVER_ACCEPTED: 'laravel:driver.accepted',
       PAYMENT_COMPLETED: 'laravel:payment.completed',
       LOST_ITEM_CREATED: 'lost_item:created',
       LOST_ITEM_UPDATED: 'lost_item:updated'
@@ -101,6 +102,10 @@ class RedisEventBus {
 
       case this.CHANNELS.DRIVER_ASSIGNED:
         await this.handleDriverAssigned(data);
+        break;
+
+      case this.CHANNELS.DRIVER_ACCEPTED:
+        await this.handleDriverAccepted(data);
         break;
 
       case this.CHANNELS.PAYMENT_COMPLETED:
@@ -245,6 +250,72 @@ class RedisEventBus {
 
     // Mark driver as busy in location service
     await this.locationService.assignDriverToRide(driver_id, ride_id);
+  }
+
+  /**
+   * Handle driver accepted event (new - from Laravel HTTP flow)
+   * This is called when driver accepts via HTTP to Laravel
+   */
+  async handleDriverAccepted(data) {
+    const { ride_id, trip_id, driver_id, customer_id, driver, trip, trace_id } = data;
+    const rideId = ride_id || trip_id;
+
+    logger.info('Handling driver accepted', {
+      rideId,
+      driverId: driver_id,
+      customerId: customer_id,
+      traceId: trace_id
+    });
+
+    // 1. Notify customer that driver is assigned
+    if (customer_id) {
+      this.io.to(`user:${customer_id}`).emit('ride:driver_assigned', {
+        rideId,
+        driver: driver || { id: driver_id },
+        trip: trip,
+        message: 'A driver has accepted your ride',
+        traceId: trace_id
+      });
+      logger.info('Emitted ride:driver_assigned to customer', { customerId: customer_id, rideId });
+    }
+
+    // 2. Notify driver with confirmation (backup to HTTP response)
+    if (driver_id) {
+      this.io.to(`user:${driver_id}`).emit('ride:accept:success', {
+        rideId,
+        message: 'Ride accepted successfully',
+        rideDetails: trip,
+        traceId: trace_id
+      });
+      logger.info('Emitted ride:accept:success to driver', { driverId: driver_id, rideId });
+    }
+
+    // 3. Notify other drivers that ride is no longer available
+    const notifiedDrivers = await this.redis.smembers(`ride:notified:${rideId}`);
+    if (notifiedDrivers && notifiedDrivers.length > 0) {
+      for (const otherDriverId of notifiedDrivers) {
+        if (otherDriverId !== driver_id) {
+          this.io.to(`user:${otherDriverId}`).emit('ride:taken', {
+            rideId,
+            message: 'This ride has been accepted by another driver',
+            traceId: trace_id
+          });
+        }
+      }
+      logger.info('Notified other drivers ride is taken', {
+        rideId,
+        notifiedCount: notifiedDrivers.length - 1
+      });
+    }
+
+    // 4. Clean up pending ride data
+    await this.redis.del(`ride:pending:${rideId}`);
+    await this.redis.del(`ride:notified:${rideId}`);
+
+    // 5. Mark driver as busy
+    await this.locationService.assignDriverToRide(driver_id, rideId);
+
+    logger.info('Driver accepted flow complete', { rideId, driverId: driver_id, traceId: trace_id });
   }
 
   /**

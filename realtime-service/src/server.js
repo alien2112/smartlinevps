@@ -16,6 +16,7 @@ const logger = require('./utils/logger');
 const config = require('./config/config');
 const redisClient = require('./config/redis');
 const { authenticateSocket } = require('./middleware/auth');
+const { traceIdMiddleware } = require('./middleware/traceId');
 const { createRateLimiter } = require('./utils/rateLimiter');
 const LocationService = require('./services/LocationService');
 const DriverMatchingService = require('./services/DriverMatchingService');
@@ -129,6 +130,7 @@ io.use((socket, next) => {
   next();
 });
 io.use(authenticateSocket);
+io.use(traceIdMiddleware);
 
 // Socket.IO connection handler
 io.on('connection', (socket) => {

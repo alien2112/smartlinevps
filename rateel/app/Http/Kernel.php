@@ -44,6 +44,7 @@ class Kernel extends HttpKernel
         ],
 
         'api' => [
+            \App\Http\Middleware\TraceIdMiddleware::class,
             'throttle:1000,1',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             LocalizationMiddleware::class

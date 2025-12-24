@@ -323,7 +323,45 @@ class TripRequestController extends Controller
             driverFcmToken: $user->fcm_token
         )->onQueue('high');
 
-        // Broadcast non-blocking
+        // Emit Redis event for Node.js realtime service
+        try {
+            $realtimeService = app(\App\Services\RealtimeEventService::class);
+            $realtimeService->publishDriverAccepted(
+                tripId: $trip->id,
+                driverId: $user->id,
+                customerId: $trip->customer->id,
+                driverInfo: [
+                    'id' => $user->id,
+                    'name' => $user->first_name . ' ' . $user->last_name,
+                    'phone' => $user->phone,
+                    'profile_image' => $user->profile_image,
+                    'vehicle' => [
+                        'model' => $user->vehicle?->model?->name ?? null,
+                        'brand' => $user->vehicle?->brand?->name ?? null,
+                        'licence_plate_number' => $user->vehicle?->licence_plate_number ?? null,
+                        'color' => $user->vehicle?->color ?? null,
+                    ],
+                ],
+                tripInfo: [
+                    'id' => $trip->id,
+                    'otp' => $trip->otp,
+                    'current_status' => 'accepted',
+                    'estimated_fare' => $trip->estimated_fare,
+                ]
+            );
+            \Log::info('Redis event published: driver.accepted', [
+                'trip_id' => $trip->id,
+                'driver_id' => $user->id,
+                'trace_id' => request()?->attributes?->get('trace_id'),
+            ]);
+        } catch (Exception $e) {
+            \Log::error('Failed to publish Redis event: driver.accepted', [
+                'error' => $e->getMessage(),
+                'trip_id' => $trip->id,
+            ]);
+        }
+
+        // Broadcast non-blocking (legacy Pusher - keep for backward compatibility)
         try {
             checkPusherConnection(DriverTripAcceptedEvent::broadcast($trip));
         } catch (Exception $exception) {}
@@ -550,6 +588,26 @@ class TripRequestController extends Controller
 
         // Offload slow external API calls to background job
         dispatch(new \App\Jobs\ProcessTripOtpJob($trip->id))->onQueue('high');
+
+        // Emit Redis event for Node.js realtime service - immediate feedback
+        try {
+            $realtimeService = app(\App\Services\RealtimeEventService::class);
+            $realtimeService->publishRideStarted(
+                tripId: $trip->id,
+                driverId: $trip->driver_id,
+                customerId: $trip->customer_id
+            );
+            \Log::info('Redis event published: ride.started', [
+                'trip_id' => $trip->id,
+                'driver_id' => $trip->driver_id,
+                'trace_id' => request()?->attributes?->get('trace_id'),
+            ]);
+        } catch (Exception $e) {
+            \Log::error('Failed to publish Redis event: ride.started', [
+                'error' => $e->getMessage(),
+                'trip_id' => $trip->id,
+            ]);
+        }
 
         return response()->json(responseFormatter(constant: DEFAULT_STORE_200));
     }
