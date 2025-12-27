@@ -70,7 +70,17 @@ class UserLastLocationRepository implements UserLastLocationInterface
             )
             ->whereHas('user.vehicle', fn($query) => $query->where('is_active', true))
             ->when(array_key_exists('vehicle_category_id', $attributes), function ($query) use ($attributes) {
-                $query->whereHas('user.vehicle', fn($query) => $query->ofStatus(1)->where('category_id', $attributes['vehicle_category_id']));
+                // Support both exact category match and category level matching
+                // Higher level drivers can accept lower level requests (e.g., VIP can accept Budget)
+                if (array_key_exists('category_level', $attributes) && $attributes['category_level']) {
+                    // Use category level: drivers with equal or higher level can accept
+                    $query->whereHas('user.vehicle.category', fn($q) => 
+                        $q->where('category_level', '>=', $attributes['category_level'])
+                    )->whereHas('user.vehicle', fn($q) => $q->ofStatus(1));
+                } else {
+                    // Fallback to exact category matching
+                    $query->whereHas('user.vehicle', fn($query) => $query->ofStatus(1)->where('category_id', $attributes['vehicle_category_id']));
+                }
             })
             ->when(array_key_exists('service', $attributes),
                 fn($query) => $query->whereHas('driverDetails',

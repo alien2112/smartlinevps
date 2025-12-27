@@ -112,7 +112,18 @@ Route::group(['prefix' => 'driver'], function () {
                 Route::post('delete/{id}', 'destroy');
             });
         });
+
+        // KYC Verification routes
+        Route::group(['prefix' => 'verification', 'middleware' => 'throttle:10,1'], function () {
+            Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Driver\VerificationController::class)->group(function () {
+                Route::post('session', 'createSession');
+                Route::post('session/{id}/upload', 'uploadMedia');
+                Route::post('session/{id}/submit', 'submitSession');
+                Route::get('status', 'getStatus');
+            });
+        });
     });
+
 
 });
 

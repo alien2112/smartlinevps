@@ -128,11 +128,25 @@ class PaymentController extends Controller
         if (!is_null($request->tips) && $request->payment_method == 'wallet') {
             $tips = $request->tips;
         }
+        
+        // SECURITY FIX: Check wallet balance BEFORE marking as paid to prevent TOCTOU race condition
+        $totalAmount = $trip->paid_fare + $tips;
+        if ($request->payment_method == 'wallet') {
+            // Re-fetch with lock to prevent race conditions
+            $customerAccount = \Modules\UserManagement\Entities\UserAccount::where('user_id', $trip->customer_id)
+                ->lockForUpdate()
+                ->first();
+            if (!$customerAccount || $customerAccount->wallet_balance < $totalAmount) {
+                DB::rollBack();
+                return response()->json(responseFormatter(INSUFFICIENT_FUND_403), 403);
+            }
+        }
+        
         $attributes = [
             'column' => 'id',
             'tips' => $tips,
             'payment_method' => $request->payment_method,
-            'paid_fare' => $trip->paid_fare + $tips,
+            'paid_fare' => $totalAmount,
             'payment_status' => PAID
         ];
         $feeAttributes['tips'] = $tips;
@@ -141,10 +155,6 @@ class PaymentController extends Controller
         $trip->tips = 0;
         $trip->save();
         if ($request->payment_method == 'wallet') {
-            if ($trip->customer->userAccount->wallet_balance < ($trip->paid_fare)) {
-
-                return response()->json(responseFormatter(INSUFFICIENT_FUND_403), 403);
-            }
             $method = '_with_wallet_balance';
             $this->walletTransaction($trip);
         } // driver only make cash payment

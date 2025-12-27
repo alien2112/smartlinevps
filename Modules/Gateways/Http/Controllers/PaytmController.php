@@ -60,7 +60,7 @@ class PaytmController extends Controller
     function encrypt_e($input, $ky): bool|string
     {
         $key = html_entity_decode($ky);
-        $iv = "@@@@&&&&####$$$$";
+        $iv = env('PAYTM_ENCRYPTION_IV', '@@@@&&&&####$$$$');
         $data = openssl_encrypt($input, "AES-128-CBC", $key, 0, $iv);
         return $data;
     }
@@ -68,22 +68,19 @@ class PaytmController extends Controller
     function decrypt_e($crypt, $ky): bool|string
     {
         $key = html_entity_decode($ky);
-        $iv = "@@@@&&&&####$$$$";
+        $iv = env('PAYTM_ENCRYPTION_IV', '@@@@&&&&####$$$$');
         $data = openssl_decrypt($crypt, "AES-128-CBC", $key, 0, $iv);
         return $data;
     }
 
     function generateSalt_e($length): string
     {
-        $random = "";
-        srand((double)microtime() * 1000000);
-
-        $data = "AbcDE123IJKLMN67QRSTUVWXYZ";
-        $data .= "aBCdefghijklmn123opq45rs67tuv89wxyz";
-        $data .= "0FGH45OP89";
+        $characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        $charactersLength = strlen($characters);
+        $random = '';
 
         for ($i = 0; $i < $length; $i++) {
-            $random .= substr($data, (rand() % (strlen($data))), 1);
+            $random .= $characters[random_int(0, $charactersLength - 1)];
         }
 
         return $random;

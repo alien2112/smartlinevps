@@ -382,26 +382,20 @@ class FleetMapViewController extends BaseController
         ];
     }
 
-    private function generateMarker($entity, $type = 'customer')
+    /**
+     * Generate marker data for a single entity
+     * OPTIMIZED: Uses pre-loaded safety alert counts and active trip data
+     * 
+     * @param object $entity The user entity (driver or customer)
+     * @param string $type 'customer' or 'driver'
+     * @param array $safetyAlertCounts Pre-loaded safety alert counts keyed by user ID
+     * @param array $activeTrips Pre-loaded active trips keyed by user ID
+     */
+    private function generateMarker($entity, $type = 'customer', array $safetyAlertCounts = [], array $activeTrips = [])
     {
-        $trip = ($type === 'customer')
-            ? $entity?->customerTrips()?->whereIn('current_status', [ACCEPTED, ONGOING])->where('type', RIDE_REQUEST)->first()
-            : $entity?->driverTrips()?->whereIn('current_status', [ACCEPTED, ONGOING])->where('type', RIDE_REQUEST)->first();
-        $customerWhereHasRelations = [
-            'sentBy' => [
-                'user_type' => CUSTOMER,
-                'id' => $entity?->id,
-            ],
-        ];
-        $driverWhereHasRelations = [
-            'sentBy' => [
-                'user_type' => DRIVER,
-                'id' => $entity?->id,
-            ],
-        ];
-        $safetyAlert = ($type === 'customer')
-            ? $this->safetyAlertService->getBy(criteria: ['status' => PENDING], whereHasRelations: $customerWhereHasRelations)->count()
-            : $this->safetyAlertService->getBy(criteria: ['status' => PENDING], whereHasRelations: $driverWhereHasRelations)->count();
+        // Use pre-loaded data instead of querying per entity
+        $safetyAlert = $safetyAlertCounts[$entity->id] ?? 0;
+        $trip = $activeTrips[$entity->id] ?? null;
 
         $icon = match (true) {
             $trip && ($safetyAlert > 0) => asset('/public/assets/admin-module/img/maps/safety-alert-icon-on-active-trip.png'),
@@ -425,8 +419,46 @@ class FleetMapViewController extends BaseController
         ];
     }
 
+    /**
+     * Generate markers for multiple entities with optimized bulk queries
+     * OPTIMIZED: Pre-loads all safety alerts and active trips in 2 queries instead of N*2
+     */
     private function generateMarkers($entities, $type = 'customer')
     {
-        return $entities->map(fn($entity) => $this->generateMarker($entity, $type));
+        if ($entities->isEmpty()) {
+            return collect([]);
+        }
+        
+        $userIds = $entities->pluck('id')->toArray();
+        $userType = $type === 'customer' ? CUSTOMER : DRIVER;
+        
+        // Bulk load safety alert counts in a single query
+        $safetyAlertCounts = \DB::table('safety_alerts')
+            ->join('users', 'safety_alerts.sent_by', '=', 'users.id')
+            ->where('safety_alerts.status', PENDING)
+            ->where('users.user_type', $userType)
+            ->whereIn('users.id', $userIds)
+            ->selectRaw('users.id as user_id, COUNT(*) as alert_count')
+            ->groupBy('users.id')
+            ->pluck('alert_count', 'user_id')
+            ->toArray();
+        
+        // Bulk load active trips in a single query
+        $tripColumn = $type === 'customer' ? 'customer_id' : 'driver_id';
+        $activeTripsQuery = \DB::table('trip_requests')
+            ->whereIn($tripColumn, $userIds)
+            ->whereIn('current_status', [ACCEPTED, ONGOING])
+            ->where('type', RIDE_REQUEST)
+            ->select($tripColumn, 'id', 'ref_id')
+            ->get()
+            ->keyBy($tripColumn);
+        
+        $activeTrips = [];
+        foreach ($activeTripsQuery as $trip) {
+            $userId = $trip->{$tripColumn};
+            $activeTrips[$userId] = $trip;
+        }
+        
+        return $entities->map(fn($entity) => $this->generateMarker($entity, $type, $safetyAlertCounts, $activeTrips));
     }
 }

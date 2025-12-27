@@ -401,24 +401,31 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
             $idleRateToday = 0;
         }
 
-        $driverTrips = $driver->driverTrips()
+        // Single aggregated query replaces 4+ separate queries
+        $tripStats = DB::table('trip_requests')
             ->where('driver_id', $driver->id)
-            ->whereIn('current_status', ['completed', 'cancelled'])
-            ->where('payment_status', PAID)
-            ->get();
+            ->selectRaw('
+                COUNT(*) as total_all,
+                SUM(CASE WHEN current_status = "completed" THEN 1 ELSE 0 END) as completed_count,
+                SUM(CASE WHEN current_status = "cancelled" THEN 1 ELSE 0 END) as cancelled_count,
+                SUM(CASE WHEN current_status IN ("completed", "cancelled", "ongoing") THEN 1 ELSE 0 END) as total_for_rate,
+                SUM(CASE WHEN current_status IN ("completed", "cancelled") AND payment_status = "paid" THEN 1 ELSE 0 END) as paid_trips_count
+            ')
+            ->first();
 
-        $driverAvgEarning = ($driver?->userAccount?->received_balance + $driver?->userAccount?->receivable_balance) / (count($driverTrips) > 0 ? count($driverTrips) : 1);
+        $paidTripsCount = $tripStats->paid_trips_count ?? 1;
+        $driverAvgEarning = ($driver?->userAccount?->received_balance + $driver?->userAccount?->receivable_balance) / ($paidTripsCount > 0 ? $paidTripsCount : 1);
 
-        //Positive review rate
+        //Positive review rate (keep as-is, already uses selectRaw)
         $positiveReviewRate = $driver->receivedReviews()
             ->where('trip_type', 'ride_request')
-            ->selectRaw('SUM(CASE WHEN rating IN (4,5) THEN 1 ELSE 0 END) / COUNT(*) * 100 AS positive_review_rate')
+            ->selectRaw('SUM(CASE WHEN rating IN (4,5) THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100 AS positive_review_rate')
             ->value('positive_review_rate');
 
-        //driver success rate
-        $completedTrips = $driver->driverTrips()->where('current_status', 'completed')->count();
-        $cancelledTrips = $driver->driverTrips()->where('current_status', 'cancelled')->count();
-        $totalTrips = $driver->driverTrips()->whereIn('current_status', ['completed', 'cancelled', ONGOING])->count();
+        //driver success rate - use aggregated stats
+        $completedTrips = $tripStats->completed_count ?? 0;
+        $cancelledTrips = $tripStats->cancelled_count ?? 0;
+        $totalTrips = $tripStats->total_for_rate ?? 0;
 
         $successRate = ($totalTrips > 0) ? (($totalTrips - $cancelledTrips) / $totalTrips) * 100 : 0;
         $cancelRate = ($totalTrips > 0) ? (($totalTrips - $completedTrips) / $totalTrips) * 100 : 0;

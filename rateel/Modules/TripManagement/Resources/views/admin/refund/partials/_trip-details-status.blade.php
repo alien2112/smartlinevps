@@ -5,7 +5,8 @@
             min-height: 430px;
         }
     </style>
-
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 @endpush
 <div class="col-lg-4">
     @if($trip?->parcelRefund)
@@ -110,53 +111,112 @@
 </div>
 
 @push('script')
-    <script>
-        let map;
-        let waypoints;
-
-        function initMap() {
-            const mapLayer = document.getElementById("map-layer");
-            const defaultOptions = {zoom: 9};
-            map = new google.maps.Map(mapLayer, defaultOptions);
-
-            const directionsService = new google.maps.DirectionsService;
-            const directionsDisplay = new google.maps.DirectionsRenderer;
-            directionsDisplay.setMap(map);
-
-            const start = ({
-                lat: {{$trip->coordinate->pickup_coordinates->latitude}},
-                lng: {{$trip->coordinate->pickup_coordinates->longitude}}
-            });
-            const end = ({
-                lat: {{$trip->coordinate->destination_coordinates->latitude}},
-                lng: {{$trip->coordinate->destination_coordinates->longitude}}
-            });
-            drawPath(directionsService, directionsDisplay, start, end);
-        }
-
-        function drawPath(directionsService, directionsDisplay, start, end) {
-
-            directionsService.route({
-                    origin: start,
-                    destination: end,
-                    travelMode: "DRIVING"
-                },
-                function (response, status) {
-                    if (status === 'OK') {
-                        directionsDisplay.setDirections(response);
-                    } else {
-                        toastr.error('{{translate('problem_in_showing_direction._status:_')}}' + status);
-                    }
-                });
-        }
-    </script>
-    <!-- Leaflet CSS and JS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Initialize map after Leaflet loads
-        if (typeof initMap === 'function') {
-            document.addEventListener('DOMContentLoaded', initMap);
-        }
+        "use strict";
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const mapLayer = document.getElementById("map-layer");
+            if (!mapLayer) return;
+
+            // Trip coordinates
+            const start = {
+                lat: {{$trip->coordinate->pickup_coordinates->latitude}},
+                lng: {{$trip->coordinate->pickup_coordinates->longitude}}
+            };
+            const end = {
+                lat: {{$trip->coordinate->destination_coordinates->latitude}},
+                lng: {{$trip->coordinate->destination_coordinates->longitude}}
+            };
+
+            // Map settings from DB or fallback
+            const tileUrl = @json(app_setting('map.tile_provider_url', 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'));
+            const osrmUrl = @json(app_setting('map.osrm_server_url', 'https://router.project-osrm.org'));
+
+            // Initialize Leaflet map
+            const map = L.map('map-layer').setView([start.lat, start.lng], 13);
+
+            // Add OpenStreetMap tile layer
+            L.tileLayer(tileUrl, {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Add markers for pickup and destination
+            const pickupIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: '<div style="background-color:#4CAF50;width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.3);"></div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+
+            const destinationIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: '<div style="background-color:#F44336;width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.3);"></div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+
+            const pickupMarker = L.marker([start.lat, start.lng], { icon: pickupIcon })
+                .addTo(map)
+                .bindPopup('{{ translate("Pickup Location") }}');
+
+            const destinationMarker = L.marker([end.lat, end.lng], { icon: destinationIcon })
+                .addTo(map)
+                .bindPopup('{{ translate("Destination") }}');
+
+            // Fit bounds to show both markers
+            const bounds = L.latLngBounds([
+                [start.lat, start.lng],
+                [end.lat, end.lng]
+            ]);
+            map.fitBounds(bounds, { padding: [30, 30] });
+
+            // Fetch route from OSRM
+            fetchRoute(start, end, osrmUrl);
+
+            function fetchRoute(start, end, osrmUrl) {
+                const routeUrl = `${osrmUrl}/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+
+                fetch(routeUrl)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                            const route = data.routes[0];
+                            const coordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+
+                            // Draw route polyline
+                            const routeLine = L.polyline(coordinates, {
+                                color: '#4285F4',
+                                weight: 5,
+                                opacity: 0.8
+                            }).addTo(map);
+
+                            // Fit bounds to route
+                            map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
+                        } else {
+                            // Fallback: draw straight line if OSRM fails
+                            drawStraightLine(start, end);
+                        }
+                    })
+                    .catch(error => {
+                        console.warn('OSRM routing failed, drawing straight line:', error);
+                        drawStraightLine(start, end);
+                    });
+            }
+
+            function drawStraightLine(start, end) {
+                L.polyline([
+                    [start.lat, start.lng],
+                    [end.lat, end.lng]
+                ], {
+                    color: '#4285F4',
+                    weight: 3,
+                    opacity: 0.7,
+                    dashArray: '10, 10'
+                }).addTo(map);
+            }
+        });
     </script>
 @endpush

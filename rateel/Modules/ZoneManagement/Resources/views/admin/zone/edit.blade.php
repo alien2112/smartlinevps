@@ -97,229 +97,233 @@
 @endsection
 
 @push('script')
-    @php($map_key = businessConfig(GOOGLE_MAP_API)?->value['map_api_key'] ?? null)
-
-    <!-- Leaflet CSS and JS -->
+    <!-- Leaflet CSS and JS - OpenStreetMap -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Leaflet Draw Plugin for drawing polygons -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-    <!-- Geoapify Address Search Plugin -->
-    <script src="https://unpkg.com/@geoapify/leaflet-address-search-plugin@^1/dist/L.Control.GeoapifyAddressSearch.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/@geoapify/leaflet-address-search-plugin@^1/dist/L.Control.GeoapifyAddressSearch.min.css" />
+    <!-- Leaflet Control Geocoder for search -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
+    
+    <style>
+        #map-canvas { z-index: 1; }
+        .leaflet-control-geocoder { width: 300px; }
+        .leaflet-control-geocoder-form input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    </style>
+    
     <script>
         "use strict";
-        auto_grow();
+        
+        let map; // Global Leaflet map
+        let drawnItems; // Layer group for drawn polygons
+        let lastPolygon = null;
+        let existingZoneLayer; // Layer for the current zone being edited
+        let otherZonesLayer; // Layer for other zones
 
         function auto_grow() {
             let element = document.getElementById("coordinates");
-            element.style.height = "5px";
-            element.style.height = (element.scrollHeight) + "px";
-        }
-
-        let map; // Global declaration of the map
-        let lat_longs = new Array();
-        let drawingManager;
-        let lastpolygon = null;
-        let bounds = new google.maps.LatLngBounds();
-        let polygons = [];
-
-
-        function resetMap(controlDiv) {
-            // Set CSS for the control border.
-            const controlUI = document.createElement("div");
-            controlUI.style.backgroundColor = "#fff";
-            controlUI.style.border = "2px solid #fff";
-            controlUI.style.borderRadius = "3px";
-            controlUI.style.boxShadow = "0 2px 6px rgba(0,0,0,.3)";
-            controlUI.style.cursor = "pointer";
-            controlUI.style.marginTop = "8px";
-            controlUI.style.marginBottom = "22px";
-            controlUI.style.textAlign = "center";
-            controlUI.title = "Reset map";
-            controlDiv.appendChild(controlUI);
-            // Set CSS for the control interior.
-            const controlText = document.createElement("div");
-            controlText.style.color = "rgb(25,25,25)";
-            controlText.style.fontFamily = "Roboto,Arial,sans-serif";
-            controlText.style.fontSize = "10px";
-            controlText.style.lineHeight = "16px";
-            controlText.style.paddingLeft = "2px";
-            controlText.style.paddingRight = "2px";
-            controlText.innerHTML = "X";
-            controlUI.appendChild(controlText);
-            // Setup the click event listeners: simply set the map to Chicago.
-            controlUI.addEventListener("click", () => {
-                lastpolygon.setMap(null);
-                $('#coordinates').val('');
-
-            });
+            if (element) {
+                element.style.height = "5px";
+                element.style.height = (element.scrollHeight) + "px";
+            }
         }
 
         function initialize() {
-            let myLatlng = new google.maps.LatLng({{trim(explode(' ',$zone->center)[1], 'POINT()') }}, {{trim(explode(' ',$zone->center)[0], 'POINT()') }});
-            let myOptions = {
-                zoom: 13,
-                center: myLatlng,
-                mapTypeId: google.maps.MapTypeId.ROADMAP
-            };
-            map = new google.maps.Map(document.getElementById("map-canvas"), myOptions);
+            // Get zone center from PHP
+            let centerLat = {{trim(explode(' ',$zone->center)[1], 'POINT()') }};
+            let centerLng = {{trim(explode(' ',$zone->center)[0], 'POINT()') }};
 
-            const polygonCoords = [
+            // Initialize Leaflet map with OpenStreetMap tiles
+            map = L.map('map-canvas').setView([centerLat, centerLng], 13);
 
-                    @foreach($area['coordinates'] as $coords)
-                {
-                    lat: {{$coords[1]}}, lng: {{$coords[0]}}
-                },
+            // Add OpenStreetMap tile layer (FREE - no API key needed)
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Initialize layer groups
+            drawnItems = new L.FeatureGroup();
+            map.addLayer(drawnItems);
+            
+            existingZoneLayer = new L.FeatureGroup();
+            map.addLayer(existingZoneLayer);
+            
+            otherZonesLayer = new L.FeatureGroup();
+            map.addLayer(otherZonesLayer);
+
+            // Draw the existing zone polygon
+            const existingCoords = [
+                @foreach($area['coordinates'] as $coords)
+                [{{$coords[1]}}, {{$coords[0]}}],
                 @endforeach
             ];
 
-            let zonePolygon = new google.maps.Polygon({
-                paths: polygonCoords,
-                strokeColor: "#000000",
-                strokeOpacity: 0.2,
-                strokeWeight: 2,
-                fillColor: "#000000",
-                fillOpacity: 0.05,
+            let existingPolygon = L.polygon(existingCoords, {
+                color: '#000000',
+                weight: 2,
+                opacity: 0.2,
+                fillColor: '#000000',
+                fillOpacity: 0.05
             });
+            existingZoneLayer.addLayer(existingPolygon);
 
-            zonePolygon.setMap(map);
+            // Fit map to the existing zone
+            map.fitBounds(existingPolygon.getBounds(), { padding: [20, 20] });
 
-            zonePolygon.getPaths().forEach(function (path) {
-                path.forEach(function (latlng) {
-                    bounds.extend(latlng);
-                    map.fitBounds(bounds);
-                });
-            });
-
-
-            drawingManager = new google.maps.drawing.DrawingManager({
-                drawingMode: google.maps.drawing.OverlayType.POLYGON,
-                drawingControl: true,
-                drawingControlOptions: {
-                    position: google.maps.ControlPosition.TOP_CENTER,
-                    drawingModes: [google.maps.drawing.OverlayType.POLYGON]
+            // Initialize Leaflet Draw control
+            let drawControl = new L.Control.Draw({
+                position: 'topright',
+                draw: {
+                    polygon: {
+                        allowIntersection: false,
+                        drawError: {
+                            color: '#e1e100',
+                            message: '<strong>Error:</strong> Shape edges cannot cross!'
+                        },
+                        shapeOptions: {
+                            color: '#0066ff',
+                            fillColor: '#0066ff',
+                            fillOpacity: 0.2,
+                            weight: 2
+                        }
+                    },
+                    polyline: false,
+                    circle: false,
+                    rectangle: false,
+                    marker: false,
+                    circlemarker: false
                 },
-                polygonOptions: {
-                    editable: true
+                edit: {
+                    featureGroup: drawnItems,
+                    remove: true
                 }
             });
-            drawingManager.setMap(map);
+            map.addControl(drawControl);
 
-            google.maps.event.addListener(drawingManager, "overlaycomplete", function (event) {
-                let newShape = event.overlay;
-                newShape.type = event.type;
-            });
+            // Add geocoder search control (uses Nominatim - FREE)
+            let geocoder = L.Control.geocoder({
+                defaultMarkGeocode: false,
+                placeholder: '{{ translate("search_here") }}',
+                geocoder: L.Control.Geocoder.nominatim({
+                    geocodingQueryParams: {
+                        countrycodes: 'eg', // Prioritize Egypt
+                        limit: 5
+                    }
+                })
+            }).on('markgeocode', function(e) {
+                let bbox = e.geocode.bbox;
+                let poly = L.polygon([
+                    bbox.getSouthEast(),
+                    bbox.getNorthEast(),
+                    bbox.getNorthWest(),
+                    bbox.getSouthWest()
+                ]);
+                map.fitBounds(poly.getBounds());
+                
+                // Add a temporary marker
+                L.marker(e.geocode.center).addTo(map)
+                    .bindPopup(e.geocode.name)
+                    .openPopup();
+            }).addTo(map);
 
-            google.maps.event.addListener(drawingManager, "overlaycomplete", function (event) {
-                if (lastpolygon) {
-                    lastpolygon.setMap(null);
+            // Handle polygon creation
+            map.on(L.Draw.Event.CREATED, function (event) {
+                let layer = event.layer;
+
+                // Remove previous drawn polygon if exists
+                if (lastPolygon) {
+                    drawnItems.removeLayer(lastPolygon);
                 }
-                $('#coordinates').val(event.overlay.getPath().getArray());
-                lastpolygon = event.overlay;
+
+                drawnItems.addLayer(layer);
+                lastPolygon = layer;
+
+                // Convert to coordinate string format expected by backend
+                let coords = layer.getLatLngs()[0].map(function(latlng) {
+                    return '(' + latlng.lat + ', ' + latlng.lng + ')';
+                }).join(',');
+                
+                $('#coordinates').val(coords);
                 auto_grow();
             });
-            const resetDiv = document.createElement("div");
-            resetMap(resetDiv, lastpolygon);
-            map.controls[google.maps.ControlPosition.TOP_CENTER].push(resetDiv);
 
-            // Create the search box and link it to the UI element.
-            const input = document.getElementById("pac-input");
-            const searchBox = new google.maps.places.SearchBox(input);
-            map.controls[google.maps.ControlPosition.TOP_CENTER].push(input);
-            // Bias the SearchBox results towards current map's viewport.
-            map.addListener("bounds_changed", () => {
-                searchBox.setBounds(map.getBounds());
-            });
-            let markers = [];
-            // Listen for the event fired when the user selects a prediction and retrieve
-            // more details for that place.
-            searchBox.addListener("places_changed", () => {
-                const places = searchBox.getPlaces();
-
-                if (places.length == 0) {
-                    return;
-                }
-                // Clear out the old markers.
-                markers.forEach((marker) => {
-                    marker.setMap(null);
+            // Handle polygon edit
+            map.on(L.Draw.Event.EDITED, function (event) {
+                let layers = event.layers;
+                layers.eachLayer(function (layer) {
+                    let coords = layer.getLatLngs()[0].map(function(latlng) {
+                        return '(' + latlng.lat + ', ' + latlng.lng + ')';
+                    }).join(',');
+                    $('#coordinates').val(coords);
                 });
-                markers = [];
-                // For each place, get the icon, name and location.
-                const bounds = new google.maps.LatLngBounds();
-                places.forEach((place) => {
-                    if (!place.geometry || !place.geometry.location) {
-                        console.log("Returned place contains no geometry");
-                        return;
-                    }
-                    const icon = {
-                        url: place.icon,
-                        size: new google.maps.Size(71, 71),
-                        origin: new google.maps.Point(0, 0),
-                        anchor: new google.maps.Point(17, 34),
-                        scaledSize: new google.maps.Size(25, 25),
-                    };
-                    // Create a marker for each place.
-                    markers.push(
-                        new google.maps.Marker({
-                            map,
-                            icon,
-                            title: place.name,
-                            position: place.geometry.location,
-                        })
-                    );
-
-                    if (place.geometry.viewport) {
-                        // Only geocodes have viewport.
-                        bounds.union(place.geometry.viewport);
-                    } else {
-                        bounds.extend(place.geometry.location);
-                    }
-                });
-                map.fitBounds(bounds);
             });
+
+            // Handle polygon delete
+            map.on(L.Draw.Event.DELETED, function (event) {
+                $('#coordinates').val('');
+                lastPolygon = null;
+            });
+
+            // Load other zones
+            set_all_zones();
         }
-
-        google.maps.event.addDomListener(window, 'load', initialize);
 
         function set_all_zones() {
             $.get({
                 url: '{{route('admin.zone.get-zones',[$zone->id])}}',
                 dataType: 'json',
                 success: function (data) {
-
-                    console.log(data);
+                    // Clear other zones layer
+                    otherZonesLayer.clearLayers();
+                    
                     for (let i = 0; i < data.length; i++) {
-                        polygons.push(new google.maps.Polygon({
-                            paths: data[i],
-                            strokeColor: "#FF0000",
-                            strokeOpacity: 0.8,
-                            strokeWeight: 2,
-                            fillColor: "#FF0000",
-                            fillOpacity: 0.1,
-                        }));
-                        polygons[i].setMap(map);
+                        // Convert Google Maps format to Leaflet format
+                        let coords = data[i].map(function(point) {
+                            return [point.lat, point.lng];
+                        });
+                        
+                        let polygon = L.polygon(coords, {
+                            color: '#FF0000',
+                            weight: 2,
+                            opacity: 0.8,
+                            fillColor: '#FF0000',
+                            fillOpacity: 0.1
+                        });
+                        
+                        otherZonesLayer.addLayer(polygon);
                     }
-
                 },
+                error: function(xhr, status, error) {
+                    console.error('Error loading zones:', error);
+                }
             });
         }
 
-        $(document).on('ready', function () {
-            set_all_zones();
+        // Initialize map when DOM is ready
+        $(document).ready(function () {
+            initialize();
+            auto_grow();
+            
+            // Prevent form submit on Enter key
             $("#zone_form").on('keydown', function (e) {
                 if (e.keyCode === 13) {
                     e.preventDefault();
                 }
-            })
+            });
         });
 
+        // Reset button handler
         $('#reset_btn').click(function () {
-            $('#name').val(null);
-            lastpolygon.setMap(null);
-            $('#coordinates').val(null);
-        })
-
+            $('#zone_name').val('{{ $zone->name }}');
+            if (lastPolygon) {
+                drawnItems.removeLayer(lastPolygon);
+                lastPolygon = null;
+            }
+            // Reset coordinates to original
+            $('#coordinates').val('@foreach($zone->coordinates[0]->toArray()['coordinates'] as $key=>$coords)<?php if (count($zone->coordinates[0]->toArray()['coordinates']) != $key + 1) {if ($key != 0) echo(','); ?>({{$coords[1]}}, {{$coords[0]}})<?php } ?>@endforeach');
+        });
     </script>
 @endpush

@@ -172,6 +172,87 @@ if (!function_exists('fileRemover')) {
     }
 }
 
+if (!function_exists('signedMediaUrl')) {
+    /**
+     * Generate a signed URL for a media object key.
+     *
+     * @param string|null $objectKey Object key in storage (e.g., "driver/123/profile/uuid.jpg")
+     * @param int|null $expiresIn TTL in seconds (null = use default)
+     * @param string|null $uid Optional user ID for per-user validation
+     * @param string|null $scope Optional scope (e.g., "kyc", "profile")
+     * @return string|null Signed URL or null if object key is empty
+     */
+    function signedMediaUrl(?string $objectKey, ?int $expiresIn = null, ?string $uid = null, ?string $scope = null): ?string
+    {
+        if (empty($objectKey)) {
+            return null;
+        }
+
+        try {
+            $signer = app(\App\Services\Media\MediaUrlSigner::class);
+            return $signer->sign($objectKey, $expiresIn, $uid, $scope);
+        } catch (\Exception $e) {
+            Log::warning('Failed to generate signed URL', [
+                'object_key' => $objectKey,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+}
+
+if (!function_exists('signedMediaUrls')) {
+    /**
+     * Generate signed URLs for multiple object keys (batch).
+     *
+     * @param array|null $objectKeys Array of object keys
+     * @param int|null $expiresIn TTL in seconds
+     * @param string|null $uid User ID
+     * @param string|null $scope Scope
+     * @return array Array of signed URLs (empty strings for invalid keys)
+     */
+    function signedMediaUrls(?array $objectKeys, ?int $expiresIn = null, ?string $uid = null, ?string $scope = null): array
+    {
+        if (empty($objectKeys)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($objectKeys as $key) {
+            $result[] = signedMediaUrl($key, $expiresIn, $uid, $scope);
+        }
+        return array_filter($result);
+    }
+}
+
+if (!function_exists('mediaResponse')) {
+    /**
+     * Create a media response with both object_key and signed_url.
+     * Useful for API responses where client needs both for caching.
+     *
+     * @param string|null $objectKey The stored object key
+     * @param int|null $expiresIn TTL in seconds
+     * @param string|null $uid User ID
+     * @param string|null $scope Scope
+     * @return array|null ['object_key' => ..., 'signed_url' => ..., 'expires_at' => ...]
+     */
+    function mediaResponse(?string $objectKey, ?int $expiresIn = null, ?string $uid = null, ?string $scope = null): ?array
+    {
+        if (empty($objectKey)) {
+            return null;
+        }
+
+        $signedUrl = signedMediaUrl($objectKey, $expiresIn, $uid, $scope);
+        $ttl = $expiresIn ?? config('media.default_ttl', 300);
+
+        return [
+            'object_key' => $objectKey,
+            'signed_url' => $signedUrl,
+            'expires_at' => now()->addSeconds($ttl)->toIso8601String(),
+        ];
+    }
+}
+
 if (!function_exists('paginationLimit')) {
     function paginationLimit()
     {
@@ -1235,6 +1316,63 @@ if (!function_exists('convertTimeToSecond')) {
             'hour' => $time * 3600,
             default => null,
         };
+    }
+}
+
+if (!function_exists('app_setting')) {
+    /**
+     * Get an application setting from the database
+     *
+     * @param string $key The setting key (e.g., 'tracking.update_interval_seconds')
+     * @param mixed $default Default value if setting not found
+     * @return mixed
+     */
+    function app_setting(string $key, mixed $default = null): mixed
+    {
+        try {
+            return app(\App\Services\SettingsService::class)->get($key, $default);
+        } catch (\Exception $e) {
+            \Log::warning('Failed to get app setting', ['key' => $key, 'error' => $e->getMessage()]);
+            return $default;
+        }
+    }
+}
+
+if (!function_exists('set_app_setting')) {
+    /**
+     * Set an application setting in the database
+     *
+     * @param string $key The setting key
+     * @param mixed $value The value to set
+     * @param string|null $adminId The admin who made the change
+     * @return bool
+     */
+    function set_app_setting(string $key, mixed $value, ?string $adminId = null): bool
+    {
+        try {
+            return app(\App\Services\SettingsService::class)->set($key, $value, $adminId);
+        } catch (\Exception $e) {
+            \Log::error('Failed to set app setting', ['key' => $key, 'error' => $e->getMessage()]);
+            return false;
+        }
+    }
+}
+
+if (!function_exists('app_settings_group')) {
+    /**
+     * Get all settings for a specific group
+     *
+     * @param string $group The group name (tracking, dispatch, travel, map)
+     * @return array
+     */
+    function app_settings_group(string $group): array
+    {
+        try {
+            return app(\App\Services\SettingsService::class)->getGroup($group);
+        } catch (\Exception $e) {
+            \Log::warning('Failed to get app settings group', ['group' => $group, 'error' => $e->getMessage()]);
+            return [];
+        }
     }
 }
 

@@ -26,7 +26,8 @@ nul
 
 # Documentation and non-code files
 
-*.postman_collection.json
+
+# *.postman_collection.json
 *.postman_environment.json
 /postman/
 *.sql

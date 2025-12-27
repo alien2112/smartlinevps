@@ -60,6 +60,16 @@ Route::group(['prefix' => 'customer', 'middleware' => ['auth:api', 'maintenance_
             Route::get('/{id}', 'show');
         });
     });
+
+    // Travel Mode routes (VIP scheduled rides with fixed pricing)
+    Route::group(['prefix' => 'travel'], function () {
+        Route::controller(\Modules\TripManagement\Http\Controllers\Api\New\Customer\TripRequestController::class)->group(function () {
+            Route::post('create', 'createTravelRequest');
+            Route::get('price-estimate', 'getTravelPriceEstimate');
+            Route::get('{tripId}', 'getTravelStatus');
+            Route::post('{tripId}/cancel', 'cancelTravelRequest');
+        });
+    });
 });
 
 
@@ -113,6 +123,15 @@ Route::group(['prefix' => 'driver', 'middleware' => ['auth:api', 'maintenance_mo
             Route::get('/{id}', 'show');
             Route::patch('/{id}', 'update');
             Route::post('/{id}/status', 'updateStatus');
+        });
+    });
+
+    // Travel Mode routes for VIP drivers
+    Route::group(['prefix' => 'travel'], function () {
+        Route::controller(\Modules\TripManagement\Http\Controllers\Api\New\Driver\TripRequestController::class)->group(function () {
+            Route::get('pending', 'pendingTravelList');
+            Route::post('accept', 'acceptTravelRequest');
+            Route::get('{tripId}', 'travelDetails');
         });
     });
 });

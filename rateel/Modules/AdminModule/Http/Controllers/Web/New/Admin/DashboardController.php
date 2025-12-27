@@ -72,34 +72,23 @@ class DashboardController extends BaseController
             'is_active' => 1
         ]);
 
-        $totalTripsEarningCriteria = [
-            'type' => RIDE_REQUEST,
-            'payment_status' => PAID
-        ];
-        $totalParcelsEarningCriteria = [
-            'type' => PARCEL,
-            'payment_status' => PAID
-        ];
-        $whereHasRelations = [];
-
-        // Add criteria for the `fee` relationship to filter by `cancelled_by` being either `null` or `CUSTOMER`
-        $whereHasRelations['fee'] = function ($query) {
-            $query->whereNull('cancelled_by')
-                ->orWhere('cancelled_by', '=', 'CUSTOMER'); // Handle `null` or `CUSTOMER`
-        };
-        $transactions = $this->transactionService->getBy(criteria: ['user_id' => \auth()->user()->id], orderBy: ['created_at' => 'desc'])->take(7);
+        // Get all trip metrics in a single aggregated query (replaces 7+ queries)
+        $tripMetrics = $this->tripRequestService->getDashboardAggregatedMetrics();
+        
+        $transactions = $this->transactionService->getBy(criteria: ['user_id' => \auth()->user()->id], orderBy: ['created_at' => 'desc'], limit: 7);
         $superAdmin = $this->employeeService->findOneBy(criteria: ['user_type' => 'super-admin']);
         $superAdminAccount = $this->userAccountService->findOneBy(criteria: ['user_id' => $superAdmin?->id]);
         $customers = $this->customerService->getBy(criteria: ['user_type' => CUSTOMER, 'is_active' => true])->count();
         $drivers = $this->driverService->getBy(criteria: ['user_type' => DRIVER, 'is_active' => true])->count();
-        $totalCouponAmountGiven = $this->tripRequestService->getBy(criteria: ['payment_status' => PAID])->SUM('coupon_amount');
-        $totalDiscountAmountGiven = $this->tripRequestService->getBy(criteria: ['payment_status' => PAID])->SUM('discount_amount');
-        $totalTrips = $this->tripRequestService->getBy(criteria: ['type' => RIDE_REQUEST])->count();
-        $totalParcels = $this->tripRequestService->getBy(criteria: ['type' => PARCEL])->count();
-        $totalEarning = $this->tripRequestService->getBy(criteria: ['payment_status' => PAID], whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission');
-        $totalTripsEarning = $this->tripRequestService->getBy(criteria: $totalTripsEarningCriteria, whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission');
-        $totalParcelsEarning = $this->tripRequestService->getBy(criteria: $totalParcelsEarningCriteria, whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission');
-
+        
+        // Use aggregated metrics instead of separate queries
+        $totalCouponAmountGiven = $tripMetrics->total_coupon ?? 0;
+        $totalDiscountAmountGiven = $tripMetrics->total_discount ?? 0;
+        $totalTrips = $tripMetrics->total_trips ?? 0;
+        $totalParcels = $tripMetrics->total_parcels ?? 0;
+        $totalEarning = $tripMetrics->total_earning ?? 0;
+        $totalTripsEarning = $tripMetrics->trips_earning ?? 0;
+        $totalParcelsEarning = $tripMetrics->parcels_earning ?? 0;
 
         return view('adminmodule::dashboard', compact('zones', 'transactions', 'superAdminAccount', 'customers',
             'drivers', 'totalDiscountAmountGiven', 'totalCouponAmountGiven', 'totalTrips', 'totalParcels', 'totalEarning', 'totalTripsEarning', 'totalParcelsEarning'));
@@ -175,19 +164,53 @@ class DashboardController extends BaseController
         $tripWhereInCriteria = [
             'zone_id' => $zones->pluck('id')->toArray(),
         ];
-        $trips = $this->tripRequestService->getBy(whereInCriteria: $tripWhereInCriteria, whereBetweenCriteria: $whereBetweenCriteria, relations: ['coordinate', 'zone']);
+        
+        // PERFORMANCE FIX: Add max limit to prevent loading excessive data
+        // For heat maps, we don't need all trips - a representative sample is sufficient
+        $maxHeatMapPoints = config('app.max_heatmap_points', 5000);
+        
+        // Use raw query for efficiency - only fetch needed columns
+        $trips = \DB::table('trip_requests')
+            ->join('trip_request_coordinates', 'trip_requests.id', '=', 'trip_request_coordinates.trip_request_id')
+            ->whereIn('trip_requests.zone_id', $tripWhereInCriteria['zone_id'])
+            ->when(!empty($whereBetweenCriteria), function ($query) use ($whereBetweenCriteria) {
+                foreach ($whereBetweenCriteria as $column => $range) {
+                    $query->whereBetween('trip_requests.' . $column, $range);
+                }
+            })
+            ->select(
+                'trip_requests.ref_id',
+                'trip_request_coordinates.pickup_coordinates'
+            )
+            ->limit($maxHeatMapPoints)
+            ->get();
+        
         $markers = $trips->map(function ($trip) {
+            // Handle spatial data - pickup_coordinates might be stored as WKB or JSON
+            $lat = 0;
+            $lng = 0;
+            if ($trip->pickup_coordinates) {
+                // Try to parse coordinates depending on storage format
+                if (is_string($trip->pickup_coordinates)) {
+                    // If stored as POINT(lng lat) or similar
+                    if (preg_match('/POINT\(([0-9.-]+)\s+([0-9.-]+)\)/i', $trip->pickup_coordinates, $matches)) {
+                        $lng = (float)$matches[1];
+                        $lat = (float)$matches[2];
+                    }
+                }
+            }
             return [
                 'position' => [
-                    'lat' => $trip?->coordinate?->pickup_coordinates?->latitude ?? 0, // Default to 0 if not defined
-                    'lng' => $trip?->coordinate?->pickup_coordinates?->longitude ?? 0, // Default to 0 if not defined
+                    'lat' => $lat,
+                    'lng' => $lng,
                 ],
-                'title' => "Trip Id #" . $trip?->ref_id,
+                'title' => "Trip Id #" . $trip->ref_id,
             ];
-        });
+        })->filter(fn($m) => $m['position']['lat'] != 0 || $m['position']['lng'] != 0); // Filter out invalid coords
+        
         $polygons = json_encode(formatZoneCoordinates($zones));
 
-        $markers = json_encode($markers);
+        $markers = json_encode($markers->values());
         // Calculate center lat/lng
         $latSum = 0;
         $lngSum = 0;

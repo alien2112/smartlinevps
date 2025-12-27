@@ -28,6 +28,7 @@ use Modules\TripManagement\Service\Interface\FareBiddingServiceInterface;
 use Modules\TripManagement\Service\Interface\RecentAddressServiceInterface;
 use Modules\TripManagement\Service\Interface\RejectedDriverRequestServiceInterface;
 use Modules\TripManagement\Service\Interface\TempTripNotificationServiceInterface;
+use Modules\TripManagement\Service\Interface\TravelRideServiceInterface;
 use Modules\TripManagement\Service\Interface\TripRequestServiceInterface;
 use Modules\TripManagement\Service\Interface\TripRequestTimeServiceInterface;
 use Modules\TripManagement\Transformers\FareBiddingResource;
@@ -56,6 +57,7 @@ class TripRequestController extends Controller
     protected $parcelFareWeightService;
     protected $recentAddressService;
     protected $tripRequestTimeService;
+    protected TravelRideServiceInterface $travelRideService;
 
     public function __construct(
         TripRequestServiceInterface $tripRequestservice,
@@ -71,8 +73,8 @@ class TripRequestController extends Controller
         ParcelFareWeightServiceInterface $parcelFareWeightService,
         ParcelFareServiceInterface $parcelFareService,
         RecentAddressServiceInterface $recentAddressService,
-        TripRequestTimeServiceInterface $tripRequestTimeService
-
+        TripRequestTimeServiceInterface $tripRequestTimeService,
+        TravelRideServiceInterface $travelRideService
     ) {
         $this->tripRequestservice = $tripRequestservice;
         $this->tempTripNotificationService = $tempTripNotificationService;
@@ -88,6 +90,7 @@ class TripRequestController extends Controller
         $this->parcelFareService = $parcelFareService;
         $this->recentAddressService = $recentAddressService;
         $this->tripRequestTimeService = $tripRequestTimeService;
+        $this->travelRideService = $travelRideService;
     }
 
 
@@ -410,7 +413,7 @@ class TripRequestController extends Controller
 
         $env = env('APP_MODE');
         $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
-        $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';
+        $otp = ($env == "live" && $smsConfig) ? random_int(1000, 9999) : '0000';
 
         $assignedVehicleCategoryId = $trip->vehicle_category_id;
         if (empty($assignedVehicleCategoryId)) {
@@ -780,7 +783,7 @@ class TripRequestController extends Controller
         if ($request->status == 'cancelled') {
             $attributes['fee']['cancelled_by'] = 'customer';
         }
-        
+
         $attributes['coordinate']['drop_coordinates'] = new Point(
             $trip->driver->lastLocations->longitude,
             $trip->driver->lastLocations->latitude
@@ -812,6 +815,159 @@ class TripRequestController extends Controller
                 action: $action,
                 user_id: $trip->driver->id
             );
+        }
+    }
+
+    /**
+     * Create a travel ride request (VIP only, fixed price, scheduled)
+     */
+    public function createTravelRequest(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'vehicle_category_id' => 'required|uuid|exists:vehicle_categories,id',
+            'pickup_coordinates' => 'required',
+            'destination_coordinates' => 'required',
+            'pickup_address' => 'required|string',
+            'destination_address' => 'required|string',
+            'estimated_distance' => 'required|numeric|min:0',
+            'travel_date' => 'nullable|date|after:now',
+            'travel_passengers' => 'nullable|integer|min:1|max:10',
+            'travel_luggage' => 'nullable|integer|min:0|max:10',
+            'travel_notes' => 'nullable|string|max:500',
+            'payment_method' => 'nullable|string|in:cash,wallet,card',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 400);
+        }
+
+        // Check for incomplete rides
+        $existingTrip = $this->tripRequestservice->getCustomerIncompleteRide();
+        if ($existingTrip) {
+            return response()->json(responseFormatter(INCOMPLETE_RIDE_403), 403);
+        }
+
+        if (empty($request->header('zoneId'))) {
+            return response()->json(responseFormatter(ZONE_404), 403);
+        }
+
+        // Handle coordinates
+        $pickupCoordinates = is_array($request->pickup_coordinates)
+            ? $request->pickup_coordinates
+            : json_decode($request->pickup_coordinates, true);
+
+        $request->merge([
+            'zone_id' => $request->header('zoneId'),
+        ]);
+
+        try {
+            $trip = $this->travelRideService->createTravelRequest($request, $pickupCoordinates);
+
+            return response()->json(responseFormatter(TRIP_REQUEST_STORE_200, TripRequestResource::make($trip)));
+        } catch (\Exception $e) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['code' => 'travel', 'message' => $e->getMessage()]]), 400);
+        }
+    }
+
+    /**
+     * Get travel ride status
+     */
+    public function getTravelStatus(string $tripId): JsonResponse
+    {
+        $trip = $this->tripRequestservice->findOne(
+            id: $tripId,
+            relations: ['driver', 'vehicle.model', 'vehicleCategory', 'coordinate', 'fee', 'time', 'tripStatus']
+        );
+
+        if (!$trip) {
+            return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 404);
+        }
+
+        // Verify ownership
+        if ($trip->customer_id !== auth('api')->id()) {
+            return response()->json(responseFormatter(constant: DEFAULT_403), 403);
+        }
+
+        // Verify it's a travel request
+        if (!$trip->isTravel()) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['code' => 'travel', 'message' => 'Not a travel request']]), 400);
+        }
+
+        return response()->json(responseFormatter(DEFAULT_200, TripRequestResource::make($trip)));
+    }
+
+    /**
+     * Cancel a travel ride request
+     */
+    public function cancelTravelRequest(Request $request, string $tripId): JsonResponse
+    {
+        $trip = $this->tripRequestservice->findOne(id: $tripId);
+
+        if (!$trip) {
+            return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 404);
+        }
+
+        // Verify ownership
+        if ($trip->customer_id !== auth('api')->id()) {
+            return response()->json(responseFormatter(constant: DEFAULT_403), 403);
+        }
+
+        // Verify it's a travel request
+        if (!$trip->isTravel()) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['code' => 'travel', 'message' => 'Not a travel request']]), 400);
+        }
+
+        // Can only cancel pending or expired travel requests
+        if (!in_array($trip->travel_status, ['pending', 'expired'])) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['code' => 'travel', 'message' => 'Cannot cancel travel request in current status']]), 400);
+        }
+
+        $reason = $request->input('reason', 'Cancelled by customer');
+
+        try {
+            $this->travelRideService->cancelTravelRequest($tripId, $reason);
+            $trip->refresh();
+
+            return response()->json(responseFormatter(DEFAULT_UPDATE_200, TripRequestResource::make($trip)));
+        } catch (\Exception $e) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['code' => 'travel', 'message' => $e->getMessage()]]), 400);
+        }
+    }
+
+    /**
+     * Get travel price estimate
+     */
+    public function getTravelPriceEstimate(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'vehicle_category_id' => 'required|uuid|exists:vehicle_categories,id',
+            'estimated_distance' => 'required|numeric|min:0',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 400);
+        }
+
+        $zoneId = $request->header('zoneId');
+        if (empty($zoneId)) {
+            return response()->json(responseFormatter(ZONE_404), 403);
+        }
+
+        try {
+            $price = $this->travelRideService->calculateTravelPrice(
+                $request->estimated_distance,
+                $request->vehicle_category_id,
+                $zoneId
+            );
+
+            return response()->json(responseFormatter(DEFAULT_200, [
+                'fixed_price' => $price,
+                'currency' => get_cache('currency_code') ?? 'EGP',
+                'is_travel' => true,
+                'note' => 'This is a fixed price. No surge pricing applies to travel rides.',
+            ]));
+        } catch (\Exception $e) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['code' => 'travel', 'message' => $e->getMessage()]]), 400);
         }
     }
 }

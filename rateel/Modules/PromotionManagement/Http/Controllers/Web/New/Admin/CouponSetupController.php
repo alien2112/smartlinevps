@@ -57,36 +57,15 @@ class CouponSetupController extends BaseController
     public function index(?Request $request, string $type = null): View|Collection|LengthAwarePaginator|null|callable|RedirectResponse
     {
         $this->authorize('promotion_view');
+        
+        // SECURITY FIX: Removed DDL operations from controller
+        // Schema migrations should NEVER be run in web request handlers
+        // If old columns still exist, log a warning for developers to create a proper migration
         if (Schema::hasColumns('coupon_setups', ['user_id', 'user_level_id', 'rules'])) {
-            $couponSetups = $this->couponSetupService->getBy(withTrashed: true,);
-            DB::beginTransaction();
-            if (count((array)$couponSetups) > 0) {
-                foreach ($couponSetups as $couponSetup) {
-                    $this->couponSetupService->updatedBy(criteria: ['id' => $couponSetup->id], data: ['zone_coupon_type' => ALL]);
-                    if ($couponSetup->user_id == ALL) {
-                        $this->couponSetupService->updatedBy(criteria: ['id' => $couponSetup->id], data: ['customer_coupon_type' => ALL]);
-                    } else {
-                        $this->couponSetupService->updatedBy(criteria: ['id' => $couponSetup->id], data: ['customer_coupon_type' => CUSTOM]);
-                        $couponSetup?->customers()->attach($couponSetup->user_id);
-                    }
-                    if ($couponSetup->user_level_id == ALL || $couponSetup->user_level_id == null) {
-                        $this->couponSetupService->updatedBy(criteria: ['id' => $couponSetup->id], data: ['customer_level_coupon_type' => ALL]);
-                    } else {
-                        $this->couponSetupService->updatedBy(criteria: ['id' => $couponSetup->id], data: ['customer_level_coupon_type' => CUSTOM]);
-                        $couponSetup?->customerLevels()->attach($couponSetup->user_level_id);
-                    }
-                    if ($couponSetup->rules == "default") {
-                        $this->couponSetupService->updatedBy(criteria: ['id' => $couponSetup->id], data: ['category_coupon_type' => [ALL]]);
-                    } else {
-                        $this->couponSetupService->updatedBy(criteria: ['id' => $couponSetup->id], data: ['category_coupon_type' => CUSTOM]);
-                    }
-                }
-
-            }
-            DB::commit();
-            Schema::table('coupon_setups', function (Blueprint $table) {
-                $table->dropColumn(['user_id', 'user_level_id', 'rules']); // Replace 'column_name' with the actual column name
-            });
+            \Log::warning('CouponSetup table has legacy columns (user_id, user_level_id, rules). Please run migration to remove them.', [
+                'action_required' => 'Create a migration to drop these columns and migrate legacy data',
+                'suggested_command' => 'php artisan make:migration remove_legacy_columns_from_coupon_setups'
+            ]);
         }
 
         $dateRange = $request->query('date_range');
@@ -148,7 +127,7 @@ class CouponSetupController extends BaseController
 
     public function destroy($id)
     {
-        $this->authorize('promotion_view');
+        $this->authorize('promotion_delete');
         $this->couponSetupService->delete(id: $id);
         Toastr::success(COUPON_DESTROY_200['message']);
         return back();

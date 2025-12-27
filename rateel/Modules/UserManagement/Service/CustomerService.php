@@ -279,11 +279,23 @@ class CustomerService extends BaseService implements Interface\CustomerServiceIn
 
     private function customerRateInfo($customer)
     {
-        $totalRequests = $customer->customerTrips()->count();
-        $totalDigitalPayments = $customer->customerTrips()->whereNotIn('payment_method', ['cash', 'wallet'])->count();
-        $digitalPaymentPercentage = $totalRequests == 0 ? 0 : ($totalDigitalPayments / $totalRequests) * 100;
+        // Single aggregated query replaces 6+ separate queries
+        $tripStats = DB::table('trip_requests')
+            ->where('customer_id', $customer->id)
+            ->selectRaw('
+                COUNT(*) as total_requests,
+                SUM(CASE WHEN payment_method NOT IN ("cash", "wallet") THEN 1 ELSE 0 END) as digital_payments,
+                SUM(CASE WHEN current_status = "completed" THEN 1 ELSE 0 END) as completed_count,
+                SUM(CASE WHEN current_status = "cancelled" THEN 1 ELSE 0 END) as cancelled_count,
+                MIN(CASE WHEN current_status = "completed" THEN paid_fare END) as lowest_fare,
+                MAX(CASE WHEN current_status = "completed" THEN paid_fare END) as highest_fare
+            ')
+            ->first();
 
-        //customer completed review count
+        $totalRequests = $tripStats->total_requests ?? 0;
+        $digitalPaymentPercentage = $totalRequests == 0 ? 0 : (($tripStats->digital_payments ?? 0) / $totalRequests) * 100;
+
+        //customer completed review count (separate query as it involves complex join)
         $customerCompletedReviewCount = $customer->givenReviews()
             ->whereHas('trip', function ($query) {
                 $query->where('current_status', 'completed');
@@ -291,21 +303,17 @@ class CustomerService extends BaseService implements Interface\CustomerServiceIn
             ->whereNotNull('feedback')->count() ?? 0;
 
         //total success rate
-        $totalSuccessRequest = $customer->customerTrips()->where('current_status', 'completed')->count();
-        $successPercentage = $totalSuccessRequest == 0 ? 0 : ($totalSuccessRequest / $totalRequests) * 100;
+        $totalSuccessRequest = $tripStats->completed_count ?? 0;
+        $successPercentage = $totalRequests == 0 ? 0 : ($totalSuccessRequest / $totalRequests) * 100;
 
         //total cancel rate
-        $totalCancelRequest = $customer->customerTrips()->where('current_status', 'cancelled')->count();
-        $cancelPercentage = $totalCancelRequest == 0 ? 0 : ($totalCancelRequest / $totalRequests) * 100;
-
-        //trip info of customer details
-        $customerLowestFare = $customer->customerTrips()->where('current_status', 'completed')->min('paid_fare');
-        $customerHighestFare = $customer->customerTrips()->where('current_status', 'completed')->max('paid_fare');
+        $totalCancelRequest = $tripStats->cancelled_count ?? 0;
+        $cancelPercentage = $totalRequests == 0 ? 0 : ($totalCancelRequest / $totalRequests) * 100;
 
         return [
             'customer_completed_review_count' => $customerCompletedReviewCount,
-            'customer_lowest_fare' => $customerLowestFare,
-            'customer_highest_fare' => $customerHighestFare,
+            'customer_lowest_fare' => $tripStats->lowest_fare,
+            'customer_highest_fare' => $tripStats->highest_fare,
             'digitalPaymentPercentage' => $digitalPaymentPercentage,
             'total_success_request' => $totalSuccessRequest,
             'success_percentage' => $successPercentage,

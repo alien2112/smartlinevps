@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Advanced Face Liveness Detection System with real-time verification">
+    <title>Face Liveness Detection System</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Arabic font support -->
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                        <circle cx="16" cy="16" r="14" stroke="url(#gradient)" stroke-width="2" />
+                        <circle cx="16" cy="16" r="8" fill="url(#gradient)" />
+                        <defs>
+                            <linearGradient id="gradient" x1="0" y1="0" x2="32" y2="32">
+                                <stop offset="0%" stop-color="#667eea" />
+                                <stop offset="100%" stop-color="#764ba2" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <h1 data-i18n="appTitle">LivenessGuard</h1>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-lang" id="langToggle" onclick="Translations.toggle()">
+                    <span data-i18n="langToggle">العربية</span>
+                </button>
+                <div class="status-badge" id="systemStatus">
+                    <span class="status-dot"></span>
+                    <span class="status-text" data-i18n="statusInitializing">Initializing...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Welcome Screen -->
+            <div class="screen active" id="welcomeScreen">
+                <div class="welcome-content">
+                    <div class="welcome-icon">
+                        <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+                            <circle cx="40" cy="40" r="38" stroke="url(#welcomeGradient)" stroke-width="3" />
+                            <path
+                                d="M40 20C28.954 20 20 28.954 20 40C20 51.046 28.954 60 40 60C51.046 60 60 51.046 60 40C60 28.954 51.046 20 40 20Z"
+                                fill="url(#welcomeGradient)" opacity="0.2" />
+                            <circle cx="33" cy="37" r="3" fill="url(#welcomeGradient)" />
+                            <circle cx="47" cy="37" r="3" fill="url(#welcomeGradient)" />
+                            <path d="M32 48C32 48 35 52 40 52C45 52 48 48 48 48" stroke="url(#welcomeGradient)"
+                                stroke-width="2" stroke-linecap="round" />
+                            <defs>
+                                <linearGradient id="welcomeGradient" x1="0" y1="0" x2="80" y2="80">
+                                    <stop offset="0%" stop-color="#667eea" />
+                                    <stop offset="100%" stop-color="#764ba2" />
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                    </div>
+                    <h2 data-i18n="welcomeTitle">Face Liveness Verification</h2>
+                    <p class="subtitle" data-i18n="welcomeSubtitle">Secure identity verification with advanced anti-spoofing technology</p>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">🎯</div>
+                            <h3 data-i18n="featureRealtime">Real-time Detection</h3>
+                            <p data-i18n="featureRealtimeDesc">Advanced AI-powered face detection</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🔒</div>
+                            <h3 data-i18n="featureAntiSpoof">Anti-Spoofing</h3>
+                            <p data-i18n="featureAntiSpoofDesc">Liveness challenges prevent fraud</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">📹</div>
+                            <h3 data-i18n="featureVideo">Video Recording</h3>
+                            <p data-i18n="featureVideoDesc">Secure verification evidence</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">⚡</div>
+                            <h3 data-i18n="featureInstant">Instant Results</h3>
+                            <p data-i18n="featureInstantDesc">Fast and accurate verification</p>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-large" id="startBtn">
+                        <span data-i18n="startBtn">Start Verification</span>
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M7 4L13 10L7 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Camera Screen -->
+            <div class="screen" id="cameraScreen">
+                <div class="camera-container">
+                    <div class="video-wrapper">
+                        <video id="videoElement" autoplay playsinline></video>
+                        <canvas id="overlayCanvas"></canvas>
+                        <div class="face-outline" id="faceOutline"></div>
+
+                        <!-- Challenge Display -->
+                        <div class="challenge-overlay" id="challengeOverlay">
+                            <div class="challenge-card">
+                                <div class="challenge-icon" id="challengeIcon">👀</div>
+                                <h3 id="challengeText" data-i18n="challengePosition">Position your face in the frame</h3>
+                                <div class="challenge-progress">
+                                    <div class="progress-bar" id="challengeProgress"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Recording Indicator -->
+                        <div class="recording-indicator" id="recordingIndicator">
+                            <span class="rec-dot"></span>
+                            <span data-i18n="recording">Recording</span>
+                        </div>
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="camera-controls">
+                        <div class="info-panel">
+                            <div class="info-item">
+                                <span class="info-label" data-i18n="statusLabel">Status:</span>
+                                <span class="info-value" id="detectionStatus" data-i18n="detecting">Detecting...</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label" data-i18n="confidenceLabel">Confidence:</span>
+                                <span class="info-value" id="confidenceValue">0%</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label" data-i18n="challengeLabel">Challenge:</span>
+                                <span class="info-value" id="challengeCounter">0/3</span>
+                            </div>
+                        </div>
+                        <div class="button-group">
+                            <button class="btn btn-secondary" id="cancelBtn" data-i18n="cancelBtn">Cancel</button>
+                            <button class="btn btn-primary" id="retryBtn" style="display: none;" data-i18n="retryBtn">Retry</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Screen -->
+            <div class="screen" id="resultsScreen">
+                <div class="results-content">
+                    <div class="result-icon" id="resultIcon">
+                        <svg width="100" height="100" viewBox="0 0 100 100" fill="none">
+                            <circle cx="50" cy="50" r="48" stroke="#10b981" stroke-width="3" />
+                            <path d="M30 50L45 65L70 35" stroke="#10b981" stroke-width="4" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <h2 id="resultTitle" data-i18n="resultSuccess">Verification Successful!</h2>
+                    <p id="resultMessage" data-i18n="resultSuccessMsg">Your identity has been verified successfully.</p>
+
+                    <div class="results-details">
+                        <div class="detail-row">
+                            <span class="detail-label" data-i18n="verificationTime">Verification Time:</span>
+                            <span class="detail-value" id="verificationTime">--</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label" data-i18n="challengesCompleted">Challenges Completed:</span>
+                            <span class="detail-value" id="challengesCompleted">--</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label" data-i18n="avgConfidence">Average Confidence:</span>
+                            <span class="detail-value" id="avgConfidence">--</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label" data-i18n="timestamp">Timestamp:</span>
+                            <span class="detail-value" id="timestamp">--</span>
+                        </div>
+                    </div>
+
+                    <div class="security-scores" id="securityScores">
+                        <h3 data-i18n="securityAnalysis">🛡️ Security Analysis</h3>
+                        <div class="score-grid">
+                            <div class="score-item">
+                                <span class="score-label" data-i18n="activeLiveness">Active Liveness</span>
+                                <div class="score-bar">
+                                    <div class="score-fill" id="activeScore"></div>
+                                </div>
+                                <span class="score-value" id="activeScoreValue">--%</span>
+                            </div>
+                            <div class="score-item">
+                                <span class="score-label" data-i18n="passiveLiveness">Passive Liveness</span>
+                                <div class="score-bar">
+                                    <div class="score-fill" id="passiveScore"></div>
+                                </div>
+                                <span class="score-value" id="passiveScoreValue">--%</span>
+                            </div>
+                            <div class="score-item">
+                                <span class="score-label" data-i18n="antiSpoofing">Anti-Spoofing</span>
+                                <div class="score-bar">
+                                    <div class="score-fill" id="antiSpoofScore"></div>
+                                </div>
+                                <span class="score-value" id="antiSpoofScoreValue">--%</span>
+                            </div>
+                            <div class="score-item">
+                                <span class="score-label" data-i18n="depthAnalysis">Depth Analysis</span>
+                                <div class="score-bar">
+                                    <div class="score-fill" id="depthScore"></div>
+                                </div>
+                                <span class="score-value" id="depthScoreValue">--%</span>
+                            </div>
+                            <div class="score-item">
+                                <span class="score-label" data-i18n="eyeReflection">Eye Reflection</span>
+                                <div class="score-bar">
+                                    <div class="score-fill" id="eyeScore"></div>
+                                </div>
+                                <span class="score-value" id="eyeScoreValue">--%</span>
+                            </div>
+                            <div class="score-item">
+                                <span class="score-label" data-i18n="microExpressions">Micro-Expressions</span>
+                                <div class="score-bar">
+                                    <div class="score-fill" id="microScore"></div>
+                                </div>
+                                <span class="score-value" id="microScoreValue">--%</span>
+                            </div>
+                        </div>
+                        <div class="combined-score">
+                            <span data-i18n="combinedScore">Combined Security Score:</span>
+                            <strong id="combinedScore">--%</strong>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button class="btn btn-secondary" id="downloadBtn">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path d="M10 3V13M10 13L6 9M10 13L14 9M4 17H16" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" />
+                            </svg>
+                            <span data-i18n="downloadBtn">Download Video</span>
+                        </button>
+                        <button class="btn btn-primary" id="newVerificationBtn" data-i18n="newVerificationBtn">New Verification</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p data-i18n="footer">Powered by TensorFlow.js • Secure & Privacy-First</p>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <p id="loadingText" data-i18n="loadingText">Loading AI models...</p>
+    </div>
+
+    <!-- TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.2"></script>
+
+    <!-- Application Scripts -->
+    <script src="js/translations.js"></script>
+    <script src="js/depthEstimator.js"></script>
+    <script src="js/passiveLiveness.js"></script>
+    <script src="js/antiSpoofing.js"></script>
+    <script src="js/eyeReflection.js"></script>
+    <script src="js/microExpression.js"></script>
+    <script src="js/faceDetector.js"></script>
+    <script src="js/livenessChallenger.js"></script>
+    <script src="js/videoRecorder.js"></script>
+    <script src="js/main.js"></script>
+</body>
+
+</html>

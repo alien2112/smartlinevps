@@ -18,6 +18,15 @@ class BaseRepository implements EloquentRepositoryInterface
         $this->model = $model;
     }
 
+    /**
+     * Get the underlying Eloquent model for direct query building
+     * Useful for streaming queries with cursor()
+     */
+    public function getModel(): Model
+    {
+        return $this->model;
+    }
+
     // Example criteria usage
     // $criteria = [
     // 'category_id' => 1, // Find records with category_id equal to 1
@@ -179,7 +188,11 @@ class BaseRepository implements EloquentRepositoryInterface
         if ($limit) {
             return $model->paginate(perPage: $limit, page: $offset ?? 1);
         }
-        return $model->get();
+        
+        // PERFORMANCE FIX: Apply default limit cap when no limit specified
+        // This prevents accidental loading of entire tables into memory
+        $defaultLimit = config('app.default_query_limit', 1000);
+        return $model->limit($defaultLimit)->get();
     }
 
     public function getBy(array $criteria = [], array $searchCriteria = [], array $whereInCriteria = [], array $whereBetweenCriteria = [], array $whereHasRelations = [], array $withAvgRelations = [], array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, bool $onlyTrashed = false, bool $withTrashed = false, array $withCountQuery = [], array $appends = [], array $groupBy = []): Collection|LengthAwarePaginator
@@ -248,7 +261,12 @@ class BaseRepository implements EloquentRepositoryInterface
         if ($limit) {
             return !empty($appends) ? $model->paginate(perPage: $limit, page: $offset ?? 1)->appends($appends) : $model->paginate(perPage: $limit, page: $offset ?? 1);
         }
-        return $model->get();
+        
+        // PERFORMANCE FIX: Apply default limit cap when no limit specified
+        // This prevents accidental loading of entire tables into memory
+        // To override: pass limit: PHP_INT_MAX explicitly if you truly need all records
+        $defaultLimit = config('app.default_query_limit', 1000);
+        return $model->limit($defaultLimit)->get();
     }
 
     public function create(array $data): ?Model

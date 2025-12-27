@@ -123,6 +123,13 @@ const config = {
         level: process.env.LOG_LEVEL || 'info',
         dir: process.env.LOG_DIR || './logs',
     },
+
+    // Dynamic Settings Configuration
+    dynamicSettings: {
+        enabled: process.env.DYNAMIC_SETTINGS_ENABLED !== 'false',
+        refreshIntervalMs: parseInt(process.env.SETTINGS_REFRESH_INTERVAL_MS) || 30000,
+        laravelSettingsEndpoint: process.env.LARAVEL_SETTINGS_ENDPOINT || '/api/internal/settings',
+    },
 };
 
 // Validate critical configuration

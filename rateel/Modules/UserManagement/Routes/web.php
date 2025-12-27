@@ -12,6 +12,7 @@ use Modules\UserManagement\Http\Controllers\Web\New\Admin\Driver\WithdrawRequest
 use Modules\UserManagement\Http\Controllers\Web\New\Admin\Employee\EmployeeController;
 use Modules\UserManagement\Http\Controllers\Web\New\Admin\Employee\EmployeeRoleController;
 use Modules\UserManagement\Http\Controllers\Web\New\Admin\LevelAccessController;
+use Modules\UserManagement\Http\Controllers\Web\Api\UserSearchController;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,6 +26,17 @@ use Modules\UserManagement\Http\Controllers\Web\New\Admin\LevelAccessController;
 */
 
 Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], function () {
+    
+    // AJAX User Search endpoints (for Select2/autocomplete dropdowns)
+    Route::group(['prefix' => 'api', 'as' => 'api.'], function () {
+        Route::controller(UserSearchController::class)->group(function () {
+            Route::get('search-customers', 'searchCustomers')->name('search-customers');
+            Route::get('search-drivers', 'searchDrivers')->name('search-drivers');
+            Route::get('get-customer', 'getCustomer')->name('get-customer');
+            Route::get('get-driver', 'getDriver')->name('get-driver');
+        });
+    });
+
     Route::group(['prefix' => 'customer', 'as' => 'customer.'], function () {
         Route::controller(CustomerController::class)->group(function () {
             Route::get('/', 'index')->name('index');

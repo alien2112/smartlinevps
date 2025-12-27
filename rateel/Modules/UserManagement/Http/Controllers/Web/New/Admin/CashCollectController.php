@@ -51,19 +51,30 @@ class CashCollectController extends BaseController
             'amount' => 'required|gt:0'
         ]);
 
-        $driver = $this->driverService->findOne(id: $id, relations: ['userAccount']);
-        if ($request->amount > ($driver?->userAccount?->payable_balance - $driver?->userAccount?->receivable_balance)) {
-
-            Toastr::error(AMOUNT_400['message']);
+        // SECURITY FIX: Use DB transaction with lock to prevent race condition
+        // where two admins could collect the same cash simultaneously
+        return \DB::transaction(function () use ($id, $request) {
+            // Re-fetch with lock to get accurate balance
+            $driverAccount = \Modules\UserManagement\Entities\UserAccount::where('user_id', $id)
+                ->lockForUpdate()
+                ->first();
+            
+            $driver = $this->driverService->findOne(id: $id, relations: ['userAccount']);
+            
+            $collectableAmount = ($driverAccount?->payable_balance ?? 0) - ($driverAccount?->receivable_balance ?? 0);
+            if ($request->amount > $collectableAmount) {
+                Toastr::error(AMOUNT_400['message']);
+                return back();
+            }
+            
+            if ($driverAccount?->receivable_balance == 0) {
+                $this->collectCashWithoutAdjustTransaction($driver, $request->amount);
+            } elseif ($driverAccount?->receivable_balance > 0 && $driverAccount?->payable_balance > $driverAccount?->receivable_balance) {
+                $this->collectCashWithAdjustTransaction($driver, $request->amount);
+            }
+            
+            Toastr::success(DEFAULT_UPDATE_200['message']);
             return back();
-        }
-        if ($driver?->userAccount?->receivable_balance == 0){
-            $this->collectCashWithoutAdjustTransaction($driver, $request->amount);
-
-        }elseif ($driver?->userAccount?->receivable_balance >0 && $driver?->userAccount?->payable_balance > $driver?->userAccount?->receivable_balance){
-            $this->collectCashWithAdjustTransaction($driver, $request->amount);
-        }
-        Toastr::success(DEFAULT_UPDATE_200['message']);
-        return back();
+        }, 5); // Retry up to 5 times on deadlock
     }
 }

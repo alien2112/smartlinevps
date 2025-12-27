@@ -481,8 +481,14 @@ trait TransactionTrait
         $tripBalanceAfterRemoveCommission = $trip->paid_fare - $trip->fee->admin_commission; //70
         $riderEarning = $tripBalanceAfterRemoveCommission;
 
-        //customer account debit
-        $customerAccount = UserAccount::where('user_id', $trip->customer->id)->first();
+        //customer account debit with row lock to prevent double-spend
+        $customerAccount = UserAccount::where('user_id', $trip->customer->id)
+            ->lockForUpdate()
+            ->first();
+        if (!$customerAccount || $customerAccount->wallet_balance < $trip->paid_fare) {
+            DB::rollBack();
+            throw new \Exception('Insufficient wallet balance for transaction');
+        }
         $customerAccount->wallet_balance -= $trip->paid_fare;
         $customerAccount->save();
 

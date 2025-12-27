@@ -92,7 +92,11 @@ class RefundController extends BaseController
                     user_id: $parcelRefund?->tripRequest?->driver?->id
                 );
             } catch (\Exception $exception) {
-
+                \Log::warning('Failed to send parcel refund notification to driver', [
+                    'refund_id' => $parcelRefund?->id,
+                    'driver_id' => $parcelRefund?->tripRequest?->driver?->id,
+                    'error' => $exception->getMessage()
+                ]);
             }
         }
         if ($parcelRefund?->tripRequest?->customer?->fcm_token) {
@@ -108,7 +112,11 @@ class RefundController extends BaseController
                     user_id: $parcelRefund?->tripRequest?->customer?->id
                 );
             } catch (\Exception $exception) {
-
+                \Log::warning('Failed to send parcel refund notification to customer', [
+                    'refund_id' => $parcelRefund?->id,
+                    'customer_id' => $parcelRefund?->tripRequest?->customer?->id,
+                    'error' => $exception->getMessage()
+                ]);
             }
         }
         Toastr::success(PARCEL_REFUND_REQUEST_APPROVED_200['message']);
@@ -154,7 +162,11 @@ class RefundController extends BaseController
                     user_id: $parcelRefund?->tripRequest?->customer?->id
                 );
             } catch (\Exception $exception) {
-
+                \Log::warning('Failed to send parcel refund denied notification to customer', [
+                    'refund_id' => $parcelRefund?->id,
+                    'customer_id' => $parcelRefund?->tripRequest?->customer?->id,
+                    'error' => $exception->getMessage()
+                ]);
             }
         }
         Toastr::success(PARCEL_REFUND_REQUEST_DENIED_200['message']);

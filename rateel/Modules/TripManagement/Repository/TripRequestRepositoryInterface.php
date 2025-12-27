@@ -9,7 +9,11 @@ use Illuminate\Database\Eloquent\Model;
 
 interface TripRequestRepositoryInterface extends EloquentRepositoryInterface
 {
+    public function getDashboardAggregatedMetrics(): object;
+    
     public function calculateCouponAmount($startDate = null, $endDate = null, $startTime = null, $month = null, $year = null): mixed;
+
+    public function getAnalyticsAggregated(string $period, $startDate = null, $endDate = null, $year = null): array;
 
     public function fetchTripData($dateRange): Collection;
 
@@ -26,6 +30,8 @@ interface TripRequestRepositoryInterface extends EloquentRepositoryInterface
     public function getPendingRides($attributes): mixed;
 
     public function getZoneWiseStatistics(array $criteria = [], array $searchCriteria = [], array $whereInCriteria = [], array $whereBetweenCriteria = [], array $whereHasRelations = [], array $withAvgRelations = [], array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, bool $onlyTrashed = false, bool $withTrashed = false, array $withCountQuery = [], array $appends = []): Collection|LengthAwarePaginator;
+
+    public function getAggregatedZoneStatistics(array $zoneIds, array $whereBetweenCriteria = []): Collection;
 
     public function getZoneWiseEarning(array $criteria = [], array $searchCriteria = [], array $whereInCriteria = [], array $whereBetweenCriteria = [], array $whereHasRelations = [], array $withAvgRelations = [], array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, bool $onlyTrashed = false, bool $withTrashed = false, array $withCountQuery = [], array $appends = [], $startDate = null, $endDate = null, $startTime = null, $month = null, $year = null): Collection|LengthAwarePaginator;
 

@@ -8,22 +8,55 @@ const logger = require('../utils/logger');
 const config = require('../config/config');
 
 class DriverMatchingService {
-  constructor(redisClient, io, locationService) {
+  constructor(redisClient, io, locationService, settingsManager = null) {
     this.redis = redisClient;
     this.io = io;
     this.locationService = locationService;
-    // Load from centralized config
+    this.settingsManager = settingsManager;
+    // Load from centralized config (static values)
     this.LARAVEL_API_URL = config.laravel.apiUrl;
     this.LARAVEL_API_KEY = config.laravel.apiKey;
     this.LARAVEL_API_TIMEOUT = config.laravel.timeout;
-    this.MAX_DRIVERS_TO_NOTIFY = config.driverMatching.maxDriversToNotify;
-    this.MATCH_TIMEOUT = config.driverMatching.matchTimeoutSeconds;
-    this.SEARCH_RADIUS_KM = config.driverMatching.searchRadiusKm;
+  }
+
+  /**
+   * Get dynamic settings with fallback to config
+   */
+  getMaxDriversToNotify() {
+    if (this.settingsManager?.isInitialized()) {
+      return this.settingsManager.getMaxDriversToNotify();
+    }
+    return config.driverMatching.maxDriversToNotify;
+  }
+
+  getMatchTimeout() {
+    if (this.settingsManager?.isInitialized()) {
+      return this.settingsManager.getMatchTimeout();
+    }
+    return config.driverMatching.matchTimeoutSeconds * 1000;
+  }
+
+  getSearchRadius() {
+    if (this.settingsManager?.isInitialized()) {
+      return this.settingsManager.getSearchRadius();
+    }
+    return config.driverMatching.searchRadiusKm;
+  }
+
+  getTravelSearchRadius() {
+    if (this.settingsManager?.isInitialized()) {
+      return this.settingsManager.getTravelSearchRadius();
+    }
+    return 30; // default travel radius
   }
 
   /**
    * Dispatch a new ride to nearby drivers
    * Called from Redis pub/sub when Laravel creates a ride
+   *
+   * Category Level Dispatch:
+   * - Normal rides: drivers with category_level >= requested can accept
+   * - Travel rides: VIP only (level 3), extended radius
    */
   async dispatchRide(rideData) {
     const {
@@ -34,36 +67,53 @@ class DriverMatchingService {
       destinationLongitude,
       vehicleCategoryId,
       customerId,
-      estimatedFare
+      estimatedFare,
+      // Category dispatch fields
+      categoryLevel = 1,
+      isTravel = false,
+      travelRadius = 30,
+      fixedPrice = null
     } = rideData;
 
-    logger.info('Dispatching ride', { rideId, customerId });
+    logger.info('Dispatching ride', {
+      rideId,
+      customerId,
+      categoryLevel,
+      isTravel
+    });
 
-    // Find nearby available drivers
+    // Determine search radius (extended for travel)
+    const searchRadius = isTravel ? (travelRadius || this.getTravelSearchRadius()) : this.getSearchRadius();
+
+    // Find nearby available drivers with category filtering
     const nearbyDrivers = await this.locationService.findNearbyDrivers(
       pickupLatitude,
       pickupLongitude,
-      this.SEARCH_RADIUS_KM,
-      vehicleCategoryId
+      searchRadius,
+      vehicleCategoryId,
+      { categoryLevel, isTravel }
     );
 
     if (nearbyDrivers.length === 0) {
-      logger.warn('No drivers available for ride', { rideId });
+      logger.warn('No drivers available for ride', { rideId, isTravel });
 
       // Notify customer
       this.io.to(`user:${customerId}`).emit('ride:no_drivers', {
         rideId,
-        message: 'No drivers available nearby'
+        message: isTravel
+          ? 'No VIP drivers available for travel request'
+          : 'No drivers available nearby'
       });
 
-      // Notify Laravel
-      await this._notifyLaravelOnce(`ride.no_drivers:${rideId}`, 'ride.no_drivers', { rideId });
+      // Notify Laravel (different event for travel)
+      const event = isTravel ? 'ride.travel.no_drivers' : 'ride.no_drivers';
+      await this._notifyLaravelOnce(`${event}:${rideId}`, event, { rideId, isTravel });
 
       return;
     }
 
     // Notify up to MAX_DRIVERS_TO_NOTIFY drivers
-    const driversToNotify = nearbyDrivers.slice(0, this.MAX_DRIVERS_TO_NOTIFY);
+    const driversToNotify = nearbyDrivers.slice(0, this.getMaxDriversToNotify());
 
     logger.info('Notifying drivers', {
       rideId,
@@ -72,12 +122,12 @@ class DriverMatchingService {
 
     // Calculate expiration time for timeout handler
     const dispatchedAt = Date.now();
-    const expiresAt = dispatchedAt + (this.MATCH_TIMEOUT * 1000);
+    const expiresAt = dispatchedAt + this.getMatchTimeout();
 
     // Store ride info in Redis with expiresAt for RideTimeoutService
     await this.redis.setex(
       `ride:pending:${rideId}`,
-      this.MATCH_TIMEOUT + 60, // Extra 60s buffer for timeout handler to process
+      Math.floor(this.getMatchTimeout() / 1000) + 60, // Extra 60s buffer for timeout handler to process
       JSON.stringify({
         ...rideData,
         notifiedDrivers: driversToNotify.map(d => d.driverId),
@@ -94,8 +144,11 @@ class DriverMatchingService {
     const notifiedSetKey = `ride:notified:${rideId}`;
     const notifyPipeline = this.redis.pipeline();
 
+    // Use appropriate event name for travel vs normal rides
+    const eventName = isTravel ? 'ride:travel:new' : 'ride:new';
+
     for (const driver of driversToNotify) {
-      this.io.to(`user:${driver.driverId}`).emit('ride:new', {
+      const rideNotification = {
         rideId,
         pickupLocation: {
           latitude: pickupLatitude,
@@ -105,17 +158,31 @@ class DriverMatchingService {
           latitude: destinationLatitude,
           longitude: destinationLongitude
         },
-        estimatedFare,
+        estimatedFare: isTravel ? fixedPrice : estimatedFare,
         distance: driver.distance,
-        expiresAt
-      });
+        expiresAt,
+        // Category information
+        categoryLevel,
+        isTravel
+      };
+
+      // Add travel-specific fields
+      if (isTravel) {
+        rideNotification.fixedPrice = fixedPrice;
+        rideNotification.travelDate = rideData.travelDate || null;
+        rideNotification.travelPassengers = rideData.travelPassengers || null;
+        rideNotification.travelLuggage = rideData.travelLuggage || null;
+        rideNotification.travelNotes = rideData.travelNotes || null;
+      }
+
+      this.io.to(`user:${driver.driverId}`).emit(eventName, rideNotification);
 
       // Track notification
       notifyPipeline.sadd(notifiedSetKey, driver.driverId);
     }
 
     // Expire notified set alongside pending ride
-    notifyPipeline.expire(notifiedSetKey, this.MATCH_TIMEOUT + 60);
+    notifyPipeline.expire(notifiedSetKey, Math.floor(this.getMatchTimeout() / 1000) + 60);
     await notifyPipeline.exec();
 
     // NOTE: Timeout is now handled by RideTimeoutService polling

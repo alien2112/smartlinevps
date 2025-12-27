@@ -13,8 +13,18 @@ class ParcelRefundRequestRefundedStoreRequest extends FormRequest
      */
     public function rules(): array
     {
+        // Get the parcel refund to check the trip's paid fare
+        $parcelRefund = \Modules\TripManagement\Entities\ParcelRefund::with('tripRequest')
+            ->find($this->route('id'));
+        $maxRefundAmount = $parcelRefund?->tripRequest?->paid_fare ?? 0;
+        
         return [
-            'refund_amount' => 'required|numeric|min:0',
+            'refund_amount' => [
+                'required',
+                'numeric',
+                'min:0.01',
+                'max:' . $maxRefundAmount, // SECURITY: Prevent refunds exceeding original trip amount
+            ],
             'refund_method' => ['required', 'string', Rule::in(['manually', 'wallet', 'coupon'])],
             'refund_note' => 'required|string|max:150',
         ];

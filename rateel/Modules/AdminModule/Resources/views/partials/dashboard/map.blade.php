@@ -1,136 +1,134 @@
-@php($map_key = businessConfig(GOOGLE_MAP_API)?->value['map_api_key'] ?? null)
-
 <!-- Leaflet CSS and JS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<!-- Geoapify Address Search Plugin -->
-<script src="https://unpkg.com/@geoapify/leaflet-address-search-plugin@^1/dist/L.Control.GeoapifyAddressSearch.min.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/@geoapify/leaflet-address-search-plugin@^1/dist/L.Control.GeoapifyAddressSearch.min.css" />
 
 <script>
     "use strict";
 
     function loadAllZone() {
-        let map; // Global declaration of the map
-        let lastpolygon = null;
+        let map = null;
         let polygons = [];
+        let searchMarkers = [];
 
-        function resetMap(controlDiv) {
-            // Set CSS for the control border.
-            const controlUI = document.createElement("div");
-            controlUI.style.backgroundColor = "#fff";
-            controlUI.style.border = "2px solid #fff";
-            controlUI.style.borderRadius = "3px";
-            controlUI.style.boxShadow = "0 2px 6px rgba(0,0,0,.3)";
-            controlUI.style.cursor = "pointer";
-            controlUI.style.marginTop = "8px";
-            controlUI.style.marginBottom = "22px";
-            controlUI.style.textAlign = "center";
-            controlUI.title = "Reset map";
-            controlDiv.appendChild(controlUI);
-            // Set CSS for the control interior.
-            const controlText = document.createElement("div");
-            controlText.style.color = "rgb(25,25,25)";
-            controlText.style.fontFamily = "Roboto,Arial,sans-serif";
-            controlText.style.fontSize = "10px";
-            controlText.style.lineHeight = "16px";
-            controlText.style.paddingLeft = "2px";
-            controlText.style.paddingRight = "2px";
-            controlText.innerHTML = "X";
-            controlUI.appendChild(controlText);
-            // Set up the click event listeners: simply set the map to Chicago.
-            controlUI.addEventListener("click", () => {
-                $('#pac-input').val('');
-            });
-        }
-
+        // Default map settings from DB or fallback
+        const defaultLat = {{ app_setting('map.default_center_lat', 30.0444) }};
+        const defaultLng = {{ app_setting('map.default_center_lng', 31.2357) }};
+        const defaultZoom = {{ app_setting('map.default_zoom', 12) }};
+        const tileUrl = @json(app_setting('map.tile_provider_url', 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'));
 
         function initialize() {
-            let myLatlng = {
-                lat: 23.757989,
-                lng: 90.360587
-            };
+            let myLatlng = [defaultLat, defaultLng];
 
-            let myOptions = {
-                zoom: 2,
+            // Initialize Leaflet map
+            map = L.map('map-canvas', {
                 center: myLatlng,
-                mapTypeId: google.maps.MapTypeId.ROADMAP,
-            }
-            map = new google.maps.Map(document.getElementById("map-canvas"), myOptions);
+                zoom: 2,
+                zoomControl: true
+            });
 
-            //get current location block
-            // Try HTML5 geolocation.
+            // Add OpenStreetMap tile layer
+            L.tileLayer(tileUrl, {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Try HTML5 geolocation to center on user location
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
-                        const pos = {
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude,
-                        };
-                        map.setCenter(pos);
-                    });
+                        const pos = [position.coords.latitude, position.coords.longitude];
+                        map.setView(pos, defaultZoom);
+                    },
+                    () => {
+                        // Geolocation failed, use default
+                        map.setView(myLatlng, 2);
+                    }
+                );
             }
 
-
-            const resetDiv = document.createElement("div");
-            resetMap(resetDiv, lastpolygon);
-            map.controls[google.maps.ControlPosition.TOP_CENTER].push(resetDiv);
-
-            // Create the search box and link it to the UI element.
+            // Setup search box with Nominatim
             const input = document.getElementById("pac-input");
-            const searchBox = new google.maps.places.SearchBox(input);
-            map.controls[google.maps.ControlPosition.TOP_CENTER].push(input);
-            // Bias the SearchBox results towards current map's viewport.
-            map.addListener("bounds_changed", () => {
-                searchBox.setBounds(map.getBounds());
+            if (input) {
+                setupSearchBox(input);
+            }
+        }
+
+        function setupSearchBox(input) {
+            let searchTimeout = null;
+            const $input = $(input);
+
+            // Create results container
+            let $resultsContainer = $input.next('.nominatim-results');
+            if ($resultsContainer.length === 0) {
+                $resultsContainer = $('<div class="nominatim-results"></div>').insertAfter($input);
+            }
+
+            $resultsContainer.css({
+                position: 'absolute',
+                zIndex: 1000,
+                background: '#fff',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                maxHeight: '200px',
+                overflowY: 'auto',
+                width: $input.outerWidth() + 'px',
+                display: 'none'
             });
-            let markers = [];
 
-            // Listen for the event fired when the user selects a prediction and retrieve
-            // more details for that place.
-            searchBox.addListener("places_changed", () => {
-                const places = searchBox.getPlaces();
-
-                if (places.length === 0) {
+            $input.on('input', function() {
+                clearTimeout(searchTimeout);
+                const query = $(this).val().trim();
+                if (query.length < 3) {
+                    $resultsContainer.hide();
                     return;
                 }
-                // Clear out the old markers.
-                markers.forEach((marker) => {
-                    marker.setMap(null);
-                });
-                markers = [];
-                // For each place, get the icon, name and location.
-                const bounds = new google.maps.LatLngBounds();
-                places.forEach((place) => {
-                    if (!place.geometry || !place.geometry.location) {
-                        return;
-                    }
-                    const icon = {
-                        url: place.icon,
-                        size: new google.maps.Size(71, 71),
-                        origin: new google.maps.Point(0, 0),
-                        anchor: new google.maps.Point(17, 34),
-                        scaledSize: new google.maps.Size(25, 25),
-                    };
-                    // Create a marker for each place.
-                    markers.push(
-                        new google.maps.Marker({
-                            map,
-                            icon,
-                            title: place.name,
-                            position: place.geometry.location,
-                        })
-                    );
+                searchTimeout = setTimeout(() => {
+                    searchNominatim(query, $resultsContainer);
+                }, 500);
+            });
 
-                    if (place.geometry.viewport) {
-                        // Only geocodes have viewport.
-                        bounds.union(place.geometry.viewport);
-                    } else {
-                        bounds.extend(place.geometry.location);
-                    }
-                });
-                map.fitBounds(bounds);
+            $input.on('blur', function() {
+                setTimeout(() => $resultsContainer.hide(), 200);
+            });
+        }
+
+        function searchNominatim(query, $container) {
+            $.get('https://nominatim.openstreetmap.org/search', {
+                q: query,
+                format: 'json',
+                limit: 5
+            }, function(results) {
+                $container.empty();
+                if (results.length === 0) {
+                    $container.append('<div class="p-2 text-muted">{{ translate("no_results_found") }}</div>');
+                } else {
+                    results.forEach(function(result) {
+                        const $item = $('<div class="p-2 nominatim-result-item" style="cursor:pointer;border-bottom:1px solid #eee;"></div>')
+                            .text(result.display_name)
+                            .on('click', function() {
+                                const lat = parseFloat(result.lat);
+                                const lng = parseFloat(result.lon);
+
+                                // Clear existing search markers
+                                searchMarkers.forEach(m => map.removeLayer(m));
+                                searchMarkers = [];
+
+                                // Add marker for search result
+                                const marker = L.marker([lat, lng]).addTo(map);
+                                marker.bindPopup(result.display_name).openPopup();
+                                searchMarkers.push(marker);
+
+                                // Pan to location
+                                map.setView([lat, lng], 16);
+                                $container.hide();
+                                $('#pac-input').val(result.display_name);
+                            });
+                        $container.append($item);
+                    });
+                }
+                $container.show();
+            }).fail(function() {
+                $container.hide();
             });
         }
 
@@ -141,19 +139,18 @@
                 url: '{{route('admin.zone.get-zones',['status'=>'active'])}}',
                 dataType: 'json',
                 success: function (data) {
-
                     for (let i = 0; i < data.length; i++) {
-                        polygons.push(new google.maps.Polygon({
-                            paths: data[i],
-                            strokeColor: "#FF0000",
-                            strokeOpacity: 0.8,
-                            strokeWeight: 2,
-                            fillColor: "#FF0000",
-                            fillOpacity: 0.1,
-                        }));
-                        polygons[i].setMap(map);
+                        // Convert Google Maps format {lat, lng} to Leaflet format [lat, lng]
+                        const coords = data[i].map(point => [point.lat, point.lng]);
+                        const polygon = L.polygon(coords, {
+                            color: '#FF0000',
+                            weight: 2,
+                            opacity: 0.8,
+                            fillColor: '#FF0000',
+                            fillOpacity: 0.1
+                        }).addTo(map);
+                        polygons.push(polygon);
                     }
-
                 },
             });
         }
@@ -164,7 +161,7 @@
     loadAllZone();
 
     function loadMapLater() {
-        let map;
+        let map = null;
         let polygons = [];
 
         @if(isset($zone))
@@ -173,19 +170,24 @@
                 url: '{{route('admin.zone.get-zones',['id'=>$zone->id,'status'=>'active'])}}',
                 dataType: 'json',
                 success: function (data) {
+                    // Get map reference
+                    const mapContainer = document.getElementById('map-canvas');
+                    if (!mapContainer || !mapContainer._leaflet_id) return;
+
+                    const mapInstance = L.DomUtil.get('map-canvas')._leaflet_map;
+                    if (!mapInstance) return;
+
                     for (let i = 0; i < data.length; i++) {
-                        polygons.push(new google.maps.Polygon({
-                            paths: data[i],
-                            strokeColor: "#FF0000",
-                            strokeOpacity: 0.8,
-                            strokeWeight: 2,
-                            fillColor: "#FF0000",
-                            fillOpacity: 0.1,
-                        }));
-
-                        polygons[i].setMap(map);
+                        const coords = data[i].map(point => [point.lat, point.lng]);
+                        const polygon = L.polygon(coords, {
+                            color: '#FF0000',
+                            weight: 2,
+                            opacity: 0.8,
+                            fillColor: '#FF0000',
+                            fillOpacity: 0.1
+                        }).addTo(mapInstance);
+                        polygons.push(polygon);
                     }
-
                 },
             });
         }

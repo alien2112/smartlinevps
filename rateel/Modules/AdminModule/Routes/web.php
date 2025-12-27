@@ -78,6 +78,19 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
         Route::get('push', 'push_notification')->name('push');
         Route::post('update-push-notification', 'update_push_notification')->name('update-push-notification');
     });
+
+    // App Settings (Tracking, Dispatch, Travel, Map)
+    Route::group(['prefix' => 'app-settings', 'as' => 'app-settings.'], function () {
+        Route::controller(\App\Http\Controllers\Admin\SettingsController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::post('/update', 'update')->name('update');
+            Route::post('/update-single', 'updateSingle')->name('update-single');
+            Route::post('/reset', 'resetToDefault')->name('reset');
+            Route::post('/reset-group', 'resetGroupToDefaults')->name('reset-group');
+            Route::get('/load-preview', 'loadPreview')->name('load-preview');
+            Route::get('/group/{group}', 'getGroupSettings')->name('group');
+        });
+    });
 });
 Route::controller(SharedController::class)->group(function () {
     Route::get('lang/{locale}', 'lang')->name('lang');

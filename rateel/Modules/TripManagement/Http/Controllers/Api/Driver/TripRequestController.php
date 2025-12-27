@@ -304,7 +304,7 @@ class TripRequestController extends Controller
 
         $env = env('APP_MODE');
         $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
-        $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';
+        $otp = ($env == "live" && $smsConfig) ? random_int(1000, 9999) : '0000';
 
         $driverCurrentStatus = $this->driverDetails->getBy(column: 'user_id', value: $user->id, attributes: [
             'whereInColumn' => 'availability_status',
@@ -594,7 +594,7 @@ class TripRequestController extends Controller
         if ($trip->driver_id && $request->status == 'cancelled' && $trip->current_status == ONGOING && $trip->type == PARCEL) {
             $env = env('APP_MODE');
             $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
-            $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';
+            $otp = ($env == "live" && $smsConfig) ? random_int(1000, 9999) : '0000';
             $trip->otp = $otp;
             $trip->return_fee = 0;
             $trip->current_status = RETURNING;

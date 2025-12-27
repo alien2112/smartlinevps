@@ -41,7 +41,28 @@ class UserManagementServiceProvider extends ServiceProvider
     public function register()
     {
         $this->app->register(RouteServiceProvider::class);
+
+        // Register Verification repositories
+        $this->app->bind(
+            \Modules\UserManagement\Repository\VerificationSessionRepositoryInterface::class,
+            \Modules\UserManagement\Repository\Eloquent\VerificationSessionRepository::class
+        );
+        $this->app->bind(
+            \Modules\UserManagement\Repository\VerificationMediaRepositoryInterface::class,
+            \Modules\UserManagement\Repository\Eloquent\VerificationMediaRepository::class
+        );
+
+        // Register Verification services
+        $this->app->bind(
+            \Modules\UserManagement\Service\Interface\VerificationSessionServiceInterface::class,
+            \Modules\UserManagement\Service\VerificationSessionService::class
+        );
+        $this->app->bind(
+            \Modules\UserManagement\Service\Interface\FastApiClientServiceInterface::class,
+            \Modules\UserManagement\Service\FastApiClientService::class
+        );
     }
+
 
     /**
      * Register config.
@@ -56,7 +77,13 @@ class UserManagementServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(
             module_path($this->moduleName, 'Config/config.php'), $this->moduleNameLower
         );
+
+        // Register verification config
+        $this->mergeConfigFrom(
+            module_path($this->moduleName, 'Config/verification.php'), 'verification'
+        );
     }
+
 
     /**
      * Register views.

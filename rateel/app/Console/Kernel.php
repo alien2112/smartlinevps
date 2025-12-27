@@ -17,6 +17,9 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('trip-request:cancel')->everyMinute();
         $schedule->command('lost-item:close-pending')->hourly();
+
+        // Reset daily driver stats (VIP abuse tracking) at midnight
+        $schedule->command('driver:reset-daily-stats')->dailyAt('00:00');
     }
 
     /**

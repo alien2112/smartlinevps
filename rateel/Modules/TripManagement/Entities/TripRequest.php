@@ -68,6 +68,15 @@ class TripRequest extends Model
         'tips',
         'is_paused',
         'map_screenshot',
+        // Travel Mode fields
+        'is_travel',
+        'fixed_price',
+        'travel_date',
+        'travel_passengers',
+        'travel_luggage',
+        'travel_notes',
+        'travel_status',
+        'travel_dispatched_at',
         'deleted_at',
         'created_at',
         'updated_at',
@@ -97,8 +106,74 @@ class TripRequest extends Model
         "total_fare" => 'float',
         "is_paused" => 'boolean',
         "female_driver_only" => 'boolean',
-        "rise_request_count" => 'integer'
+        "rise_request_count" => 'integer',
+        // Travel Mode casts
+        'is_travel' => 'boolean',
+        'fixed_price' => 'float',
+        'travel_date' => 'datetime',
+        'travel_passengers' => 'integer',
+        'travel_luggage' => 'integer',
+        'travel_dispatched_at' => 'datetime',
     ];
+
+    /**
+     * Check if this is a Travel Mode trip
+     */
+    public function isTravel(): bool
+    {
+        return (bool) $this->is_travel;
+    }
+
+    /**
+     * Get the requested category level for dispatch matching
+     */
+    public function getRequestedCategoryLevel(): int
+    {
+        return $this->vehicleCategory?->category_level ?? VehicleCategory::LEVEL_BUDGET;
+    }
+
+    /**
+     * Get the effective fare (fixed_price for travel, actual_fare for normal)
+     */
+    public function getEffectiveFare(): float
+    {
+        if ($this->isTravel() && $this->fixed_price) {
+            return $this->fixed_price;
+        }
+        return $this->actual_fare ?? $this->estimated_fare ?? 0;
+    }
+
+    /**
+     * Check if travel request is pending driver acceptance
+     */
+    public function isTravelPending(): bool
+    {
+        return $this->isTravel() && $this->travel_status === 'pending';
+    }
+
+    /**
+     * Check if travel request has expired
+     */
+    public function isTravelExpired(): bool
+    {
+        return $this->isTravel() && $this->travel_status === 'expired';
+    }
+
+    /**
+     * Scope for travel trips only
+     */
+    public function scopeTravel($query)
+    {
+        return $query->where('is_travel', true);
+    }
+
+    /**
+     * Scope for pending travel trips
+     */
+    public function scopeTravelPending($query)
+    {
+        return $query->where('is_travel', true)->where('travel_status', 'pending');
+    }
 
     protected static function newFactory()
     {

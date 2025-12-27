@@ -127,6 +127,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Default Query Limit
+    |--------------------------------------------------------------------------
+    |
+    | This limit is applied to repository queries when no explicit limit is
+    | specified. This prevents accidental loading of entire large tables
+    | into memory. Set to PHP_INT_MAX explicitly if you need all records.
+    |
+    */
+
+    'default_query_limit' => env('DEFAULT_QUERY_LIMIT', 1000),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Max Heat Map Points
+    |--------------------------------------------------------------------------
+    |
+    | Maximum number of points to display on heat maps. More points provide
+    | finer detail but increase load time and memory usage. 5000 is a good
+    | balance between visual accuracy and performance.
+    |
+    */
+
+    'max_heatmap_points' => env('MAX_HEATMAP_POINTS', 5000),
+
+    /*
+    |--------------------------------------------------------------------------
     | Autoloaded Service Providers
     |--------------------------------------------------------------------------
     |
@@ -191,8 +217,8 @@ return [
         \Modules\TripManagement\Providers\RepositoryServiceProvider::class,
         \Modules\UserManagement\Providers\RepositoryServiceProvider::class,
         \Modules\ZoneManagement\Providers\RepositoryServiceProvider::class,
-        \Modules\VehicleManagement\Providers\RepositoryServiceProvider::class,
-        \Modules\AdminModule\Providers\FirebaseServiceProvider::class
+        \Modules\AdminModule\Providers\FirebaseServiceProvider::class,
+        \App\Providers\MediaServiceProvider::class,
     ])->toArray(),
 
     /*

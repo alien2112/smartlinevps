@@ -62,4 +62,15 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
         });
     });
 
+    // Travel Mode Management Routes (VIP scheduled rides)
+    Route::group(['prefix' => 'travel', 'as' => 'travel.'], function () {
+        Route::controller(\Modules\TripManagement\Http\Controllers\Web\New\TravelController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('{tripId}', 'show')->name('show');
+            Route::post('{tripId}/assign', 'assignDriver')->name('assign');
+            Route::post('{tripId}/cancel', 'cancel')->name('cancel');
+            Route::get('api/drivers', 'getAvailableDrivers')->name('api.drivers');
+        });
+    });
+
 });

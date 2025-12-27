@@ -16,11 +16,43 @@ const LARAVEL_PORT = 8000;  // Laravel runs internally on 8000
 const HTTPS_PORT = 8080;    // HTTPS proxy runs on 8080
 const BIND_IP = '192.168.8.158';
 
+/**
+ * Validate and sanitize URL path to prevent SSRF attacks
+ * Only allows paths that start with / and don't contain protocol or host
+ */
+function sanitizePath(urlPath) {
+    // Parse the URL to extract only the path component
+    try {
+        const url = new URL(urlPath, `http://${LARAVEL_HOST}:${LARAVEL_PORT}`);
+
+        // Prevent host/protocol injection - only allow same host
+        if (url.hostname !== LARAVEL_HOST) {
+            return null;
+        }
+
+        // Return only path and query string, not full URL
+        return url.pathname + url.search;
+    } catch (e) {
+        // If URL parsing fails, reject the request
+        return null;
+    }
+}
+
 const server = https.createServer({ cert: SSL_CERT, key: SSL_KEY }, (req, res) => {
+    // Sanitize the URL path to prevent SSRF
+    const sanitizedPath = sanitizePath(req.url);
+
+    if (!sanitizedPath) {
+        console.error('SSRF attempt blocked:', req.url);
+        res.writeHead(400);
+        res.end('Bad Request: Invalid URL');
+        return;
+    }
+
     const options = {
         hostname: LARAVEL_HOST,
         port: LARAVEL_PORT,
-        path: req.url,
+        path: sanitizedPath,
         method: req.method,
         headers: {
             ...req.headers,

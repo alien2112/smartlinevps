@@ -134,6 +134,11 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
         return $this->tripRequestRepository->getBy(criteria: $data, searchCriteria: $searchData, whereInCriteria: $whereInCriteria, whereBetweenCriteria: $whereBetweenCriteria, whereHasRelations: $whereHasRelations, relations: $relations, orderBy: $orderBy, limit: $limit, offset: $offset, withCountQuery: $withCountQuery, appends: $appends, groupBy: $groupBy);
     }
 
+    /**
+     * Get analytics data for charts
+     * OPTIMIZED: Uses batch aggregation instead of per-period queries
+     * Reduces query count from 7-12 queries to 1-2 queries
+     */
     public function getAnalytics($dateRange): mixed
     {
         $monthlyOrder = [];
@@ -142,10 +147,23 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
         switch ($dateRange) {
             case THIS_WEEK:
                 $weekStartDate = now()->startOfWeek();
+                $label = [];
+                for ($i = 0; $i < 7; $i++) {
+                    $label[] = $weekStartDate->copy()->addDays($i)->format('"D"');
+                }
+                
+                // Single aggregated query for the entire week
+                $aggregated = $this->tripRequestRepository->getAnalyticsAggregated(
+                    'daily',
+                    now()->startOfWeek(),
+                    now()->endOfWeek()
+                );
+                
+                // Map to day indices (MySQL DAYOFWEEK: 1=Sunday, 2=Monday, etc.)
                 for ($i = 1; $i <= 7; $i++) {
-                    $monthlyOrder[$i] = $this->tripRequestRepository->calculateCouponAmount(startDate: $weekStartDate, endDate: $weekStartDate);
-                    $label[] = $weekStartDate->format('"D"');
-                    $weekStartDate = $weekStartDate->addDays(1);
+                    // Adjust index to match Laravel's week start (Monday = 1)
+                    $dayIndex = ($i % 7) + 1; // Convert to MySQL DAYOFWEEK
+                    $monthlyOrder[$i] = $aggregated[$dayIndex] ?? 0;
                 }
                 break;
 
@@ -157,87 +175,81 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
                     '"Day 22-' . now()->daysInMonth . '"',
                 ];
 
-                $start = now()->startOfMonth();
-                $end = now()->startOfMonth()->addDays(6);
-                $remainingDays = now()->daysInMonth - 28;
-
+                // Single aggregated query for the entire month
+                $aggregated = $this->tripRequestRepository->getAnalyticsAggregated(
+                    'weekly',
+                    now()->startOfMonth(),
+                    now()->endOfMonth()
+                );
+                
                 for ($i = 1; $i <= 4; $i++) {
-                    $monthlyOrder[$i] = $this->tripRequestRepository->calculateCouponAmount(startDate: $start, endDate: $end);
-                    $start = $start->addDays(7);
-                    $end = $i == 3 ? $end->addDays(7 + $remainingDays) : $end->addDays(7);
+                    $monthlyOrder[$i] = $aggregated[$i] ?? 0;
                 }
                 break;
 
             case THIS_YEAR:
                 $label = [
-                    '"Jan"',
-                    '"Feb"',
-                    '"Mar"',
-                    '"Apr"',
-                    '"May"',
-                    '"Jun"',
-                    '"Jul"',
-                    '"Aug"',
-                    '"Sep"',
-                    '"Oct"',
-                    '"Nov"',
-                    '"Dec"'
+                    '"Jan"', '"Feb"', '"Mar"', '"Apr"', '"May"', '"Jun"',
+                    '"Jul"', '"Aug"', '"Sep"', '"Oct"', '"Nov"', '"Dec"'
                 ];
 
+                // Single aggregated query for all 12 months
+                $aggregated = $this->tripRequestRepository->getAnalyticsAggregated(
+                    'monthly',
+                    null,
+                    null,
+                    now()->year
+                );
+                
                 for ($i = 1; $i <= 12; $i++) {
-                    $monthlyOrder[$i - 1] = $this->tripRequestRepository->calculateCouponAmount(month: $i);
+                    $monthlyOrder[$i - 1] = $aggregated[$i] ?? 0;
                 }
                 break;
 
             case TODAY:
                 $label = [
-                    '"6:00 am"',
-                    '"8:00 am"',
-                    '"10:00 am"',
-                    '"12:00 pm"',
-                    '"2:00 pm"',
-                    '"4:00 pm"',
-                    '"6:00 pm"',
-                    '"8:00 pm"',
-                    '"10:00 pm"',
-                    '"12:00 am"',
-                    '"2:00 am"',
-                    '"4:00 am"'
+                    '"6:00 am"', '"8:00 am"', '"10:00 am"', '"12:00 pm"',
+                    '"2:00 pm"', '"4:00 pm"', '"6:00 pm"', '"8:00 pm"',
+                    '"10:00 pm"', '"12:00 am"', '"2:00 am"', '"4:00 am"'
                 ];
 
-                $startTime = strtotime('6:00 AM');
-
+                // Single aggregated query for all time blocks
+                $aggregated = $this->tripRequestRepository->getAnalyticsAggregated('hourly');
+                
+                // Map 2-hour blocks: block 3 = 6-8am, block 4 = 8-10am, etc.
+                $blockMapping = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2];
                 for ($i = 0; $i < 12; $i++) {
-                    $monthlyOrder[$i] = $this->tripRequestRepository->calculateCouponAmount(startTime: $startTime);
-                    $startTime = strtotime('+2 hours', $startTime);
+                    $monthlyOrder[$i] = $aggregated[$blockMapping[$i]] ?? 0;
                 }
                 break;
+                
             default:
                 $businessStartDate = Carbon::parse(BUSINESS_START_DATE);
                 $today = Carbon::today();
                 if ($businessStartDate?->year < $today->year) {
+                    // Single aggregated query for all years
+                    $aggregated = $this->tripRequestRepository->getAnalyticsAggregated('yearly');
+                    
                     for ($i = $businessStartDate?->year; $i <= $today->year; $i++) {
                         $label[] = '"' . $i . '"';
-                        $monthlyOrder[] = $this->tripRequestRepository->calculateCouponAmount(year: $i);
+                        $monthlyOrder[] = $aggregated[$i] ?? 0;
                     }
                 } else {
                     $label = [
-                        '"Jan"',
-                        '"Feb"',
-                        '"Mar"',
-                        '"Apr"',
-                        '"May"',
-                        '"Jun"',
-                        '"Jul"',
-                        '"Aug"',
-                        '"Sep"',
-                        '"Oct"',
-                        '"Nov"',
-                        '"Dec"'
+                        '"Jan"', '"Feb"', '"Mar"', '"Apr"', '"May"', '"Jun"',
+                        '"Jul"', '"Aug"', '"Sep"', '"Oct"', '"Nov"', '"Dec"'
                     ];
 
+                    // Single aggregated query for monthly
+                    $aggregated = $this->tripRequestRepository->getAnalyticsAggregated(
+                        'monthly',
+                        null,
+                        null,
+                        now()->year
+                    );
+                    
                     for ($i = 1; $i <= 12; $i++) {
-                        $monthlyOrder[$i - 1] = $this->tripRequestRepository->calculateCouponAmount(month: $i);
+                        $monthlyOrder[$i - 1] = $aggregated[$i] ?? 0;
                     }
                 }
         }
@@ -284,23 +296,78 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
         return $this->tripRequestRepository->statusWiseTotalTripRecords(attributes: $attributes);
     }
 
+    /**
+     * Export trip data using streaming to prevent memory exhaustion
+     * OPTIMIZED: Uses cursor() for memory-efficient streaming
+     * 
+     * @param array $criteria Filter criteria
+     * @param array $relations Relations to eager load
+     * @param array $orderBy Ordering
+     * @param int|null $limit Optional limit
+     * @param int|null $offset Optional offset
+     * @param array $withCountQuery With count queries
+     * @return \Generator Yields formatted trip data one row at a time
+     */
     public function export(array $criteria = [], array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, array $withCountQuery = [])
     {
-        return $this->index(criteria: $criteria, relations: $relations, orderBy: $orderBy)->map(function ($item) {
-            return [
-                'id' => $item['id'],
-                'trip_ID' => $item['ref_id'],
-                'date' => date('d F Y', strtotime($item['created_at'])) . ' ' . date('h:i a', strtotime($item['created_at'])),
-                'customer' => $item['customer']?->first_name . ' ' . $item['customer']?->last_name,
-                'driver' => $item['driver'] ? $item['driver']?->first_name . ' ' . $item['driver']?->last_name : 'no driver assigned',
-                'trip_cost' => $item['current_status'] == 'completed' ? $item['actual_fare'] : $item['estimated_fare'],
-                'coupon_discount' => $item['coupon_amount'],
-                'additional_fee' => $item['fee'] ? ($item['fee']->waiting_fee + $item['fee']->delay_fee + $item['fee']->idle_fee + $item['fee']->cancellation_fee + $item['fee']->vat_tax) : 0,
-                'total_trip_cost' => $item['paid_fare'] - $item['tips'],
-                'admin_commission' => $item['fee'] ? $item['fee']->admin_commission : 0,
-                'trip_status' => $item['current_status']
-            ];
-        });
+        // Use cursor for memory-efficient streaming
+        $query = $this->tripRequestRepository->getModel()
+            ->with(['customer', 'driver', 'fee'])
+            ->when(!empty($criteria), function ($q) use ($criteria) {
+                // Handle 'from' and 'to' for date filtering
+                if (isset($criteria['from']) && isset($criteria['to'])) {
+                    $q->whereBetween('created_at', [$criteria['from'], $criteria['to']]);
+                    unset($criteria['from'], $criteria['to']);
+                }
+                // Handle search
+                if (isset($criteria['search'])) {
+                    $search = $criteria['search'];
+                    $q->where(function ($query) use ($search) {
+                        $query->where('ref_id', 'like', "%{$search}%");
+                    });
+                    unset($criteria['search']);
+                }
+                // Apply remaining criteria
+                foreach ($criteria as $key => $value) {
+                    $q->where($key, $value);
+                }
+            })
+            ->when(!empty($orderBy), function ($q) use ($orderBy) {
+                foreach ($orderBy as $field => $direction) {
+                    $q->orderBy($field, $direction);
+                }
+            });
+        
+        // Return a generator that yields formatted rows one at a time
+        $generator = function () use ($query) {
+            foreach ($query->cursor() as $item) {
+                yield [
+                    'id' => $item['id'],
+                    'trip_ID' => $item['ref_id'],
+                    'date' => date('d F Y', strtotime($item['created_at'])) . ' ' . date('h:i a', strtotime($item['created_at'])),
+                    'customer' => $item['customer']?->first_name . ' ' . $item['customer']?->last_name,
+                    'driver' => $item['driver'] ? $item['driver']?->first_name . ' ' . $item['driver']?->last_name : 'no driver assigned',
+                    'trip_cost' => $item['current_status'] == 'completed' ? $item['actual_fare'] : $item['estimated_fare'],
+                    'coupon_discount' => $item['coupon_amount'],
+                    'additional_fee' => $item['fee'] ? ($item['fee']->waiting_fee + $item['fee']->delay_fee + $item['fee']->idle_fee + $item['fee']->cancellation_fee + $item['fee']->vat_tax) : 0,
+                    'total_trip_cost' => $item['paid_fare'] - $item['tips'],
+                    'admin_commission' => $item['fee'] ? $item['fee']->admin_commission : 0,
+                    'trip_status' => $item['current_status']
+                ];
+            }
+        };
+        
+        // Return as a Laravel LazyCollection for compatibility with FastExcel
+        return \Illuminate\Support\LazyCollection::make($generator);
+    }
+
+    /**
+     * Get all dashboard metrics in a single aggregated query
+     * Consolidates 7+ separate queries into one
+     */
+    public function getDashboardAggregatedMetrics(): object
+    {
+        return $this->tripRequestRepository->getDashboardAggregatedMetrics();
     }
 
     public function getAdminZoneWiseStatistics(array $data)
@@ -314,36 +381,24 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
             ];
         }
         $zones = $this->zoneRepository->getBy(criteria: ['is_active' => 1]);
-        $zoneTripsByDate = $zones->map(function ($zone) use ($whereBetweenCriteria) {
-            $completedCriteria = [
-                'zone_id' => $zone->id,
-                'current_status' => COMPLETED,
-            ];
-            $cancelledCriteria = [
-                'zone_id' => $zone->id,
-                'current_status' => CANCELLED,
-            ];
-            $ongoingCriteria = [
-                'zone_id' => $zone->id,
-            ];
-            $whereInCriteria = [
-                'current_status' => [PENDING, ACCEPTED, ONGOING],
-            ];
-            $completedTrips = $this->tripRequestRepository->getBy(criteria: $completedCriteria, whereBetweenCriteria: $whereBetweenCriteria);
-            $cancelledTrips = $this->tripRequestRepository->getBy(criteria: $cancelledCriteria, whereBetweenCriteria: $whereBetweenCriteria);
-            $ongoingTrips = $this->tripRequestRepository->getBy(criteria: $ongoingCriteria, whereInCriteria: $whereInCriteria, whereBetweenCriteria: $whereBetweenCriteria);
-
-
+        $zoneIds = $zones->pluck('id')->toArray();
+        
+        // Single aggregated query replaces N+1 queries
+        $aggregatedStats = $this->tripRequestRepository->getAggregatedZoneStatistics($zoneIds, $whereBetweenCriteria);
+        
+        $zoneTripsByDate = $zones->map(function ($zone) use ($aggregatedStats) {
+            $stats = $aggregatedStats->get($zone->id);
             return [
                 'zone_id' => $zone->id,
                 'zone_name' => $zone->name,
-                'completed_trips' => $completedTrips->count(),
-                'cancelled_trips' => $cancelledTrips->count(),
-                'ongoing_trips' => $ongoingTrips->count(),
-                'total_trips' => $completedTrips->count() + $cancelledTrips->count() + $ongoingTrips->count(),
+                'completed_trips' => $stats->completed_trips ?? 0,
+                'cancelled_trips' => $stats->cancelled_trips ?? 0,
+                'ongoing_trips' => $stats->ongoing_trips ?? 0,
+                'total_trips' => $stats->total_trips ?? 0,
             ];
         });
-        $totalTrips = $this->tripRequestRepository->getBy(whereInCriteria: ['zone_id' => $zones->pluck('id')], whereBetweenCriteria: $whereBetweenCriteria)->count();
+        
+        $totalTrips = $aggregatedStats->sum('total_trips');
 
         return [
             'totalTrips' => $totalTrips,

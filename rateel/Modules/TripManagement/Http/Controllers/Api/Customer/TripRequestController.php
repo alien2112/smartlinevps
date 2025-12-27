@@ -784,7 +784,7 @@ class TripRequestController extends Controller
 
         $env = env('APP_MODE');
         $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
-        $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';
+        $otp = ($env == "live" && $smsConfig) ? random_int(1000, 9999) : '0000';
 
         $assignedVehicleCategoryId = $trip->vehicle_category_id;
         if (empty($assignedVehicleCategoryId)) {
@@ -1093,7 +1093,7 @@ class TripRequestController extends Controller
         if ($trip->driver_id && $request->status == 'cancelled' && $trip->current_status == ONGOING && $trip->type == PARCEL) {
             $env = env('APP_MODE');
             $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
-            $otp = ($env == "live" && $smsConfig) ? rand(1000, 9999) : '0000';
+            $otp = ($env == "live" && $smsConfig) ? random_int(1000, 9999) : '0000';
             $trip->otp = $otp;
             if ($trip?->parcel?->payer == SENDER) {
                 $trip->paid_fare += $trip->return_fee;

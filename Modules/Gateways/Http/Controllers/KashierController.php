@@ -91,8 +91,8 @@ class KashierController extends Controller
                 return response()->json(['message' => 'Payment gateway not properly configured'], 500);
             }
 
-            // Generate unique order ID
-            $orderId = 'SL-' . time() . '-' . mt_rand(1000, 9999);
+            // Generate unique order ID using cryptographically secure random
+            $orderId = 'SL-' . time() . '-' . random_int(1000, 9999);
             $amount = number_format((float)$paymentData->payment_amount, 2, '.', '');
 
             // Store order ID in session for callback verification

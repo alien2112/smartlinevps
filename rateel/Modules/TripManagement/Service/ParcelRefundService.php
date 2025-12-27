@@ -121,7 +121,7 @@ class ParcelRefundService extends BaseService implements Interface\ParcelRefundS
 
     private function parcelRefundCouponCreate($trip, $amount)
     {
-        $randomString = Str::random(6) . rand(1000, 9999);
+        $randomString = Str::random(6) . random_int(1000, 9999);
         $randomString = str_shuffle($randomString);
         $shuffledString = substr($randomString, 0, 10);
         $couponData = [

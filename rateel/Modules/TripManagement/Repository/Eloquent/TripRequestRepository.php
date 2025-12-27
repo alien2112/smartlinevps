@@ -19,6 +19,29 @@ class TripRequestRepository extends BaseRepository implements TripRequestReposit
         parent::__construct($model);
     }
 
+    /**
+     * Get all dashboard metrics in a single aggregated query
+     * Replaces 7+ separate trip_requests queries with one query using conditional aggregation
+     * 
+     * @return object Contains: total_trips, total_parcels, total_coupon, total_discount,
+     *                         total_earning, trips_earning, parcels_earning
+     */
+    public function getDashboardAggregatedMetrics(): object
+    {
+        return DB::table('trip_requests')
+            ->leftJoin('trip_request_fees', 'trip_requests.id', '=', 'trip_request_fees.trip_request_id')
+            ->selectRaw('
+                SUM(CASE WHEN type = "ride_request" THEN 1 ELSE 0 END) as total_trips,
+                SUM(CASE WHEN type = "parcel" THEN 1 ELSE 0 END) as total_parcels,
+                SUM(CASE WHEN payment_status = "paid" THEN coupon_amount ELSE 0 END) as total_coupon,
+                SUM(CASE WHEN payment_status = "paid" THEN discount_amount ELSE 0 END) as total_discount,
+                SUM(CASE WHEN payment_status = "paid" AND (trip_request_fees.cancelled_by IS NULL OR trip_request_fees.cancelled_by = "CUSTOMER") THEN trip_request_fees.admin_commission ELSE 0 END) as total_earning,
+                SUM(CASE WHEN type = "ride_request" AND payment_status = "paid" AND (trip_request_fees.cancelled_by IS NULL OR trip_request_fees.cancelled_by = "CUSTOMER") THEN trip_request_fees.admin_commission ELSE 0 END) as trips_earning,
+                SUM(CASE WHEN type = "parcel" AND payment_status = "paid" AND (trip_request_fees.cancelled_by IS NULL OR trip_request_fees.cancelled_by = "CUSTOMER") THEN trip_request_fees.admin_commission ELSE 0 END) as parcels_earning
+            ')
+            ->first();
+    }
+
     public function calculateCouponAmount($startDate = null, $endDate = null, $startTime = null, $month = null, $year = null): mixed
     {
         $query = $this->model->whereNotNull('coupon_amount');
@@ -44,6 +67,95 @@ class TripRequestRepository extends BaseRepository implements TripRequestReposit
         }
 
         return $query->sum('coupon_amount');
+    }
+
+    /**
+     * Get analytics data aggregated by time period in a single query
+     * Replaces N separate queries with 1 grouped query
+     * 
+     * @param string $period 'daily', 'weekly', 'monthly', 'yearly'
+     * @param Carbon|null $startDate Start of date range
+     * @param Carbon|null $endDate End of date range
+     * @param int|null $year Year for yearly/monthly aggregation
+     * @return array Aggregated coupon amounts keyed by period
+     */
+    public function getAnalyticsAggregated(string $period, $startDate = null, $endDate = null, $year = null): array
+    {
+        $query = $this->model->whereNotNull('coupon_amount');
+        
+        if ($startDate && $endDate) {
+            $query->whereBetween('created_at', [
+                $startDate->startOfDay(),
+                $endDate->endOfDay()
+            ]);
+        } elseif ($year) {
+            $query->whereYear('created_at', $year);
+        }
+        
+        switch ($period) {
+            case 'hourly':
+                // Group by 2-hour blocks for "today" view
+                $results = $query->selectRaw('
+                    FLOOR(HOUR(created_at) / 2) as time_block,
+                    SUM(coupon_amount) as total
+                ')
+                ->whereDate('created_at', now()->toDateString())
+                ->groupBy('time_block')
+                ->pluck('total', 'time_block')
+                ->toArray();
+                break;
+                
+            case 'daily':
+                // Group by day of week
+                $results = $query->selectRaw('
+                    DAYOFWEEK(created_at) as day_of_week,
+                    SUM(coupon_amount) as total
+                ')
+                ->groupBy('day_of_week')
+                ->pluck('total', 'day_of_week')
+                ->toArray();
+                break;
+                
+            case 'weekly':
+                // Group by week number within month
+                $results = $query->selectRaw('
+                    CEIL(DAY(created_at) / 7) as week_num,
+                    SUM(coupon_amount) as total
+                ')
+                ->groupBy('week_num')
+                ->pluck('total', 'week_num')
+                ->toArray();
+                break;
+                
+            case 'monthly':
+                // Group by month
+                $results = $query->selectRaw('
+                    MONTH(created_at) as month,
+                    SUM(coupon_amount) as total
+                ')
+                ->groupBy('month')
+                ->orderBy('month')
+                ->pluck('total', 'month')
+                ->toArray();
+                break;
+                
+            case 'yearly':
+                // Group by year
+                $results = $query->selectRaw('
+                    YEAR(created_at) as year,
+                    SUM(coupon_amount) as total
+                ')
+                ->groupBy('year')
+                ->orderBy('year')
+                ->pluck('total', 'year')
+                ->toArray();
+                break;
+                
+            default:
+                $results = [];
+        }
+        
+        return $results;
     }
 
     public function fetchTripData($dateRange): Collection
@@ -243,6 +355,35 @@ class TripRequestRepository extends BaseRepository implements TripRequestReposit
             return !empty($appends) ? $model->paginate($limit)->appends($appends) : $model->paginate($limit);
         }
         return $model->get();
+    }
+
+    /**
+     * Get aggregated zone statistics in a single query
+     * Replaces N+1 zone queries with one grouped query
+     * 
+     * @param array $zoneIds Array of zone IDs to get statistics for
+     * @param array $whereBetweenCriteria Date range criteria
+     * @return Collection Aggregated statistics keyed by zone_id
+     */
+    public function getAggregatedZoneStatistics(array $zoneIds, array $whereBetweenCriteria = []): Collection
+    {
+        return $this->model->query()
+            ->whereIn('zone_id', $zoneIds)
+            ->when(!empty($whereBetweenCriteria), function ($query) use ($whereBetweenCriteria) {
+                foreach ($whereBetweenCriteria as $column => $range) {
+                    $query->whereBetween($column, $range);
+                }
+            })
+            ->selectRaw('
+                zone_id,
+                COUNT(*) as total_trips,
+                SUM(CASE WHEN current_status = "completed" THEN 1 ELSE 0 END) as completed_trips,
+                SUM(CASE WHEN current_status = "cancelled" THEN 1 ELSE 0 END) as cancelled_trips,
+                SUM(CASE WHEN current_status IN ("pending", "accepted", "ongoing") THEN 1 ELSE 0 END) as ongoing_trips
+            ')
+            ->groupBy('zone_id')
+            ->get()
+            ->keyBy('zone_id');
     }
 
     public function getZoneWiseEarning(array $criteria = [], array $searchCriteria = [], array $whereInCriteria = [], array $whereBetweenCriteria = [], array $whereHasRelations = [], array $withAvgRelations = [], array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, bool $onlyTrashed = false, bool $withTrashed = false, array $withCountQuery = [], array $appends = [], $startDate = null, $endDate = null, $startTime = null, $month = null, $year = null): Collection|LengthAwarePaginator

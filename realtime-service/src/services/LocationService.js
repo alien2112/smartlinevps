@@ -9,9 +9,10 @@ const { objectToHsetArgs } = require('../utils/redisHelpers');
 const config = require('../config/config');
 
 class LocationService {
-  constructor(redisClient, io) {
+  constructor(redisClient, io, settingsManager = null) {
     this.redis = redisClient;
     this.io = io;
+    this.settingsManager = settingsManager;
     this.DRIVERS_GEO_KEY = 'drivers:locations';
     this.DRIVER_STATUS_PREFIX = 'driver:status:';
     this.DRIVER_INFO_PREFIX = 'driver:info:';
@@ -19,13 +20,29 @@ class LocationService {
     this.RIDE_CUSTOMER_PREFIX = 'ride:customer:';
     this.ACTIVE_RIDES_SET = 'rides:active';
 
-    // Load from centralized config
-    this.LOCATION_EXPIRY = config.location.expirySeconds;
-    this.UPDATE_THROTTLE = config.location.updateThrottleMs;
-    this.RIDE_CONTEXT_EXPIRY = config.location.rideContextExpirySeconds;
-
     // Throttle map to prevent excessive updates
     this.lastUpdateTime = new Map();
+  }
+
+  /**
+   * Get dynamic settings with fallback to config
+   */
+  getLocationExpiry() {
+    if (this.settingsManager?.isInitialized()) {
+      return this.settingsManager.get('tracking.stale_timeout_seconds', config.location.expirySeconds);
+    }
+    return config.location.expirySeconds;
+  }
+
+  getUpdateThrottle() {
+    if (this.settingsManager?.isInitialized()) {
+      return this.settingsManager.getTrackingUpdateInterval();
+    }
+    return config.location.updateThrottleMs;
+  }
+
+  getRideContextExpiry() {
+    return config.location.rideContextExpirySeconds;
   }
 
   /**
@@ -44,14 +61,16 @@ class LocationService {
       })
     );
 
-    // Store driver info
+    // Store driver info including category_level for dispatch priority
     if (data.location) {
       multi.hset(
         `${this.DRIVER_INFO_PREFIX}${driverId}`,
         ...objectToHsetArgs({
           vehicle_category_id: data.vehicle_category_id || '',
           vehicle_id: data.vehicle_id || '',
-          name: data.name || ''
+          name: data.name || '',
+          // Category level: 1=budget, 2=pro, 3=vip
+          category_level: data.category_level || 1
         })
       );
 
@@ -65,12 +84,12 @@ class LocationService {
     }
 
     // Set expiry
-    multi.expire(`${this.DRIVER_STATUS_PREFIX}${driverId}`, this.LOCATION_EXPIRY);
-    multi.expire(`${this.DRIVER_INFO_PREFIX}${driverId}`, this.LOCATION_EXPIRY);
+    multi.expire(`${this.DRIVER_STATUS_PREFIX}${driverId}`, this.getLocationExpiry());
+    multi.expire(`${this.DRIVER_INFO_PREFIX}${driverId}`, this.getLocationExpiry());
 
     await multi.exec();
 
-    logger.info('Driver went online', { driverId });
+    logger.info('Driver went online', { driverId, categoryLevel: data.category_level });
   }
 
   /**
@@ -126,7 +145,7 @@ class LocationService {
     const now = Date.now();
     const lastUpdate = this.lastUpdateTime.get(driverId);
 
-    if (lastUpdate && (now - lastUpdate) < this.UPDATE_THROTTLE) {
+    if (lastUpdate && (now - lastUpdate) < this.getUpdateThrottle()) {
       // Skip update, too frequent
       return;
     }
@@ -161,7 +180,7 @@ class LocationService {
     );
 
     // Reset expiry
-    pipeline.expire(`${this.DRIVER_STATUS_PREFIX}${driverId}`, this.LOCATION_EXPIRY);
+    pipeline.expire(`${this.DRIVER_STATUS_PREFIX}${driverId}`, this.getLocationExpiry());
 
     // Check if driver is on an active ride
     pipeline.get(`driver:active_ride:${driverId}`);
@@ -191,8 +210,21 @@ class LocationService {
   /**
    * Find nearest available drivers
    * Uses Redis GEORADIUS for efficient spatial queries
+   *
+   * Category Level Dispatch Logic:
+   * - Higher level drivers can accept lower level trips (VIP can do Budget)
+   * - Same category drivers are prioritized first
+   * - For travel mode: only VIP drivers (level 3)
+   *
+   * @param {number} latitude
+   * @param {number} longitude
+   * @param {number} radiusKm
+   * @param {string|null} vehicleCategoryId
+   * @param {object} options - { categoryLevel, isTravel }
    */
-  async findNearbyDrivers(latitude, longitude, radiusKm = 10, vehicleCategoryId = null) {
+  async findNearbyDrivers(latitude, longitude, radiusKm = 10, vehicleCategoryId = null, options = {}) {
+    const { categoryLevel = 1, isTravel = false } = options;
+
     // Get drivers within radius
     const drivers = await this.redis.georadius(
       this.DRIVERS_GEO_KEY,
@@ -203,27 +235,29 @@ class LocationService {
       'WITHDIST',
       'ASC',
       'COUNT',
-      50
+      100 // Fetch more initially for category filtering
     );
 
     if (!drivers.length) {
       return [];
     }
 
-    // Batch fetch statuses to avoid N+1 Redis calls
-    const statusPipeline = this.redis.pipeline();
+    // Batch fetch statuses and infos to avoid N+1 Redis calls
+    const pipeline = this.redis.pipeline();
     for (const [driverId] of drivers) {
-      statusPipeline.hgetall(`${this.DRIVER_STATUS_PREFIX}${driverId}`);
+      pipeline.hgetall(`${this.DRIVER_STATUS_PREFIX}${driverId}`);
+      pipeline.hgetall(`${this.DRIVER_INFO_PREFIX}${driverId}`);
     }
 
-    const statusResults = await statusPipeline.exec();
+    const results = await pipeline.exec();
 
     const availableCandidates = [];
     const staleDriverIds = [];
 
     for (let i = 0; i < drivers.length; i++) {
       const [driverId, distance] = drivers[i];
-      const status = statusResults?.[i]?.[1] || {};
+      const status = results?.[i * 2]?.[1] || {};
+      const info = results?.[i * 2 + 1]?.[1] || {};
 
       if (!status.status) {
         staleDriverIds.push(driverId);
@@ -238,10 +272,35 @@ class LocationService {
         continue;
       }
 
+      const driverCategoryLevel = parseInt(info.category_level || 1, 10);
+
+      // Category level filtering
+      if (isTravel) {
+        // Travel mode: VIP only (level 3)
+        if (driverCategoryLevel !== 3) {
+          continue;
+        }
+      } else {
+        // Normal mode: driver level must be >= requested level
+        // Higher level drivers CAN accept lower level trips
+        if (driverCategoryLevel < categoryLevel) {
+          continue;
+        }
+      }
+
+      // Optional vehicle category filter
+      if (vehicleCategoryId && info.vehicle_category_id !== vehicleCategoryId) {
+        continue;
+      }
+
       availableCandidates.push({
         driverId,
         distance: parseFloat(distance),
-        status
+        status,
+        info,
+        categoryLevel: driverCategoryLevel,
+        // Flag if same category as requested (for priority sorting)
+        isSameCategory: driverCategoryLevel === categoryLevel
       });
     }
 
@@ -249,34 +308,36 @@ class LocationService {
       await this.redis.zrem(this.DRIVERS_GEO_KEY, ...staleDriverIds);
     }
 
-    // Optional vehicle-category filter (batch fetch infos only for candidates)
-    let allowedCandidates = availableCandidates;
-
-    if (vehicleCategoryId) {
-      const infoPipeline = this.redis.pipeline();
-      for (const c of availableCandidates) {
-        infoPipeline.hgetall(`${this.DRIVER_INFO_PREFIX}${c.driverId}`);
+    // Sort: same category first, then by distance
+    // This prioritizes exact matches while still allowing higher-tier drivers
+    availableCandidates.sort((a, b) => {
+      // Same category drivers first (only for non-travel)
+      if (!isTravel) {
+        if (a.isSameCategory && !b.isSameCategory) return -1;
+        if (!a.isSameCategory && b.isSameCategory) return 1;
       }
+      // Then by distance
+      return a.distance - b.distance;
+    });
 
-      const infoResults = await infoPipeline.exec();
+    // Limit results
+    const limitedCandidates = availableCandidates.slice(0, 50);
 
-      allowedCandidates = availableCandidates.filter((c, idx) => {
-        const info = infoResults?.[idx]?.[1] || {};
-        return info.vehicle_category_id === vehicleCategoryId;
-      });
-    }
-
-    const availableDrivers = allowedCandidates.map((c) => ({
+    const availableDrivers = limitedCandidates.map((c) => ({
       driverId: c.driverId,
       distance: c.distance,
       latitude: parseFloat(c.status.last_latitude),
       longitude: parseFloat(c.status.last_longitude),
-      speed: parseFloat(c.status.speed || 0)
+      speed: parseFloat(c.status.speed || 0),
+      categoryLevel: c.categoryLevel,
+      isSameCategory: c.isSameCategory
     }));
 
     logger.info('Found nearby drivers', {
       count: availableDrivers.length,
       radiusKm,
+      categoryLevel,
+      isTravel,
       location: { latitude, longitude }
     });
 
@@ -299,8 +360,8 @@ class LocationService {
     );
 
     // Store active ride mapping
-    multi.setex(`driver:active_ride:${driverId}`, this.RIDE_CONTEXT_EXPIRY, rideId);
-    multi.setex(`${this.RIDE_DRIVER_PREFIX}${rideId}`, this.RIDE_CONTEXT_EXPIRY, driverId);
+    multi.setex(`driver:active_ride:${driverId}`, this.getRideContextExpiry(), rideId);
+    multi.setex(`${this.RIDE_DRIVER_PREFIX}${rideId}`, this.getRideContextExpiry(), driverId);
     multi.sadd(this.ACTIVE_RIDES_SET, rideId);
 
     await multi.exec();
@@ -362,9 +423,10 @@ class LocationService {
   /**
    * Store ride->customer mapping for room authorization
    */
-  async setRideCustomer(rideId, customerId, ttlSeconds = this.RIDE_CONTEXT_EXPIRY) {
+  async setRideCustomer(rideId, customerId, ttlSeconds = null) {
+    const expiry = ttlSeconds || this.getRideContextExpiry();
     if (!rideId || !customerId) return;
-    await this.redis.setex(`${this.RIDE_CUSTOMER_PREFIX}${rideId}`, ttlSeconds, customerId);
+    await this.redis.setex(`${this.RIDE_CUSTOMER_PREFIX}${rideId}`, expiry, customerId);
   }
 
   async getRideCustomer(rideId) {

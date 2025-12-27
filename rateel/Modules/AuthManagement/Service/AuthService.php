@@ -62,7 +62,7 @@ class AuthService extends BaseService implements Interface\AuthServiceInterface
     public function sendOtpToClient($user, $type = null)
     {
         if ($type == 'trip') {
-            $otp = env('APP_MODE') == 'live' ? rand(1000, 9999) : '0000';
+            $otp = env('APP_MODE') == 'live' ? random_int(1000, 9999) : '0000';
             if (self::send($user->phone, $otp) == "not_found") {
                 return $this->generateOtp($user, '0000');
             }

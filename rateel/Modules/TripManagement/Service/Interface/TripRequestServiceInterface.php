@@ -19,6 +19,8 @@ interface TripRequestServiceInterface extends BaseServiceInterface
 
     public function getAdminZoneWiseStatistics(array $data);
 
+    public function getDashboardAggregatedMetrics(): object;
+
     public function getAdminZoneWiseEarning(array $data);
 
     public function getDateZoneWiseEarningStatistics(array $data);

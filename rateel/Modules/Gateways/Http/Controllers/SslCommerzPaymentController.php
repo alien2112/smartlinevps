@@ -136,8 +136,12 @@ class SslCommerzPaymentController extends Controller
         $sslcz = json_decode($sslcommerzResponse, true);
 
         if (isset($sslcz['GatewayPageURL']) && $sslcz['GatewayPageURL'] != "") {
-            echo "<meta http-equiv='refresh' content='0;url=" . $sslcz['GatewayPageURL'] . "'>";
-            exit;
+            // Validate URL to prevent open redirect
+            $gatewayUrl = filter_var($sslcz['GatewayPageURL'], FILTER_VALIDATE_URL);
+            if ($gatewayUrl && (str_starts_with($gatewayUrl, 'https://sandbox.sslcommerz.com') || str_starts_with($gatewayUrl, 'https://securepay.sslcommerz.com'))) {
+                return redirect()->away($gatewayUrl);
+            }
+            return response()->json($this->responseFormatter(DEFAULT_204), 200);
         } else {
             return response()->json($this->responseFormatter(DEFAULT_204), 200);
         }

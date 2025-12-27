@@ -21,6 +21,7 @@ const LocationService = require('./services/LocationService');
 const DriverMatchingService = require('./services/DriverMatchingService');
 const RedisEventBus = require('./services/RedisEventBus');
 const RideTimeoutService = require('./services/RideTimeoutService');
+const SettingsManager = require('./services/SettingsManager');
 
 // OBSERVABILITY: Import deep logging utilities
 const {
@@ -142,11 +143,21 @@ if (config.redis.enabled) {
   logger.warn('Socket.IO running in single-instance mode (Redis disabled)');
 }
 
-// Initialize services
-const locationService = new LocationService(redisClient, io);
-const driverMatchingService = new DriverMatchingService(redisClient, io, locationService);
+// Initialize SettingsManager for dynamic settings from Laravel/Redis
+const settingsManager = new SettingsManager(redisClient);
+
+// Initialize services (pass settingsManager for dynamic config)
+const locationService = new LocationService(redisClient, io, settingsManager);
+const driverMatchingService = new DriverMatchingService(redisClient, io, locationService, settingsManager);
 const redisEventBus = new RedisEventBus(redisClient, io, locationService, driverMatchingService);
 const rideTimeoutService = new RideTimeoutService(redisClient, io, driverMatchingService);
+
+// Initialize settings (async)
+settingsManager.initialize().then(() => {
+  logger.info('SettingsManager initialized with dynamic settings from Redis');
+}).catch((err) => {
+  logger.warn('SettingsManager using defaults', { error: err.message });
+});
 
 // Socket.IO middleware for authentication
 io.use((socket, next) => {

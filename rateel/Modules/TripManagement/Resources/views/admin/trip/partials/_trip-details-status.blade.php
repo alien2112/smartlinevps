@@ -236,64 +236,99 @@
 </div>
 
 @push('script')
+    <!-- Leaflet CSS and JS - OpenStreetMap -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet Routing Machine for directions -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+    
+    <style>
+        .leaflet-routing-container { display: none !important; } /* Hide turn-by-turn instructions */
+    </style>
+    
     <script>
         let map;
-        let waypoints;
 
         function initMap() {
             const mapLayer = document.getElementById("map-layer");
-            const defaultOptions = {zoom: 9};
-            map = new google.maps.Map(mapLayer, defaultOptions);
+            
+            // Trip coordinates
+            const startLat = {{$trip->coordinate->pickup_coordinates->latitude}};
+            const startLng = {{$trip->coordinate->pickup_coordinates->longitude}};
+            const endLat = {{$trip->coordinate->destination_coordinates->latitude}};
+            const endLng = {{$trip->coordinate->destination_coordinates->longitude}};
 
-            const directionsService = new google.maps.DirectionsService;
-            const directionsDisplay = new google.maps.DirectionsRenderer;
-            directionsDisplay.setMap(map);
+            // Initialize Leaflet map
+            map = L.map(mapLayer).setView([startLat, startLng], 12);
 
-            const start = ({
-                lat: {{$trip->coordinate->pickup_coordinates->latitude}},
-                lng: {{$trip->coordinate->pickup_coordinates->longitude}}
+            // Add OpenStreetMap tile layer (FREE - no API key needed)
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Add start marker (pickup)
+            const startIcon = L.divIcon({
+                className: 'custom-marker',
+                html: '<div style="background-color: #22c55e; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
             });
-            const end = ({
-                lat: {{$trip->coordinate->destination_coordinates->latitude}},
-                lng: {{$trip->coordinate->destination_coordinates->longitude}}
+            
+            const endIcon = L.divIcon({
+                className: 'custom-marker',
+                html: '<div style="background-color: #ef4444; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
             });
-            drawPath(directionsService, directionsDisplay, start, end);
-        }
 
-        function drawPath(directionsService, directionsDisplay, start, end) {
+            L.marker([startLat, startLng], { icon: startIcon })
+                .addTo(map)
+                .bindPopup('{{ translate("Pickup Location") }}');
+                
+            L.marker([endLat, endLng], { icon: endIcon })
+                .addTo(map)
+                .bindPopup('{{ translate("Destination") }}');
 
-            directionsService.route({
-                    origin: start,
-                    destination: end,
-                    travelMode: "DRIVING"
+            // Draw route using OSRM (free routing service)
+            L.Routing.control({
+                waypoints: [
+                    L.latLng(startLat, startLng),
+                    L.latLng(endLat, endLng)
+                ],
+                routeWhileDragging: false,
+                addWaypoints: false,
+                draggableWaypoints: false,
+                fitSelectedRoutes: true,
+                showAlternatives: false,
+                createMarker: function() { return null; }, // We already added custom markers
+                lineOptions: {
+                    styles: [{ color: '#3b82f6', weight: 5, opacity: 0.8 }]
                 },
-                function (response, status) {
-                    if (status === 'OK') {
-                        directionsDisplay.setDirections(response);
-                    } else {
-                        toastr.error('{{translate('problem_in_showing_direction._status:_')}}' + status);
-                    }
-                });
-        }
-    </script>
-    <!-- Leaflet CSS and JS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script>
-        // Initialize map after Leaflet loads
-        if (typeof initMap === 'function') {
-            document.addEventListener('DOMContentLoaded', initMap);
-        }
-    </script>
+                router: L.Routing.osrmv1({
+                    serviceUrl: 'https://router.project-osrm.org/route/v1'
+                })
+            }).addTo(map);
 
-    <script>
-        $(document).ready(function () {
+            // Fit map bounds to show both points
+            const bounds = L.latLngBounds([
+                [startLat, startLng],
+                [endLat, endLng]
+            ]);
+            map.fitBounds(bounds, { padding: [50, 50] });
+        }
+
+        // Initialize map when DOM is ready
+        $(document).ready(function() {
+            initMap();
+            
             let showSafetyAlertUserDetails = $('.show-safety-alert-user-details');
 
             showSafetyAlertUserDetails.on('click', function () {
                 localStorage.setItem('safetyAlertUserDetailsStatus', true);
                 localStorage.setItem('safetyAlertUserIdFromTrip', $(this).data('user-id'));
             });
-        })
+        });
     </script>
 @endpush

@@ -1,0 +1,48 @@
+name = "smartline-media"
+main = "media-worker.ts"
+compatibility_date = "2024-01-01"
+
+# R2 Bucket Binding
+# The bucket must be created in Cloudflare dashboard first
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "smartline"
+
+# Environment Variables (non-secret)
+[vars]
+CDN_DOMAIN = "cdn.yoursite.com"
+
+# Secrets (set via wrangler secret put)
+# DO NOT put actual secrets in this file!
+#
+# Required secrets:
+#   wrangler secret put SIGNING_KEY_V1
+#   wrangler secret put SIGNING_KEY_V2 (optional, for key rotation)
+#
+# The signing keys must match the values in your Laravel .env:
+#   MEDIA_SIGNING_SECRET_V1
+#   MEDIA_SIGNING_SECRET_V2
+
+# Routes - configure in Cloudflare dashboard or add here
+# [routes]
+# route = "cdn.yoursite.com/img/*"
+# zone_name = "yoursite.com"
+
+# Development settings
+[dev]
+port = 8787
+local_protocol = "http"
+
+# Production environment
+[env.production]
+name = "smartline-media-production"
+
+[env.production.vars]
+CDN_DOMAIN = "cdn.yoursite.com"
+
+# Staging environment
+[env.staging]
+name = "smartline-media-staging"
+
+[env.staging.vars]
+CDN_DOMAIN = "cdn-staging.yoursite.com"
