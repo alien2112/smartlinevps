@@ -81,9 +81,9 @@ class HoneycombSetting extends Model
     // 8 = ~0.74 km² (neighborhood-level, recommended)
     // 9 = ~0.11 km² (block-level, high precision)
     public const H3_RESOLUTIONS = [
-        7 => ['name' => 'City', 'area_km2' => 5.16, 'edge_km' => 2.6],
-        8 => ['name' => 'Neighborhood', 'area_km2' => 0.74, 'edge_km' => 0.98],
-        9 => ['name' => 'Block', 'area_km2' => 0.11, 'edge_km' => 0.37],
+        7 => ['name' => 'مدينة', 'area_km2' => 5.16, 'edge_km' => 2.6],
+        8 => ['name' => 'حي', 'area_km2' => 0.74, 'edge_km' => 0.98],
+        9 => ['name' => 'مربع', 'area_km2' => 0.11, 'edge_km' => 0.37],
     ];
 
     /**

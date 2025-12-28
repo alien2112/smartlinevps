@@ -252,7 +252,7 @@
                         strokeWeight: isHotspot ? 3 : 1,
                         scale: Math.max(10, Math.min(30, cell.demand * 5 + cell.supply * 2))
                     },
-                    title: `Supply: ${cell.supply}, Demand: ${cell.demand}, Imbalance: ${cell.imbalance.toFixed(2)}x`
+                    title: `عرض: ${cell.supply}, طلب: ${cell.demand}, نسبة: ${cell.imbalance.toFixed(2)}x`
                 });
 
                 const infoWindow = new google.maps.InfoWindow({
