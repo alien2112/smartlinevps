@@ -319,7 +319,9 @@ io.on('connection', (socket) => {
           longitude: data?.longitude,
           speed: data?.speed,
           heading: data?.heading,
-          accuracy: data?.accuracy
+          accuracy: data?.accuracy,
+          zoneId: data?.zoneId,
+          category: data?.category
         };
 
         await locationService.updateDriverLocation(userId, locationData);
