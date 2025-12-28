@@ -78,7 +78,7 @@
                     <li class="{{Request::is('admin/dispatch/honeycomb*') ?'active open':''}}">
                         <a href="{{route('admin.dispatch.honeycomb.index')}}">
                             <i class="bi bi-hexagon-fill"></i>
-                            <span class="link-title">{{ translate('نظام الخلية') }}</span>
+                            <span class="link-title">نظام الخلية</span>
                         </a>
                     </li>
                 @endcan

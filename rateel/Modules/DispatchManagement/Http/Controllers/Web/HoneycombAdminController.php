@@ -147,12 +147,12 @@ class HoneycombAdminController extends Controller
 
             DB::commit();
 
-            return redirect()->back()->with('success', translate('تم تحديث إعدادات الخلية بنجاح'));
+            return redirect()->back()->with('success', 'تم تحديث إعدادات الخلية بنجاح');
 
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->back()
-                ->with('error', translate('فشل تحديث الإعدادات') . ': ' . $e->getMessage())
+                ->with('error', 'فشل تحديث الإعدادات: ' . $e->getMessage())
                 ->withInput();
         }
     }
@@ -193,7 +193,7 @@ class HoneycombAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => translate('تم تحديث الحالة بنجاح'),
+            'message' => 'تم تحديث الحالة بنجاح',
         ]);
     }
 

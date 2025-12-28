@@ -1,6 +1,6 @@
 @extends('adminmodule::layouts.master')
 
-@section('title', translate('Honeycomb_Heatmap'))
+@section('title', 'خريطة الحرارة')
 
 @section('content')
     <!-- Main Content -->
@@ -9,11 +9,11 @@
             <div class="d-flex align-items-center justify-content-between gap-3 mb-4">
                 <h2 class="fs-22 text-capitalize">
                     <i class="bi bi-map-fill text-primary me-2"></i>
-                    {{ translate('خريطة الحرارة - العرض والطلب') }}
+                    خريطة الحرارة - العرض والطلب
                 </h2>
                 <a href="{{ route('admin.dispatch.honeycomb.index') }}" class="btn btn-outline-secondary">
                     <i class="bi bi-gear me-1"></i>
-                    {{ translate('الإعدادات') }}
+                    الإعدادات
                 </a>
             </div>
 
@@ -22,9 +22,9 @@
                 <div class="col-md-4">
                     <div class="card h-100">
                         <div class="card-body">
-                            <label class="form-label fw-semibold">{{ translate('اختر المنطقة') }}</label>
+                            <label class="form-label fw-semibold">اختر المنطقة</label>
                             <select class="form-select" id="zone-selector" onchange="loadHeatmap(this.value)">
-                                <option value="">{{ translate('-- اختر منطقة --') }}</option>
+                                <option value="">-- اختر منطقة --</option>
                                 @foreach($zones as $zone)
                                     <option value="{{ $zone->id }}" {{ $selectedZoneId == $zone->id ? 'selected' : '' }}>
                                         {{ $zone->name }}
@@ -40,7 +40,7 @@
                     <div class="card bg-primary text-white h-100">
                         <div class="card-body text-center">
                             <h3 class="mb-1" id="stat-cells">{{ $stats['total_cells'] ?? 0 }}</h3>
-                            <small>{{ translate('خلايا نشطة') }}</small>
+                            <small>خلايا نشطة</small>
                         </div>
                     </div>
                 </div>
@@ -48,7 +48,7 @@
                     <div class="card bg-success text-white h-100">
                         <div class="card-body text-center">
                             <h3 class="mb-1" id="stat-supply">{{ $stats['total_supply'] ?? 0 }}</h3>
-                            <small>{{ translate('سائقين متاحين') }}</small>
+                            <small>سائقين متاحين</small>
                         </div>
                     </div>
                 </div>
@@ -56,7 +56,7 @@
                     <div class="card bg-warning text-dark h-100">
                         <div class="card-body text-center">
                             <h3 class="mb-1" id="stat-demand">{{ $stats['total_demand'] ?? 0 }}</h3>
-                            <small>{{ translate('طلبات') }}</small>
+                            <small>طلبات</small>
                         </div>
                     </div>
                 </div>
@@ -64,7 +64,7 @@
                     <div class="card bg-danger text-white h-100">
                         <div class="card-body text-center">
                             <h3 class="mb-1" id="stat-hotspots">{{ $stats['hotspot_count'] ?? 0 }}</h3>
-                            <small>{{ translate('نقاط ساخنة') }}</small>
+                            <small>نقاط ساخنة</small>
                         </div>
                     </div>
                 </div>
@@ -78,11 +78,11 @@
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h5 class="mb-0">
                                 <i class="bi bi-hexagon me-1"></i>
-                                {{ translate('خريطة الخلايا') }}
+                                خريطة الخلايا
                             </h5>
                             <button class="btn btn-sm btn-outline-primary" onclick="refreshHeatmap()">
                                 <i class="bi bi-arrow-clockwise me-1"></i>
-                                {{ translate('تحديث') }}
+                                تحديث
                             </button>
                         </div>
                         <div class="card-body p-0">
@@ -91,7 +91,7 @@
                                     <div class="d-flex align-items-center justify-content-center h-100 text-muted">
                                         <div class="text-center">
                                             <i class="bi bi-map fs-1 mb-3 d-block"></i>
-                                            {{ translate('اختر منطقة لعرض الخريطة') }}
+                                            اختر منطقة لعرض الخريطة
                                         </div>
                                     </div>
                                 @else
@@ -108,7 +108,7 @@
                         <div class="card-header">
                             <h5 class="mb-0">
                                 <i class="bi bi-list-ul me-1"></i>
-                                {{ translate('تفاصيل الخلايا') }}
+                                تفاصيل الخلايا
                             </h5>
                         </div>
                         <div class="card-body p-0" style="max-height: 500px; overflow-y: auto;">
@@ -116,7 +116,7 @@
                                 @if(empty($heatmapData))
                                     <div class="text-center text-muted p-4">
                                         <i class="bi bi-inbox fs-1 mb-2 d-block"></i>
-                                        {{ translate('لا توجد بيانات') }}
+                                        لا توجد بيانات
                                     </div>
                                 @else
                                     @foreach($heatmapData as $cell)
@@ -130,7 +130,7 @@
                                                     </span>
                                                     @if($cell['imbalance'] > 1.5 && $cell['demand'] >= 2)
                                                         <span class="badge bg-danger ms-1">
-                                                            <i class="bi bi-fire"></i> {{ translate('ساخن') }}
+                                                            <i class="bi bi-fire"></i> ساخن
                                                         </span>
                                                     @endif
                                                 </div>
@@ -140,13 +140,13 @@
                                                 <div class="col-4">
                                                     <div class="bg-success-subtle rounded p-2">
                                                         <h6 class="mb-0">{{ $cell['supply'] }}</h6>
-                                                        <small class="text-muted">{{ translate('عرض') }}</small>
+                                                        <small class="text-muted">عرض</small>
                                                     </div>
                                                 </div>
                                                 <div class="col-4">
                                                     <div class="bg-warning-subtle rounded p-2">
                                                         <h6 class="mb-0">{{ $cell['demand'] }}</h6>
-                                                        <small class="text-muted">{{ translate('طلب') }}</small>
+                                                        <small class="text-muted">طلب</small>
                                                     </div>
                                                 </div>
                                                 <div class="col-4">
@@ -169,22 +169,22 @@
             <div class="card mt-4">
                 <div class="card-body">
                     <div class="d-flex flex-wrap gap-4 align-items-center">
-                        <span class="fw-semibold">{{ translate('مفتاح الألوان:') }}</span>
+                        <span class="fw-semibold">مفتاح الألوان:</span>
                         <div class="d-flex align-items-center gap-2">
                             <span class="rounded-circle d-inline-block" style="width: 16px; height: 16px; background: #28a745;"></span>
-                            <small>{{ translate('متوازن') }} (< 1x)</small>
+                            <small>متوازن (< 1x)</small>
                         </div>
                         <div class="d-flex align-items-center gap-2">
                             <span class="rounded-circle d-inline-block" style="width: 16px; height: 16px; background: #ffc107;"></span>
-                            <small>{{ translate('طلب متوسط') }} (1-1.5x)</small>
+                            <small>طلب متوسط (1-1.5x)</small>
                         </div>
                         <div class="d-flex align-items-center gap-2">
                             <span class="rounded-circle d-inline-block" style="width: 16px; height: 16px; background: #fd7e14;"></span>
-                            <small>{{ translate('طلب مرتفع') }} (1.5-2x)</small>
+                            <small>طلب مرتفع (1.5-2x)</small>
                         </div>
                         <div class="d-flex align-items-center gap-2">
                             <span class="rounded-circle d-inline-block" style="width: 16px; height: 16px; background: #dc3545;"></span>
-                            <small>{{ translate('نقطة ساخنة') }} (> 2x)</small>
+                            <small>نقطة ساخنة (> 2x)</small>
                         </div>
                     </div>
                 </div>
@@ -298,7 +298,7 @@
         function refreshHeatmap() {
             const zoneId = document.getElementById('zone-selector').value;
             if (!zoneId) {
-                toastr.warning('{{ translate("اختر منطقة أولاً") }}');
+                toastr.warning('اختر منطقة أولاً');
                 return;
             }
 
@@ -316,11 +316,11 @@
                         $('#stat-demand').text(response.data.stats.total_demand);
                         $('#stat-hotspots').text(response.data.stats.hotspot_count);
                         
-                        toastr.success('{{ translate("تم التحديث") }}');
+                        toastr.success('تم التحديث');
                     }
                 },
                 error: function() {
-                    toastr.error('{{ translate("فشل التحديث") }}');
+                    toastr.error('فشل التحديث');
                 }
             });
         }

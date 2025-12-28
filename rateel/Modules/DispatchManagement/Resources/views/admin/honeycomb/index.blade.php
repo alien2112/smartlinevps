@@ -1,6 +1,6 @@
 @extends('adminmodule::layouts.master')
 
-@section('title', translate('Honeycomb_Dispatch_Settings'))
+@section('title', 'إعدادات نظام الخلية')
 
 @section('content')
     <!-- Main Content -->
@@ -9,11 +9,11 @@
             <div class="d-flex align-items-center justify-content-between gap-3 mb-4">
                 <h2 class="fs-22 text-capitalize">
                     <i class="bi bi-hexagon-fill text-primary me-2"></i>
-                    {{ translate('إعدادات نظام الخلية') }}
+                    إعدادات نظام الخلية
                 </h2>
                 <a href="{{ route('admin.dispatch.honeycomb.heatmap') }}" class="btn btn-outline-primary">
                     <i class="bi bi-map me-1"></i>
-                    {{ translate('عرض خريطة الحرارة') }}
+                    عرض خريطة الحرارة
                 </a>
             </div>
 
@@ -22,9 +22,9 @@
                 <div class="card-body">
                     <div class="row align-items-center">
                         <div class="col-md-4">
-                            <label class="form-label fw-semibold">{{ translate('اختر المنطقة') }}</label>
+                            <label class="form-label fw-semibold">اختر المنطقة</label>
                             <select class="form-select" id="zone-selector" onchange="changeZone(this.value)">
-                                <option value="">{{ translate('الإعدادات العامة (جميع المناطق)') }}</option>
+                                <option value="">الإعدادات العامة (جميع المناطق)</option>
                                 @foreach($zones as $zone)
                                     <option value="{{ $zone->id }}" {{ $selectedZoneId == $zone->id ? 'selected' : '' }}>
                                         {{ $zone->name }}
@@ -60,7 +60,7 @@
                             <div class="card-header">
                                 <h5 class="d-flex align-items-center gap-2">
                                     <i class="bi bi-toggles text-primary"></i>
-                                    {{ translate('تفعيل الميزات') }}
+                                    تفعيل الميزات
                                 </h5>
                             </div>
                             <div class="card-body">
@@ -70,8 +70,8 @@
                                         <div class="p-3 rounded bg-light h-100">
                                             <div class="d-flex align-items-center justify-content-between">
                                                 <div>
-                                                    <h6 class="fw-semibold mb-1">{{ translate('تفعيل نظام الخلية') }}</h6>
-                                                    <small class="text-muted">{{ translate('التحكم الرئيسي بالنظام') }}</small>
+                                                    <h6 class="fw-semibold mb-1">تفعيل نظام الخلية</h6>
+                                                    <small class="text-muted">التحكم الرئيسي بالنظام</small>
                                                 </div>
                                                 <label class="switcher">
                                                     <input class="switcher_input" type="checkbox" name="enabled" 
@@ -87,8 +87,8 @@
                                         <div class="p-3 rounded bg-light h-100">
                                             <div class="d-flex align-items-center justify-content-between">
                                                 <div>
-                                                    <h6 class="fw-semibold mb-1">{{ translate('تفعيل التوزيع الذكي') }}</h6>
-                                                    <small class="text-muted">{{ translate('البحث في خلايا مجاورة') }}</small>
+                                                    <h6 class="fw-semibold mb-1">تفعيل التوزيع الذكي</h6>
+                                                    <small class="text-muted">البحث في خلايا مجاورة</small>
                                                 </div>
                                                 <label class="switcher">
                                                     <input class="switcher_input" type="checkbox" name="dispatch_enabled"
@@ -104,8 +104,8 @@
                                         <div class="p-3 rounded bg-light h-100">
                                             <div class="d-flex align-items-center justify-content-between">
                                                 <div>
-                                                    <h6 class="fw-semibold mb-1">{{ translate('خريطة الحرارة') }}</h6>
-                                                    <small class="text-muted">{{ translate('عرض العرض والطلب') }}</small>
+                                                    <h6 class="fw-semibold mb-1">خريطة الحرارة</h6>
+                                                    <small class="text-muted">عرض العرض والطلب</small>
                                                 </div>
                                                 <label class="switcher">
                                                     <input class="switcher_input" type="checkbox" name="heatmap_enabled"
@@ -121,8 +121,8 @@
                                         <div class="p-3 rounded bg-light h-100">
                                             <div class="d-flex align-items-center justify-content-between">
                                                 <div>
-                                                    <h6 class="fw-semibold mb-1">{{ translate('نقاط ساخنة للسائقين') }}</h6>
-                                                    <small class="text-muted">{{ translate('إظهار أماكن الطلب العالي') }}</small>
+                                                    <h6 class="fw-semibold mb-1">نقاط ساخنة للسائقين</h6>
+                                                    <small class="text-muted">إظهار أماكن الطلب العالي</small>
                                                 </div>
                                                 <label class="switcher">
                                                     <input class="switcher_input" type="checkbox" name="hotspots_enabled"
@@ -138,8 +138,8 @@
                                         <div class="p-3 rounded bg-light h-100">
                                             <div class="d-flex align-items-center justify-content-between">
                                                 <div>
-                                                    <h6 class="fw-semibold mb-1">{{ translate('تسعير ديناميكي') }}</h6>
-                                                    <small class="text-muted">{{ translate('Surge بناءً على الطلب') }}</small>
+                                                    <h6 class="fw-semibold mb-1">تسعير ديناميكي</h6>
+                                                    <small class="text-muted">Surge بناءً على الطلب</small>
                                                 </div>
                                                 <label class="switcher">
                                                     <input class="switcher_input" type="checkbox" name="surge_enabled"
@@ -155,8 +155,8 @@
                                         <div class="p-3 rounded bg-light h-100">
                                             <div class="d-flex align-items-center justify-content-between">
                                                 <div>
-                                                    <h6 class="fw-semibold mb-1">{{ translate('حوافز السائقين') }}</h6>
-                                                    <small class="text-muted">{{ translate('مكافآت للانتقال للنقاط الساخنة') }}</small>
+                                                    <h6 class="fw-semibold mb-1">حوافز السائقين</h6>
+                                                    <small class="text-muted">مكافآت للانتقال للنقاط الساخنة</small>
                                                 </div>
                                                 <label class="switcher">
                                                     <input class="switcher_input" type="checkbox" name="incentives_enabled"
@@ -177,10 +177,10 @@
                             <div class="card-header">
                                 <h5 class="d-flex align-items-center gap-2">
                                     <i class="bi bi-hexagon text-primary"></i>
-                                    {{ translate('إعدادات الشبكة السداسية') }}
+                                    إعدادات الشبكة السداسية
                                     <i class="bi bi-info-circle-fill text-muted cursor-pointer" 
                                        data-bs-toggle="tooltip"
-                                       title="{{ translate('H3 هو نظام الشبكة السداسية من Uber للتوزيع الذكي') }}"></i>
+                                       title="H3 هو نظام الشبكة السداسية من Uber للتوزيع الذكي"></i>
                                 </h5>
                             </div>
                             <div class="card-body">
@@ -188,10 +188,10 @@
                                     <!-- Resolution -->
                                     <div class="col-12">
                                         <label class="form-label fw-semibold">
-                                            {{ translate('دقة الخلية') }}
+                                            دقة الخلية
                                             <i class="bi bi-info-circle-fill text-muted cursor-pointer ms-1" 
                                                data-bs-toggle="tooltip"
-                                               title="{{ translate('كلما زادت الدقة، صغر حجم الخلية') }}"></i>
+                                               title="كلما زادت الدقة، صغر حجم الخلية"></i>
                                         </label>
                                         <select class="form-select" name="h3_resolution" id="h3_resolution">
                                             @foreach($resolutions as $res => $info)
@@ -202,41 +202,41 @@
                                         </select>
                                         <div class="form-text">
                                             <span id="resolution-info">
-                                                {{ translate('الموصى به') }}: 8 (مستوى الحي - ~0.74 كم²)
+                                                الموصى به: 8 (مستوى الحي - ~0.74 كم²)
                                             </span>
                                         </div>
                                     </div>
 
                                     <!-- Search Depth -->
                                     <div class="col-md-6">
-                                        <label class="form-label fw-semibold">{{ translate('عمق البحث (k)') }}</label>
+                                        <label class="form-label fw-semibold">عمق البحث (k)</label>
                                         <select class="form-select" name="search_depth_k">
                                             <option value="1" {{ $settings->search_depth_k == 1 ? 'selected' : '' }}>
-                                                1 {{ translate('حلقة') }} (7 {{ translate('خلايا') }})
+                                                1 حلقة (7 خلايا)
                                             </option>
                                             <option value="2" {{ $settings->search_depth_k == 2 ? 'selected' : '' }}>
-                                                2 {{ translate('حلقات') }} (19 {{ translate('خلية') }})
+                                                2 حلقات (19 خلية)
                                             </option>
                                             <option value="3" {{ $settings->search_depth_k == 3 ? 'selected' : '' }}>
-                                                3 {{ translate('حلقات') }} (37 {{ translate('خلية') }})
+                                                3 حلقات (37 خلية)
                                             </option>
                                         </select>
-                                        <div class="form-text">{{ translate('عدد حلقات الخلايا المجاورة للبحث') }}</div>
+                                        <div class="form-text">عدد حلقات الخلايا المجاورة للبحث</div>
                                     </div>
 
                                     <!-- Update Interval -->
                                     <div class="col-md-6">
-                                        <label class="form-label fw-semibold">{{ translate('فترة التحديث') }}</label>
+                                        <label class="form-label fw-semibold">فترة التحديث</label>
                                         <div class="input-group">
                                             <input type="number" class="form-control" name="update_interval_seconds"
                                                    value="{{ $settings->update_interval_seconds }}" min="30" max="300">
-                                            <span class="input-group-text">{{ translate('ثانية') }}</span>
+                                            <span class="input-group-text">ثانية</span>
                                         </div>
                                     </div>
 
                                     <!-- Min Drivers -->
                                     <div class="col-12">
-                                        <label class="form-label fw-semibold">{{ translate('الحد الأدنى للسائقين لإظهار الخلية') }}</label>
+                                        <label class="form-label fw-semibold">الحد الأدنى للسائقين لإظهار الخلية</label>
                                         <input type="number" class="form-control" name="min_drivers_to_color_cell"
                                                value="{{ $settings->min_drivers_to_color_cell }}" min="1" max="10">
                                     </div>
@@ -251,25 +251,25 @@
                             <div class="card-header">
                                 <h5 class="d-flex align-items-center gap-2">
                                     <i class="bi bi-graph-up-arrow text-danger"></i>
-                                    {{ translate('إعدادات التسعير الديناميكي') }}
+                                    إعدادات التسعير الديناميكي
                                 </h5>
                             </div>
                             <div class="card-body">
                                 <div class="row g-3">
                                     <!-- Surge Threshold -->
                                     <div class="col-md-6">
-                                        <label class="form-label fw-semibold">{{ translate('عتبة التفعيل') }}</label>
+                                        <label class="form-label fw-semibold">عتبة التفعيل</label>
                                         <div class="input-group">
                                             <input type="number" step="0.1" class="form-control" name="surge_threshold"
                                                    value="{{ $settings->surge_threshold }}" min="1" max="5">
                                             <span class="input-group-text">x</span>
                                         </div>
-                                        <div class="form-text">{{ translate('نسبة الطلب/العرض لبدء Surge') }}</div>
+                                        <div class="form-text">نسبة الطلب/العرض لبدء Surge</div>
                                     </div>
 
                                     <!-- Surge Cap -->
                                     <div class="col-md-6">
-                                        <label class="form-label fw-semibold">{{ translate('الحد الأقصى للمضاعف') }}</label>
+                                        <label class="form-label fw-semibold">الحد الأقصى للمضاعف</label>
                                         <div class="input-group">
                                             <input type="number" step="0.1" class="form-control" name="surge_cap"
                                                    value="{{ $settings->surge_cap }}" min="1" max="3">
@@ -279,7 +279,7 @@
 
                                     <!-- Surge Step -->
                                     <div class="col-md-6">
-                                        <label class="form-label fw-semibold">{{ translate('خطوة الزيادة') }}</label>
+                                        <label class="form-label fw-semibold">خطوة الزيادة</label>
                                         <div class="input-group">
                                             <input type="number" step="0.05" class="form-control" name="surge_step"
                                                    value="{{ $settings->surge_step }}" min="0.05" max="0.5">
@@ -291,13 +291,13 @@
                                         <hr>
                                         <h6 class="fw-semibold mb-3">
                                             <i class="bi bi-gift text-success me-1"></i>
-                                            {{ translate('حوافز السائقين') }}
+                                            حوافز السائقين
                                         </h6>
                                     </div>
 
                                     <!-- Incentive Threshold -->
                                     <div class="col-md-6">
-                                        <label class="form-label fw-semibold">{{ translate('عتبة الحافز') }}</label>
+                                        <label class="form-label fw-semibold">عتبة الحافز</label>
                                         <div class="input-group">
                                             <input type="number" step="0.1" class="form-control" name="incentive_threshold"
                                                    value="{{ $settings->incentive_threshold }}" min="1" max="5">
@@ -307,11 +307,11 @@
 
                                     <!-- Max Incentive -->
                                     <div class="col-md-6">
-                                        <label class="form-label fw-semibold">{{ translate('الحد الأقصى للحافز') }}</label>
+                                        <label class="form-label fw-semibold">الحد الأقصى للحافز</label>
                                         <div class="input-group">
                                             <input type="number" step="1" class="form-control" name="max_incentive_amount"
                                                    value="{{ $settings->max_incentive_amount }}" min="0" max="200">
-                                            <span class="input-group-text">{{ translate('ر.س') }}</span>
+                                            <span class="input-group-text">ر.س</span>
                                         </div>
                                     </div>
                                 </div>
@@ -327,10 +327,10 @@
                                     <div class="col-md-8">
                                         <h6 class="fw-semibold">
                                             <i class="bi bi-lightbulb text-warning me-2"></i>
-                                            {{ translate('كيف يعمل نظام الخلية؟') }}
+                                            كيف يعمل نظام الخلية؟
                                         </h6>
                                         <p class="mb-0 text-muted small">
-                                            {{ translate('يقسم النظام المدينة إلى خلايا سداسية ويتتبع السائقين والطلبات في كل خلية. عند وصول طلب، يبحث فقط في خلية نقطة الالتقاط والخلايا المجاورة بدلاً من البحث في كامل المدينة، مما يسرع التوزيع بشكل كبير.') }}
+                                            يقسم النظام المدينة إلى خلايا سداسية ويتتبع السائقين والطلبات في كل خلية. عند وصول طلب، يبحث فقط في خلية نقطة الالتقاط والخلايا المجاورة بدلاً من البحث في كامل المدينة، مما يسرع التوزيع بشكل كبير.
                                         </p>
                                     </div>
                                     <div class="col-md-4 text-center">
@@ -349,11 +349,11 @@
                         <div class="d-flex justify-content-end gap-3">
                             <button type="reset" class="btn btn-secondary">
                                 <i class="bi bi-x-circle me-1"></i>
-                                {{ translate('إلغاء') }}
+                                إلغاء
                             </button>
                             <button type="submit" class="btn btn-primary">
                                 <i class="bi bi-check-circle me-1"></i>
-                                {{ translate('حفظ الإعدادات') }}
+                                حفظ الإعدادات
                             </button>
                         </div>
                     </div>
