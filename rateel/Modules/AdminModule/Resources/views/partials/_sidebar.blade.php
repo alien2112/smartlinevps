@@ -75,6 +75,12 @@
                             <span class="link-title">{{ translate('Fleet View') }}</span>
                         </a>
                     </li>
+                    <li class="{{Request::is('admin/dispatch/honeycomb*') ?'active open':''}}">
+                        <a href="{{route('admin.dispatch.honeycomb.index')}}">
+                            <i class="bi bi-hexagon-fill"></i>
+                            <span class="link-title">{{ translate('نظام الخلية') }}</span>
+                        </a>
+                    </li>
                 @endcan
 
                 @if(\Illuminate\Support\Facades\Gate::any(['zone_view', 'zone_add', 'zone_edit', 'zone_delete', 'zone_log', 'zone_export']))

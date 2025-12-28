@@ -3,9 +3,12 @@
 namespace Modules\TripManagement\Http\Controllers\Web\New;
 
 use App\Http\Controllers\BaseController;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\View\View;
 use Modules\TripManagement\Service\Interface\TravelRideServiceInterface;
 use Modules\TripManagement\Service\Interface\TripRequestServiceInterface;
@@ -35,7 +38,7 @@ class TravelController extends BaseController
     /**
      * List pending travel requests
      */
-    public function index(Request $request): View
+    public function index(?Request $request, string $type = null): View|Collection|LengthAwarePaginator|null|callable|RedirectResponse
     {
         $this->authorize('trip_view');
 

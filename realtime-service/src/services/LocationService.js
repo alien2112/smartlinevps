@@ -1,6 +1,8 @@
 /**
  * Location Service
  * Handles real-time driver location tracking with Redis GEO
+ * 
+ * Integrates with HoneycombService for cell-based dispatch when enabled.
  */
 
 const { getDistance } = require('geolib');
@@ -9,10 +11,11 @@ const { objectToHsetArgs } = require('../utils/redisHelpers');
 const config = require('../config/config');
 
 class LocationService {
-  constructor(redisClient, io, settingsManager = null) {
+  constructor(redisClient, io, settingsManager = null, honeycombService = null) {
     this.redis = redisClient;
     this.io = io;
     this.settingsManager = settingsManager;
+    this.honeycombService = honeycombService; // Optional honeycomb integration
     this.DRIVERS_GEO_KEY = 'drivers:locations';
     this.DRIVER_STATUS_PREFIX = 'driver:status:';
     this.DRIVER_INFO_PREFIX = 'driver:info:';
@@ -22,6 +25,13 @@ class LocationService {
 
     // Throttle map to prevent excessive updates
     this.lastUpdateTime = new Map();
+  }
+
+  /**
+   * Set honeycomb service (for late binding)
+   */
+  setHoneycombService(honeycombService) {
+    this.honeycombService = honeycombService;
   }
 
   /**
@@ -139,6 +149,8 @@ class LocationService {
   /**
    * Update driver location (high-frequency updates)
    * OPTIMIZED: Uses Redis pipeline to reduce 4 round-trips to 1
+   * 
+   * Also updates honeycomb cell tracking when HoneycombService is available.
    */
   async updateDriverLocation(driverId, locationData) {
     // Throttle updates to prevent Redis overload
@@ -152,7 +164,7 @@ class LocationService {
 
     this.lastUpdateTime.set(driverId, now);
 
-    const { latitude, longitude, speed, heading, accuracy } = locationData;
+    const { latitude, longitude, speed, heading, accuracy, zoneId, category } = locationData;
 
     // Validate coordinates
     if (!latitude || !longitude || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
@@ -203,6 +215,21 @@ class LocationService {
           heading
         },
         timestamp: now
+      });
+    }
+
+    // Update honeycomb cell tracking (non-blocking)
+    if (this.honeycombService && zoneId) {
+      // Fire and forget - don't block on honeycomb update
+      this.honeycombService.updateDriverCell(
+        driverId,
+        latitude,
+        longitude,
+        zoneId,
+        category || 'budget'
+      ).catch(err => {
+        // Log but don't fail location update
+        logger.warn('Honeycomb cell update failed', { driverId, error: err.message });
       });
     }
   }

@@ -1,18 +1,23 @@
 /**
  * Driver Matching Service
  * Handles ride dispatch and driver matching logic
+ * 
+ * Supports Honeycomb (H3) cell-based dispatch acceleration when enabled.
  */
 
 const axios = require('axios');
 const logger = require('../utils/logger');
 const config = require('../config/config');
+const HoneycombService = require('./HoneycombService');
 
 class DriverMatchingService {
-  constructor(redisClient, io, locationService, settingsManager = null) {
+  constructor(redisClient, io, locationService, settingsManager = null, honeycombService = null) {
     this.redis = redisClient;
     this.io = io;
     this.locationService = locationService;
     this.settingsManager = settingsManager;
+    // Initialize honeycomb service for cell-based dispatch
+    this.honeycombService = honeycombService || new HoneycombService(redisClient, settingsManager);
     // Load from centralized config (static values)
     this.LARAVEL_API_URL = config.laravel.apiUrl;
     this.LARAVEL_API_KEY = config.laravel.apiKey;
@@ -57,6 +62,10 @@ class DriverMatchingService {
    * Category Level Dispatch:
    * - Normal rides: drivers with category_level >= requested can accept
    * - Travel rides: VIP only (level 3), extended radius
+   * 
+   * Honeycomb Dispatch (when enabled):
+   * - First filters candidates to pickup cell + k-ring neighbors
+   * - Then applies regular geo-radius and category filtering
    */
   async dispatchRide(rideData) {
     const {
@@ -68,6 +77,7 @@ class DriverMatchingService {
       vehicleCategoryId,
       customerId,
       estimatedFare,
+      zoneId,
       // Category dispatch fields
       categoryLevel = 1,
       isTravel = false,
@@ -79,20 +89,54 @@ class DriverMatchingService {
       rideId,
       customerId,
       categoryLevel,
-      isTravel
+      isTravel,
+      zoneId
     });
+
+    // Record demand for honeycomb heatmap (always, for analytics)
+    if (zoneId) {
+      const categoryName = categoryLevel === 3 ? 'vip' : categoryLevel === 2 ? 'pro' : 'budget';
+      await this.honeycombService.recordDemand(pickupLatitude, pickupLongitude, zoneId, categoryName);
+    }
 
     // Determine search radius (extended for travel)
     const searchRadius = isTravel ? (travelRadius || this.getTravelSearchRadius()) : this.getSearchRadius();
 
-    // Find nearby available drivers with category filtering
-    const nearbyDrivers = await this.locationService.findNearbyDrivers(
+    // Try honeycomb cell-based filtering first (if enabled)
+    let honeycombCandidates = null;
+    if (zoneId && !isTravel) {
+      // Travel requests use extended radius, skip honeycomb filtering
+      honeycombCandidates = await this.honeycombService.getCandidateDrivers(
+        pickupLatitude,
+        pickupLongitude,
+        zoneId
+      );
+    }
+
+    // Find nearby available drivers
+    let nearbyDrivers = await this.locationService.findNearbyDrivers(
       pickupLatitude,
       pickupLongitude,
       searchRadius,
       vehicleCategoryId,
       { categoryLevel, isTravel }
     );
+
+    // Apply honeycomb filtering if enabled and found candidates
+    if (honeycombCandidates && honeycombCandidates.enabled && honeycombCandidates.drivers.length > 0) {
+      const honeycombDriverSet = new Set(honeycombCandidates.drivers);
+      const filterBefore = nearbyDrivers.length;
+
+      nearbyDrivers = nearbyDrivers.filter(d => honeycombDriverSet.has(d.driverId));
+
+      logger.info('Honeycomb dispatch filtering applied', {
+        rideId,
+        originCell: honeycombCandidates.originCell,
+        cellsSearched: honeycombCandidates.cellsSearched,
+        candidatesBeforeFilter: filterBefore,
+        candidatesAfterFilter: nearbyDrivers.length
+      });
+    }
 
     if (nearbyDrivers.length === 0) {
       logger.warn('No drivers available for ride', { rideId, isTravel });

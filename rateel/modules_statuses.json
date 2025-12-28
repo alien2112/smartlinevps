@@ -12,5 +12,6 @@
     "ChattingManagement": true,
     "ReviewModule": true,
     "Gateways": true,
-    "TransactionManagement": true
+    "TransactionManagement": true,
+    "DispatchManagement": true
 }
