@@ -221,7 +221,7 @@
                     <li class="{{ Request::is('admin/travel*') ?'active open':'' }}">
                         <a href="{{route('admin.travel.index')}}">
                             <i class="bi bi-airplane-fill"></i>
-                            <span class="link-title text-capitalize">{{ translate('Travel Requests') }}</span>
+                            <span class="link-title text-capitalize">{{ translate('Travel_Requests') }}</span>
                         </a>
                     </li>
                     <!----------------- End Trip Management ------------------------>

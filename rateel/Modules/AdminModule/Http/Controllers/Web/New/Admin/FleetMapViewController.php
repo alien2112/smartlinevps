@@ -299,6 +299,9 @@ class FleetMapViewController extends BaseController
                 'value' => $request['search']
             ];
         }
+        
+        $filterByZone = array_key_exists('zone_id', $request) && $request['zone_id'];
+
         if ($type == ALL_DRIVER) {
             $driverCriteria = [
                 'user_type' => DRIVER,
@@ -309,10 +312,14 @@ class FleetMapViewController extends BaseController
             ];
             $driverWhereHasRelations = [
                 'driverDetails' => ['is_online' => true],
-                'lastLocations' => ['zone_id' => $zone->id],
+                'lastLocations' => [],
             ];
+            
+            if ($filterByZone) {
+                $driverWhereHasRelations['lastLocations'] = ['zone_id' => $zone->id];
+            }
 
-            $drivers = $this->driverService->getBy(criteria: $driverCriteria, searchCriteria: $searchCriteria, whereHasRelations: $driverWhereHasRelations, relations: $driverRelations);
+            $drivers = $this->driverService->getBy(criteria: $driverCriteria, searchCriteria: $searchCriteria, whereHasRelations: $driverWhereHasRelations, relations: $driverRelations, limit: 50000);
         } elseif ($type == DRIVER_ON_TRIP) {
             $driverCriteria = [
                 'user_type' => DRIVER,
@@ -323,13 +330,18 @@ class FleetMapViewController extends BaseController
             ];
             $driverWhereHasRelations = [
                 'driverDetails' => ['is_online' => true],
-                'lastLocations' => ['zone_id' => $zone->id],
+                'lastLocations' => [],
                 'driverTrips' => [
                     'type' => RIDE_REQUEST,
                     'current_status' => [ACCEPTED, ONGOING],
                 ],
             ];
-            $drivers = $this->driverService->getBy(criteria: $driverCriteria, searchCriteria: $searchCriteria, whereHasRelations: $driverWhereHasRelations, relations: $driverRelations);
+            
+            if ($filterByZone) {
+                $driverWhereHasRelations['lastLocations'] = ['zone_id' => $zone->id];
+            }
+            
+            $drivers = $this->driverService->getBy(criteria: $driverCriteria, searchCriteria: $searchCriteria, whereHasRelations: $driverWhereHasRelations, relations: $driverRelations, limit: 50000);
         } elseif ($type == DRIVER_IDLE) {
             $driverCriteria = [
                 'user_type' => DRIVER,
@@ -340,9 +352,14 @@ class FleetMapViewController extends BaseController
             ];
             $driverWhereHasRelations = [
                 'driverDetails' => ['is_online' => true],
-                'lastLocations' => ['zone_id' => $zone->id],
+                'lastLocations' => [],
             ];
-            $drivers = $this->driverService->getBy(criteria: $driverCriteria, searchCriteria: $searchCriteria, whereHasRelations: $driverWhereHasRelations, relations: $driverRelations);
+            
+            if ($filterByZone) {
+                $driverWhereHasRelations['lastLocations'] = ['zone_id' => $zone->id];
+            }
+            
+            $drivers = $this->driverService->getBy(criteria: $driverCriteria, searchCriteria: $searchCriteria, whereHasRelations: $driverWhereHasRelations, relations: $driverRelations, limit: 50000);
             $drivers = $drivers->filter(function ($driver) {
                 return $driver->driverTrips
                         ->whereIn('current_status', [ACCEPTED, ONGOING])
@@ -360,10 +377,14 @@ class FleetMapViewController extends BaseController
             ];
 
             $customerWhereHasRelations = [
-                'lastLocations' => ['zone_id' => $zone->id],
+                'lastLocations' => [],
             ];
+            
+            if ($filterByZone) {
+                $customerWhereHasRelations['lastLocations'] = ['zone_id' => $zone->id];
+            }
 
-            $customers = $this->customerService->getBy(criteria: $customerCriteria, searchCriteria: $searchCriteria, whereHasRelations: $customerWhereHasRelations, relations: $customerRelations);
+            $customers = $this->customerService->getBy(criteria: $customerCriteria, searchCriteria: $searchCriteria, whereHasRelations: $customerWhereHasRelations, relations: $customerRelations, limit: 50000);
 
             $markers = $this->generateMarkers($customers);
             $markers = json_encode($markers);

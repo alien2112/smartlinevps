@@ -86,6 +86,23 @@ class TripRequestResource extends JsonResource
             'driver_safety_alert' => SafetyAlertResource::make($this->driverSafetyAlert),
             'customer_safety_alert' => SafetyAlertResource::make($this->customerSafetyAlert),
             'trip_cancellation_reason' => utf8Clean($this->trip_cancellation_reason),
+            // Unified travel mode fields
+            'trip_type' => $this->trip_type ?? 'normal',
+            'is_travel' => $this->isTravel(), // Helper method supports both old and new
+            'scheduled_at' => $this->scheduled_at,
+            'seats_requested' => $this->seats_requested ?? 1,
+            'seats_capacity' => $this->seats_capacity,
+            'seats_taken' => $this->seats_taken ?? 0,
+            'seats_left' => $this->seats_left ?? 0, // Computed attribute
+            'min_price' => $this->min_price ? round((double)$this->min_price, 2) : null,
+            'offer_price' => $this->offer_price ? round((double)$this->offer_price, 2) : null,
+            // Legacy travel fields (for backward compatibility)
+            'fixed_price' => $this->fixed_price ? round((double)$this->fixed_price, 2) : null,
+            'travel_date' => $this->travel_date,
+            'travel_passengers' => $this->travel_passengers,
+            'travel_luggage' => $this->travel_luggage,
+            'travel_notes' => utf8Clean($this->travel_notes),
+            'travel_status' => $this->travel_status,
         ];
 
         $coordinate = [];

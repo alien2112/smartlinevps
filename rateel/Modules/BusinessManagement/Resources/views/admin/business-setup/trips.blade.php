@@ -100,15 +100,15 @@
                                 <div class="mb-4 text">
                                     <label for="lost_item_response_timeout_hours"
                                            class="mb-4 d-flex align-items-center fw-medium gap-2">
-                                        {{ translate('مدة انتظار رد الكابتن على المفقودات') }}
+                                        {{ translate('lost_item_response_timeout') }}
                                         <i class="bi bi-info-circle-fill text-primary cursor-pointer"
                                            data-bs-toggle="tooltip"
-                                           title="{{ translate('إذا لم يرد الكابتن على بلاغ المفقودات خلال هذه المدة، سيتم إغلاق البلاغ تلقائياً') }}">
+                                           title="{{ translate('lost_item_response_timeout_tooltip') }}">
                                         </i>
                                     </label>
                                     <div class="floating-form-group">
                                         <label for="" class="floating-form-label">
-                                            {{ translate('المدة بالساعات') }}
+                                            {{ translate('duration_in_hours') }}
                                         </label>
                                         <div class="input-group_tooltip">
                                             <input type="number" class="form-control" placeholder="Ex: 24"
@@ -116,7 +116,7 @@
                                                    value="{{$settings->firstWhere('key_name', 'lost_item_response_timeout_hours')?->value ?? 24}}"
                                                    min="1" max="168">
                                             <i class="bi bi-info-circle-fill text-primary tooltip-icon" data-bs-toggle="tooltip"
-                                               data-bs-title="{{translate('سيتم إغلاق بلاغات المفقودات تلقائياً إذا لم يرد الكابتن خلال هذه المدة. القيمة الافتراضية 24 ساعة.')}}"></i>
+                                               data-bs-title="{{translate('lost_item_response_timeout_description')}}"></i>
                                         </div>
                                     </div>
                                 </div>
@@ -130,6 +130,229 @@
                     </div>
                 </form>
             </div>
+
+            {{-- Normal Trip Pricing Settings --}}
+            <div class="card mb-3 text-capitalize">
+                <form action="{{route('admin.business.setup.trip-fare.store')."?type=".TRIP_SETTINGS}}" method="POST">
+                    @csrf
+                    <div class="card-header">
+                        <h5 class="d-flex align-items-center gap-2">
+                            <i class="bi bi-car-front-fill"></i>
+                            {{ translate('Normal Trip Pricing (Override Default Fare Engine)') }}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row gy-3 pt-3 align-items-end">
+                            {{-- Normal Price Per KM --}}
+                            <div class="col-lg-6 col-sm-6">
+                                <div class="mb-4">
+                                    <label class="mb-4 d-flex align-items-center fw-medium gap-2">
+                                        {{ translate('Normal Trip Price Per KM') }}
+                                        <i class="bi bi-info-circle-fill text-primary cursor-pointer"
+                                           data-bs-toggle="tooltip"
+                                           title="{{ translate('Override the default fare calculation with a simple per-km rate. When enabled, fare = distance × price_per_km (ignoring time-based pricing, base fare, etc.)') }}">
+                                        </i>
+                                    </label>
+                                    <div class="floating-form-group">
+                                        <label for="normal_price_per_km_value" class="floating-form-label">
+                                            {{ translate('Price per KM') }}
+                                        </label>
+                                        <div class="input-group_tooltip">
+                                            <input type="number" step="0.01" class="form-control" placeholder="Ex: 5.00"
+                                                   id="normal_price_per_km_value" name="normal_price_per_km"
+                                                   value="{{$settings->firstWhere('key_name', 'normal_price_per_km')?->value['value'] ?? 5.0}}">
+                                            <i class="bi bi-info-circle-fill text-primary tooltip-icon" data-bs-toggle="tooltip"
+                                               data-bs-title="{{translate('Example: 5 EGP/km × 10km = 50 EGP total fare. Simpler than default engine but less flexible.')}}"></i>
+                                        </div>
+                                    </div>
+                                    <div class="form-control gap-2 align-items-center d-flex justify-content-between mt-2">
+                                        <div class="text-capitalize">{{ translate('Enable Per-KM Pricing') }}</div>
+                                        <label class="switcher">
+                                            <input type="checkbox" name="normal_price_per_km_status"
+                                                   class="switcher_input"
+                                                   {{ $settings->where('key_name', 'normal_price_per_km')->first()->value['status'] ?? 0 == 1 ? 'checked' : '' }}>
+                                            <span class="switcher_control"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Normal Minimum Price --}}
+                            <div class="col-lg-6 col-sm-6">
+                                <div class="mb-4">
+                                    <label class="mb-4 d-flex align-items-center fw-medium gap-2">
+                                        {{ translate('Minimum Trip Price') }}
+                                        <i class="bi bi-info-circle-fill text-primary cursor-pointer"
+                                           data-bs-toggle="tooltip"
+                                           title="{{ translate('Enforce a minimum price for all normal trips. Even if calculated fare is lower, this minimum will be charged.') }}">
+                                        </i>
+                                    </label>
+                                    <div class="floating-form-group">
+                                        <label for="normal_min_price_value" class="floating-form-label">
+                                            {{ translate('Minimum Price') }}
+                                        </label>
+                                        <div class="input-group_tooltip">
+                                            <input type="number" step="0.01" class="form-control" placeholder="Ex: 20.00"
+                                                   id="normal_min_price_value" name="normal_min_price"
+                                                   value="{{$settings->firstWhere('key_name', 'normal_min_price')?->value['value'] ?? 20.0}}"
+                                                   min="0">
+                                            <i class="bi bi-info-circle-fill text-primary tooltip-icon" data-bs-toggle="tooltip"
+                                               data-bs-title="{{translate('Useful for short trips. Example: Set 20 EGP minimum so even a 1km trip costs at least 20 EGP')}}"></i>
+                                        </div>
+                                    </div>
+                                    <div class="form-control gap-2 align-items-center d-flex justify-content-between mt-2">
+                                        <div class="text-capitalize">{{ translate('Enforce Minimum Price') }}</div>
+                                        <label class="switcher">
+                                            <input type="checkbox" name="normal_min_price_status"
+                                                   class="switcher_input"
+                                                   {{ $settings->where('key_name', 'normal_min_price')->first()->value['status'] ?? 0 == 1 ? 'checked' : '' }}>
+                                            <span class="switcher_control"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-warning d-flex align-items-center" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            <div>
+                                <strong>{{ translate('Note:') }}</strong>
+                                {{ translate('When "Price Per KM" is enabled, it overrides your existing fare calculation engine (base fare, time charges, etc.). If disabled, the system uses your current fare settings. "Minimum Price" works with both methods.') }}
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-3 flex-wrap justify-content-end">
+                            <button type="submit"
+                                    class="btn btn-primary text-uppercase">{{ translate('submit') }}</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            {{-- Travel Mode Settings --}}
+            <div class="card mb-3 text-capitalize">
+                <form action="{{route('admin.business.setup.trip-fare.store')."?type=".TRIP_SETTINGS}}" method="POST">
+                    @csrf
+                    <div class="card-header">
+                        <h5 class="d-flex align-items-center gap-2">
+                            <i class="bi bi-airplane-fill"></i>
+                            {{ translate('Travel Mode Settings (VIP Scheduled Rides)') }}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row gy-3 pt-3 align-items-end">
+                            {{-- Travel Price Per KM --}}
+                            <div class="col-lg-4 col-sm-6">
+                                <div class="mb-4">
+                                    <label class="mb-4 d-flex align-items-center fw-medium gap-2">
+                                        {{ translate('Travel Price Per KM') }}
+                                        <i class="bi bi-info-circle-fill text-primary cursor-pointer"
+                                           data-bs-toggle="tooltip"
+                                           title="{{ translate('Minimum price per kilometer for travel trips. This is the primary pricing method.') }}">
+                                        </i>
+                                    </label>
+                                    <div class="floating-form-group">
+                                        <label for="travel_price_per_km_value" class="floating-form-label">
+                                            {{ translate('Price per KM') }}
+                                        </label>
+                                        <div class="input-group_tooltip">
+                                            <input type="number" step="0.01" class="form-control" placeholder="Ex: 10.00"
+                                                   id="travel_price_per_km_value" name="travel_price_per_km"
+                                                   value="{{$settings->firstWhere('key_name', 'travel_price_per_km')?->value['value'] ?? 10.0}}">
+                                            <i class="bi bi-info-circle-fill text-primary tooltip-icon" data-bs-toggle="tooltip"
+                                               data-bs-title="{{translate('Example: If you set 10 EGP/km, a 120km trip will have minimum price of 1200 EGP')}}"></i>
+                                        </div>
+                                    </div>
+                                    <div class="form-control gap-2 align-items-center d-flex justify-content-between mt-2">
+                                        <div class="text-capitalize">{{ translate('Enable/Disable') }}</div>
+                                        <label class="switcher">
+                                            <input type="checkbox" name="travel_price_per_km_status"
+                                                   class="switcher_input"
+                                                   {{ $settings->where('key_name', 'travel_price_per_km')->first()->value['status'] ?? 1 == 1 ? 'checked' : '' }}>
+                                            <span class="switcher_control"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Travel Price Multiplier (Fallback) --}}
+                            <div class="col-lg-4 col-sm-6">
+                                <div class="mb-4">
+                                    <label class="mb-4 d-flex align-items-center fw-medium gap-2">
+                                        {{ translate('Travel Price Multiplier (Fallback)') }}
+                                        <i class="bi bi-info-circle-fill text-primary cursor-pointer"
+                                           data-bs-toggle="tooltip"
+                                           title="{{ translate('Multiply base fare by this value if per-km pricing is disabled. Example: 1.2 = 20% markup') }}">
+                                        </i>
+                                    </label>
+                                    <div class="floating-form-group">
+                                        <label for="travel_price_multiplier_value" class="floating-form-label">
+                                            {{ translate('Multiplier (1.0 = no markup)') }}
+                                        </label>
+                                        <div class="input-group_tooltip">
+                                            <input type="number" step="0.01" class="form-control" placeholder="Ex: 1.2"
+                                                   id="travel_price_multiplier_value" name="travel_price_multiplier"
+                                                   value="{{$settings->firstWhere('key_name', 'travel_price_multiplier')?->value['value'] ?? 1.0}}"
+                                                   min="1.0" max="3.0">
+                                            <i class="bi bi-info-circle-fill text-primary tooltip-icon" data-bs-toggle="tooltip"
+                                               data-bs-title="{{translate('Only used if per-km pricing is disabled. 1.2 means 20% markup on normal fare')}}"></i>
+                                        </div>
+                                    </div>
+                                    <div class="form-control gap-2 align-items-center d-flex justify-content-between mt-2">
+                                        <div class="text-capitalize">{{ translate('Enable/Disable') }}</div>
+                                        <label class="switcher">
+                                            <input type="checkbox" name="travel_price_multiplier_status"
+                                                   class="switcher_input"
+                                                   {{ $settings->where('key_name', 'travel_price_multiplier')->first()->value['status'] ?? 0 == 1 ? 'checked' : '' }}>
+                                            <span class="switcher_control"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Travel Search Radius --}}
+                            <div class="col-lg-4 col-sm-6">
+                                <div class="mb-4">
+                                    <label class="mb-4 d-flex align-items-center fw-medium gap-2">
+                                        {{ translate('Travel Search Radius (VIP Drivers)') }}
+                                        <i class="bi bi-info-circle-fill text-primary cursor-pointer"
+                                           data-bs-toggle="tooltip"
+                                           title="{{ translate('How far (in km) VIP drivers can see travel trip requests') }}">
+                                        </i>
+                                    </label>
+                                    <div class="floating-form-group">
+                                        <label for="travel_search_radius_value" class="floating-form-label">
+                                            {{ translate('Radius in KM') }}
+                                        </label>
+                                        <div class="input-group_tooltip">
+                                            <input type="number" class="form-control" placeholder="Ex: 50"
+                                                   id="travel_search_radius_value" name="travel_search_radius"
+                                                   value="{{$settings->firstWhere('key_name', 'travel_search_radius')?->value['value'] ?? 50}}"
+                                                   min="10" max="200">
+                                            <i class="bi bi-info-circle-fill text-primary tooltip-icon" data-bs-toggle="tooltip"
+                                               data-bs-title="{{translate('Normal trips: 5-10km radius. Travel trips: 30-80km radius recommended')}}"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info d-flex align-items-center" role="alert">
+                            <i class="bi bi-info-circle-fill me-2"></i>
+                            <div>
+                                <strong>{{ translate('How it works:') }}</strong>
+                                {{ translate('When "Price Per KM" is enabled, minimum price = distance × price_per_km. Otherwise, minimum price = base_fare × multiplier. Customers can offer higher prices to attract drivers faster.') }}
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-3 flex-wrap justify-content-end">
+                            <button type="submit"
+                                    class="btn btn-primary text-uppercase">{{ translate('submit') }}</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
             <div class="card mb-3 text-capitalize">
                 <div class="card-header">
                     <h5 class="d-flex align-items-center gap-2">
@@ -227,11 +450,10 @@
                                         {{$cancellationReason->title}}
                                     </td>
                                     <td>
-                                        {{ CANCELLATION_TYPE[$cancellationReason->cancellation_type] }}
+                                        {{ translate(CANCELLATION_TYPE[$cancellationReason->cancellation_type]) }}
                                     </td>
                                     <td>
                                         {{ $cancellationReason->user_type == 'driver' ? translate('driver') : translate('customer') }}
-                                        {{$cancellationReason->status}}
                                     </td>
                                     <td class="text-center">
                                         <label class="switcher mx-auto">

@@ -21,6 +21,7 @@
         "laravel/reverb": "@beta",
         "laravel/sanctum": "^3.3",
         "laravel/tinker": "^2.8",
+        "league/flysystem-aws-s3-v3": "^3.0",
         "madnest/madzipper": "^1.4",
         "matanyadaev/laravel-eloquent-spatial": "^4.0",
         "mercadopago/dx-php": "2.4.3",

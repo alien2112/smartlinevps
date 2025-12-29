@@ -37,7 +37,7 @@
                                                      class="svg" alt="">
                                             </div>
                                             <h3 class="fs-24">{{abbreviateNumber($customers)}}</h3>
-                                            <div class="title-color text-capitalize">{{ translate('Total Active Customers')}}</div>
+                                            <div class="title-color text-capitalize">{{ translate('Total Customers')}}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -52,7 +52,7 @@
                                                      class="svg" alt="">
                                             </div>
                                             <h3 class="fs-24">{{abbreviateNumber($drivers)}}</h3>
-                                            <div class="title-color text-capitalize">{{ translate('Total Active Drivers')}}</div>
+                                            <div class="title-color text-capitalize">{{ translate('Total Drivers')}}</div>
                                         </div>
                                     </div>
                                 </div>

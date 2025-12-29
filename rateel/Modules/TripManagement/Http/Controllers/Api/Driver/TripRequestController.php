@@ -978,7 +978,67 @@ class TripRequestController extends Controller
             'total_items' => $pendingTrips->total()
         ]);
 
-        $trips = TripRequestResource::collection($pendingTrips);
+        // Check if driver is VIP - if so, include travel trips with larger radius
+        $categoryLevel = $vehicle->category?->category_level ?? \Modules\VehicleManagement\Entities\VehicleCategory::LEVEL_BUDGET;
+        $isVipDriver = $categoryLevel >= \Modules\VehicleManagement\Entities\VehicleCategory::LEVEL_VIP;
+
+        if ($isVipDriver) {
+            // Get travel search radius (larger than normal)
+            $travelRadius = (float)(get_cache('travel_search_radius') ?? 50);
+
+            // Query pending travel trips with available seats
+            $travelTrips = \Modules\TripManagement\Entities\TripRequest::query()
+                ->where(function($q) {
+                    // Support both old is_travel and new trip_type
+                    $q->where('trip_type', 'travel')
+                      ->orWhere('is_travel', true);
+                })
+                ->where('zone_id', $zoneId)
+                ->where('current_status', PENDING)
+                ->where(function($q) {
+                    // Either no driver assigned yet, or has available seats for carpooling
+                    $q->whereNull('driver_id')
+                      ->orWhereRaw('(seats_capacity - seats_taken) > 0');
+                })
+                ->where('scheduled_at', '>', now()) // Only future trips
+                ->where('scheduled_at', '<', now()->addHours(72)) // Within next 72 hours
+                ->whereIn('vehicle_category_id', $vehicleCategoryIds)
+                ->with(['driver.driverDetails', 'customer', 'ignoredRequests', 'time', 'fee', 'fare_biddings', 'parcel', 'parcelRefund', 'vehicle', 'coordinate'])
+                ->selectRaw("*,
+                    ST_Distance_Sphere(
+                        point(?, ?),
+                        (SELECT point(longitude, latitude)
+                         FROM user_last_locations
+                         WHERE user_id = trip_requests.customer_id
+                         ORDER BY created_at DESC
+                         LIMIT 1)
+                    ) / 1000 as distance_km", [
+                    $location->longitude,
+                    $location->latitude
+                ])
+                ->having('distance_km', '<=', $travelRadius)
+                ->orderBy('offer_price', 'desc') // Higher offers first
+                ->orderBy('scheduled_at', 'asc') // Earlier trips first
+                ->limit(10) // Limit travel trips to not overwhelm normal rides
+                ->get();
+
+            \Log::info('pendingRideList: Travel trips found for VIP driver', [
+                'travel_trips_count' => $travelTrips->count(),
+                'driver_category_level' => $categoryLevel,
+                'travel_radius_km' => $travelRadius
+            ]);
+
+            // Merge travel trips with normal trips (travel trips at the end or beginning based on priority)
+            if ($travelTrips->isNotEmpty()) {
+                $allTrips = $pendingTrips->concat($travelTrips);
+            } else {
+                $allTrips = $pendingTrips;
+            }
+
+            $trips = TripRequestResource::collection($allTrips);
+        } else {
+            $trips = TripRequestResource::collection($pendingTrips);
+        }
 
         return response()->json(
             responseFormatter(

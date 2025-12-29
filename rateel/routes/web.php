@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DemoController;
 use App\Http\Controllers\LandingPageController;
+use App\Http\Controllers\MediaController;
 use App\Http\Controllers\ParcelTrackingController;
 use App\Http\Controllers\PaymentRecordController;
 use Illuminate\Support\Facades\Broadcast;
@@ -20,6 +21,11 @@ use Pusher\PusherException;
 | contains the "web" middleware group. Now create something great!
 |
 */
+
+// Media serving route - serves images from /root/new/
+Route::get('/media/{path}', [MediaController::class, 'serve'])
+    ->where('path', '.*')
+    ->name('media.serve');
 
 Route::get('/sender', function () {
     return event(new App\Events\NewMessage("hello"));

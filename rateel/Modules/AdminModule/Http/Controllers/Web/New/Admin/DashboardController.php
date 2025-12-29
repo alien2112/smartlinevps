@@ -68,19 +68,34 @@ class DashboardController extends BaseController
 
     public function index(?Request $request, string $type = null): View|Collection|LengthAwarePaginator|null|callable|RedirectResponse
     {
-        $zones = $this->zoneService->getBy(criteria: [
-            'is_active' => 1
-        ]);
+        // Cache zones for 30 minutes since they don't change frequently
+        $zones = \Cache::remember('admin_dashboard_zones', 1800, function () {
+            return $this->zoneService->getBy(criteria: ['is_active' => 1]);
+        });
 
-        // Get all trip metrics in a single aggregated query (replaces 7+ queries)
-        $tripMetrics = $this->tripRequestService->getDashboardAggregatedMetrics();
-        
-        $transactions = $this->transactionService->getBy(criteria: ['user_id' => \auth()->user()->id], orderBy: ['created_at' => 'desc'], limit: 7);
+        // Cache trip metrics for 5 minutes to balance freshness and performance
+        $tripMetrics = \Cache::remember('admin_dashboard_trip_metrics', 300, function () {
+            return $this->tripRequestService->getDashboardAggregatedMetrics();
+        });
+
+        // Cache user transactions for 2 minutes
+        $userId = \auth()->user()->id;
+        $transactions = \Cache::remember("admin_dashboard_transactions_{$userId}", 120, function () use ($userId) {
+            return $this->transactionService->getBy(criteria: ['user_id' => $userId], orderBy: ['created_at' => 'desc'], limit: 7);
+        });
+
         $superAdmin = $this->employeeService->findOneBy(criteria: ['user_type' => 'super-admin']);
         $superAdminAccount = $this->userAccountService->findOneBy(criteria: ['user_id' => $superAdmin?->id]);
-        $customers = $this->customerService->getBy(criteria: ['user_type' => CUSTOMER, 'is_active' => true])->count();
-        $drivers = $this->driverService->getBy(criteria: ['user_type' => DRIVER, 'is_active' => true])->count();
-        
+
+        // Cache customer and driver counts for 10 minutes
+        $customers = \Cache::remember('admin_dashboard_customer_count', 600, function () {
+            return $this->customerService->getBy(criteria: ['user_type' => CUSTOMER], limit: 1000000)->count();
+        });
+
+        $drivers = \Cache::remember('admin_dashboard_driver_count', 600, function () {
+            return $this->driverService->getBy(criteria: ['user_type' => DRIVER], limit: 1000000)->count();
+        });
+
         // Use aggregated metrics instead of separate queries
         $totalCouponAmountGiven = $tripMetrics->total_coupon ?? 0;
         $totalDiscountAmountGiven = $tripMetrics->total_discount ?? 0;
@@ -96,34 +111,65 @@ class DashboardController extends BaseController
 
     public function recentTripActivity()
     {
-        $trips = $this->tripRequestService->getBy(relations: ['customer', 'vehicle', 'vehicleCategory'], orderBy: ['created_at' => 'desc'], limit: 5, offset: 1);
+        // Cache recent trip activity for 2 minutes
+        $trips = \Cache::remember('admin_dashboard_recent_trips', 120, function () {
+            return $this->tripRequestService->getBy(relations: ['customer', 'vehicle', 'vehicleCategory'], orderBy: ['created_at' => 'desc'], limit: 5, offset: 1);
+        });
         return response()->json(view('adminmodule::partials.dashboard._recent-trip-activity', compact('trips'))->render());
     }
 
     public function leaderBoardDriver(Request $request)
     {
         $request->merge(['user_type' => DRIVER]);
-        $leadDriver = $this->tripRequestService->getLeaderBoard($request->all(), limit: 20);
+        $params = $request->all();
+
+        // Cache leader board for 5 minutes with unique key per date filter
+        $cacheKey = 'admin_dashboard_leaderboard_driver_' . md5(json_encode($params));
+        $leadDriver = \Cache::remember($cacheKey, 300, function () use ($params) {
+            return $this->tripRequestService->getLeaderBoard($params, limit: 20);
+        });
+
         return response()->json(view('adminmodule::partials.dashboard._leader-board-driver', compact('leadDriver'))->render());
     }
 
     public function leaderBoardCustomer(Request $request)
     {
         $request->merge(['user_type' => CUSTOMER]);
-        $leadCustomer = $this->tripRequestService->getLeaderBoard($request->all(), limit: 20);
+        $params = $request->all();
+
+        // Cache leader board for 5 minutes with unique key per date filter
+        $cacheKey = 'admin_dashboard_leaderboard_customer_' . md5(json_encode($params));
+        $leadCustomer = \Cache::remember($cacheKey, 300, function () use ($params) {
+            return $this->tripRequestService->getLeaderBoard($params, limit: 20);
+        });
+
         return response()->json(view('adminmodule::partials.dashboard._leader-board-customer', compact('leadCustomer'))->render());
     }
 
     public function adminEarningStatistics(Request $request)
     {
-        $data = $this->tripRequestService->getAdminZoneWiseEarning($request->all());
+        $params = $request->all();
+
+        // Cache earning statistics for 5 minutes with unique key per zone and date filter
+        $cacheKey = 'admin_dashboard_earning_stats_' . md5(json_encode($params));
+        $data = \Cache::remember($cacheKey, 300, function () use ($params) {
+            return $this->tripRequestService->getAdminZoneWiseEarning($params);
+        });
+
         return response()->json($data);
     }
 
 
     public function zoneWiseStatistics(Request $request)
     {
-        $data = $this->tripRequestService->getAdminZoneWiseStatistics(data: $request->all());
+        $params = $request->all();
+
+        // Cache zone wise statistics for 5 minutes with unique key per date filter
+        $cacheKey = 'admin_dashboard_zone_stats_' . md5(json_encode($params));
+        $data = \Cache::remember($cacheKey, 300, function () use ($params) {
+            return $this->tripRequestService->getAdminZoneWiseStatistics(data: $params);
+        });
+
         return response()
             ->json(view('adminmodule::partials.dashboard._areawise-statistics', ['trips' => $data['zoneTripsByDate'], 'totalCount' => $data['totalTrips']])
                 ->render());
@@ -180,7 +226,7 @@ class DashboardController extends BaseController
             })
             ->select(
                 'trip_requests.ref_id',
-                'trip_request_coordinates.pickup_coordinates'
+                \DB::raw('ST_AsText(trip_request_coordinates.pickup_coordinates) as pickup_coordinates')
             )
             ->limit($maxHeatMapPoints)
             ->get();
@@ -193,7 +239,7 @@ class DashboardController extends BaseController
                 // Try to parse coordinates depending on storage format
                 if (is_string($trip->pickup_coordinates)) {
                     // If stored as POINT(lng lat) or similar
-                    if (preg_match('/POINT\(([0-9.-]+)\s+([0-9.-]+)\)/i', $trip->pickup_coordinates, $matches)) {
+                    if (preg_match('/POINT\s*\(\s*([0-9.-]+)\s+([0-9.-]+)\s*\)/i', $trip->pickup_coordinates, $matches)) {
                         $lng = (float)$matches[1];
                         $lat = (float)$matches[2];
                     }
@@ -252,7 +298,7 @@ class DashboardController extends BaseController
                 ],
                 'title' => "Trip Id #" . $trip?->ref_id,
             ];
-        });
+        })->filter(fn($m) => $m['position']['lat'] != 0 || $m['position']['lng'] != 0)->values();
         $polygons = json_encode(formatZoneCoordinates($zones));
         $markers = json_encode($markers);
         // Calculate center lat/lng
@@ -525,6 +571,20 @@ class DashboardController extends BaseController
         }
         $channel = $this->channelListService->createChannelWithAdmin(data: ['to' => $request->driverId]);
         return response()->json(responseFormatter(DEFAULT_STORE_200, ['user' => auth()->user(), 'channel' => ChannelListResource::make($channel)]), 200);
+    }
+
+    /**
+     * Clear dashboard cache manually
+     */
+    public function clearCache()
+    {
+        $result = \App\Services\AdminDashboardCacheService::clearDashboardCache();
+
+        if ($result['success']) {
+            return redirect()->back()->with('success', $result['message']);
+        }
+
+        return redirect()->back()->with('error', $result['message']);
     }
 
 }

@@ -38,6 +38,42 @@ class VehicleManagementServiceProvider extends ServiceProvider
     public function register()
     {
         $this->app->register(RouteServiceProvider::class);
+
+        // Register repositories
+        $this->app->bind(
+            \Modules\VehicleManagement\Repository\VehicleRepositoryInterface::class,
+            \Modules\VehicleManagement\Repository\Eloquent\VehicleRepository::class
+        );
+        $this->app->bind(
+            \Modules\VehicleManagement\Repository\VehicleModelRepositoryInterface::class,
+            \Modules\VehicleManagement\Repository\Eloquent\VehicleModelRepository::class
+        );
+        $this->app->bind(
+            \Modules\VehicleManagement\Repository\VehicleBrandRepositoryInterface::class,
+            \Modules\VehicleManagement\Repository\Eloquent\VehicleBrandRepository::class
+        );
+        $this->app->bind(
+            \Modules\VehicleManagement\Repository\VehicleCategoryRepositoryInterface::class,
+            \Modules\VehicleManagement\Repository\Eloquent\VehicleCategoryRepository::class
+        );
+
+        // Register services
+        $this->app->bind(
+            \Modules\VehicleManagement\Service\Interface\VehicleServiceInterface::class,
+            \Modules\VehicleManagement\Service\VehicleService::class
+        );
+        $this->app->bind(
+            \Modules\VehicleManagement\Service\Interface\VehicleModelServiceInterface::class,
+            \Modules\VehicleManagement\Service\VehicleModelService::class
+        );
+        $this->app->bind(
+            \Modules\VehicleManagement\Service\Interface\VehicleBrandServiceInterface::class,
+            \Modules\VehicleManagement\Service\VehicleBrandService::class
+        );
+        $this->app->bind(
+            \Modules\VehicleManagement\Service\Interface\VehicleCategoryServiceInterface::class,
+            \Modules\VehicleManagement\Service\VehicleCategoryService::class
+        );
     }
 
     /**

@@ -55,7 +55,7 @@ class DriverController extends BaseController
     public function index(?Request $request, string $type = null): View|Collection|LengthAwarePaginator|null|callable|RedirectResponse
     {
         $this->authorize('user_view');
-        $drivers = $this->driverService->index(criteria: $request?->all(), relations: ['level', 'driverTrips', 'driverTripsStatus', 'lastLocations.zone'], orderBy: ['created_at' => 'desc'], limit: paginationLimit(), offset: $request['page'] ?? 1);
+        $drivers = $this->driverService->index(criteria: $request?->all(), relations: ['level', 'userAccount', 'driverTrips', 'driverTripsStatus', 'lastLocations.zone'], orderBy: ['created_at' => 'desc'], limit: paginationLimit(), offset: $request['page'] ?? 1);
         return view('usermanagement::admin.driver.index', compact('drivers'));
     }
 
@@ -85,7 +85,19 @@ class DriverController extends BaseController
     public function show($id, Request $request): Renderable|RedirectResponse
     {
         $this->authorize('user_view');
-        $driver = $this->driverService->findOne(id: $id, relations: ['userAccount', 'receivedReviews', 'driverTrips', 'driverDetails', 'driverTrips']);
+        $driver = $this->driverService->findOne(
+            id: $id,
+            relations: [
+                'userAccount',
+                'receivedReviews',
+                'driverTrips',
+                'driverDetails',
+                'vehicle',
+                'vehicle.brand',
+                'vehicle.model',
+                'vehicle.category'
+            ]
+        );
         if (!$driver) {
             Toastr::warning(translate("Driver not found"));
             return back();
@@ -120,7 +132,7 @@ class DriverController extends BaseController
     {
         $this->authorize('user_delete');
         $driver = $this->driverService->findOne($id);
-        if(count($driver->getDriverLastTrip())!=0|| $driver?->userAccount->payable_balance>0 || $driver?->userAccount->pending_balance>0 || $driver?->userAccount->receivable_balance>0){
+        if(count($driver->getDriverLastTrip())!=0|| ($driver->userAccount && ($driver->userAccount->payable_balance>0 || $driver->userAccount->pending_balance>0 || $driver->userAccount->receivable_balance>0))){
             Toastr::success(translate("Sorry you can't delete this driver, because there are ongoing rides or payment due this driver."));
             return back();
         }
@@ -274,7 +286,7 @@ class DriverController extends BaseController
     {
         $this->authorize('user_edit');
         $request->merge(['pending' => true]);
-        $drivers = $this->driverService->index(criteria: $request?->all(), relations: ['level', 'driverTrips', 'driverTripsStatus', 'lastLocations.zone'], orderBy : ['created_at' => 'desc'], limit: paginationLimit(), offset:$request['page'] ?? 1);
+        $drivers = $this->driverService->index(criteria: $request?->all(), relations: ['level', 'userAccount', 'driverTrips', 'driverTripsStatus', 'lastLocations.zone'], orderBy : ['created_at' => 'desc'], limit: paginationLimit(), offset:$request['page'] ?? 1);
         return view('usermanagement::admin.driver.profile-update-request', compact('drivers'));
     }
 

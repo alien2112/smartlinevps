@@ -88,12 +88,14 @@ if (!function_exists('fileUploader')) {
             return $oldImage ?? 'def.png';
         }
         try {
+            $disk = 'r2'; // Use Cloudflare R2 for file storage
+
             // Delete old image(s) if exists
             if (is_array($oldImage) && !empty($oldImage)) {
                 // Handle the case when $oldImage is an array (multiple images)
                 foreach ($oldImage as $file) {
                     try {
-                        Storage::disk('public')->delete($dir . $file);
+                        Storage::disk($disk)->delete($dir . $file);
                     } catch (\Exception $e) {
                         Log::warning('Failed to delete old image', [
                             'file' => $dir . $file,
@@ -104,7 +106,7 @@ if (!function_exists('fileUploader')) {
             } elseif (is_string($oldImage) && !empty($oldImage)) {
                 // Handle the case when $oldImage is a single image (string)
                 try {
-                    Storage::disk('public')->delete($dir . $oldImage);
+                    Storage::disk($disk)->delete($dir . $oldImage);
                 } catch (\Exception $e) {
                     Log::warning('Failed to delete old image', [
                         'file' => $dir . $oldImage,
@@ -115,9 +117,9 @@ if (!function_exists('fileUploader')) {
 
             $imageName = Carbon::now()->toDateString() . "-" . uniqid() . "." . $format;
 
-            // Create directory if it doesn't exist
-            if (!Storage::disk('public')->exists($dir)) {
-                Storage::disk('public')->makeDirectory($dir);
+            // Create directory if it doesn't exist (R2 handles this automatically)
+            if (!Storage::disk($disk)->exists($dir)) {
+                Storage::disk($disk)->makeDirectory($dir);
             }
 
             // Get file contents (handles both paths and UploadedFile objects)
@@ -131,8 +133,8 @@ if (!function_exists('fileUploader')) {
                 throw new \Exception('Failed to read file contents');
             }
 
-            // Store the new image
-            Storage::disk('public')->put($dir . $imageName, $contents);
+            // Store the new image in Cloudflare R2
+            Storage::disk($disk)->put($dir . $imageName, $contents);
 
             return $imageName;
         } catch (\Exception $e) {
@@ -154,8 +156,10 @@ if (!function_exists('fileRemover')) {
         if (!isset($image)) return true;
 
         try {
-            if (Storage::disk('public')->exists($dir . $image)) {
-                Storage::disk('public')->delete($dir . $image);
+            $disk = 'r2'; // Use Cloudflare R2 for file storage
+
+            if (Storage::disk($disk)->exists($dir . $image)) {
+                Storage::disk($disk)->delete($dir . $image);
                 Log::info('File deleted successfully', ['file' => $dir . $image]);
             }
             return true;
@@ -947,10 +951,72 @@ if (!function_exists('getRoutes')) {
 if (!function_exists('onErrorImage')) {
     function onErrorImage($data, $src, $error_src, $path)
     {
-        if (isset($data) && strlen($data) > 1 && Storage::disk('public')->exists($path . $data)) {
-            return $src;
+        // If data is an array, get the first item
+        if (is_array($data)) {
+            $data = $data[0] ?? null;
+        }
+
+        if (isset($data) && strlen($data) > 1) {
+            // Use getMediaUrl to generate proper URL for the new storage system
+            return getMediaUrl($data);
         }
         return $error_src;
+    }
+}
+
+if (!function_exists('getMediaUrl')) {
+    /**
+     * Convert filesystem path or object key to accessible URL
+     *
+     * @param string|array|null $path The filesystem path, object key, or array of paths
+     * @param string|null $folderOrDefault Folder path for arrays, or default URL for strings
+     * @return string|array|null
+     */
+    function getMediaUrl(string|array|null $path, ?string $folderOrDefault = null): string|array|null
+    {
+        // Handle arrays
+        if (is_array($path)) {
+            $folder = $folderOrDefault ?? '';
+            return array_map(function($item) use ($folder) {
+                if (empty($item)) {
+                    return null;
+                }
+                // If it's already a URL, return as is
+                if (str_starts_with($item, 'http://') || str_starts_with($item, 'https://')) {
+                    return $item;
+                }
+                // If it's a full filesystem path starting with /root/new/
+                if (str_starts_with($item, '/root/new/')) {
+                    $relativePath = str_replace('/root/new/', '', $item);
+                    return url('media/' . $relativePath);
+                }
+                // If folder is provided, prepend it
+                if ($folder) {
+                    return url('media/' . ltrim($folder, '/') . '/' . ltrim($item, '/'));
+                }
+                // Otherwise, just prepend media URL
+                return url('media/' . ltrim($item, '/'));
+            }, $path);
+        }
+
+        // Handle strings
+        if (empty($path)) {
+            return $folderOrDefault;
+        }
+
+        // If it's already a URL, return as is
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            return $path;
+        }
+
+        // If it's a full filesystem path starting with /root/new/
+        if (str_starts_with($path, '/root/new/')) {
+            $relativePath = str_replace('/root/new/', '', $path);
+            return url('media/' . $relativePath);
+        }
+
+        // If it's a relative path, prepend media URL
+        return url('media/' . ltrim($path, '/'));
     }
 }
 

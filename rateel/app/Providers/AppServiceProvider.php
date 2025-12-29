@@ -36,17 +36,17 @@ class AppServiceProvider extends ServiceProvider
             URL::forceScheme('https');
         }
         Paginator::useBootstrap();
-        
+
         // Performance profiling: Log SQL queries when enabled
         // Enable in .env with: PERF_LOG_SQL=true
         // Logs all queries with timing, highlights slow queries (>50ms)
         if (env('PERF_LOG_SQL', false)) {
             $requestId = uniqid('req_');
-            
+
             DB::listen(function ($query) use ($requestId) {
                 $slowThreshold = 50; // milliseconds
                 $isSlow = $query->time > $slowThreshold;
-                
+
                 $logData = [
                     'request_id' => $requestId,
                     'sql' => $query->sql,
@@ -56,7 +56,7 @@ class AppServiceProvider extends ServiceProvider
                     'method' => request()->method(),
                     'slow' => $isSlow,
                 ];
-                
+
                 if ($isSlow) {
                     Log::warning('[SLOW QUERY]', $logData);
                 } else {
@@ -64,8 +64,13 @@ class AppServiceProvider extends ServiceProvider
                 }
             });
         }
-        
-        // Note: EloquentSpatial::useDefaultSrid(4326) was removed because 
+
+        // Register model observers for cache invalidation
+        \Modules\TripManagement\Entities\TripRequest::observe(\App\Observers\TripRequestObserver::class);
+        \Modules\TransactionManagement\Entities\Transaction::observe(\App\Observers\TransactionObserver::class);
+        \Modules\ZoneManagement\Entities\Zone::observe(\App\Observers\ZoneObserver::class);
+
+        // Note: EloquentSpatial::useDefaultSrid(4326) was removed because
         // this method is not available in the installed version of eloquent-spatial.
         // SRID 4326 is typically the default for geographic coordinates anyway.
     }

@@ -36,13 +36,21 @@ class TravelController extends BaseController
     }
 
     /**
-     * List pending travel requests
+     * List pending travel requests (UNIFIED APPROACH)
      */
     public function index(?Request $request, string $type = null): View|Collection|LengthAwarePaginator|null|callable|RedirectResponse
     {
         $this->authorize('trip_view');
 
-        $pendingTravels = $this->travelRideService->getPendingTravelRequests();
+        // Use unified trip query - filter by trip_type='travel' or is_travel=true
+        $pendingTravels = $this->tripRequestService->getBy(
+            criteria: ['current_status' => 'pending'],
+            relations: ['customer', 'driver', 'vehicleCategory', 'coordinate', 'fee', 'time', 'tripStatus', 'zone'],
+            orderBy: ['scheduled_at' => 'asc', 'offer_price' => 'desc']
+        )->filter(function ($trip) {
+            // Filter for travel trips only (supports both old and new fields)
+            return $trip->trip_type === 'travel' || $trip->is_travel === true;
+        });
 
         // Get VIP drivers for assignment dropdown
         $vipDrivers = $this->driverService->getBy(
@@ -91,7 +99,7 @@ class TravelController extends BaseController
     }
 
     /**
-     * Assign a VIP driver to a travel request
+     * Assign a VIP driver to a travel request (UNIFIED APPROACH)
      */
     public function assignDriver(Request $request, string $tripId): JsonResponse
     {
@@ -102,22 +110,38 @@ class TravelController extends BaseController
         ]);
 
         try {
-            $success = $this->travelRideService->assignDriverToTravel(
-                $tripId,
-                $request->driver_id
-            );
+            $trip = $this->tripRequestService->findOne(id: $tripId);
 
-            if ($success) {
+            if (!$trip || !$trip->isTravel()) {
                 return response()->json([
-                    'success' => true,
-                    'message' => 'Driver assigned successfully',
-                ]);
+                    'success' => false,
+                    'message' => 'Travel request not found',
+                ], 404);
             }
 
+            // Check if trip is pending
+            if ($trip->current_status !== 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Trip is no longer pending',
+                ], 400);
+            }
+
+            // Update trip with assigned driver
+            $this->tripRequestService->update(
+                id: $tripId,
+                data: [
+                    'driver_id' => $request->driver_id,
+                    'current_status' => 'accepted',
+                    'travel_status' => 'accepted', // Backward compatibility
+                    'travel_dispatched_at' => now(),
+                ]
+            );
+
             return response()->json([
-                'success' => false,
-                'message' => 'Failed to assign driver',
-            ], 400);
+                'success' => true,
+                'message' => 'Driver assigned successfully',
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -127,7 +151,7 @@ class TravelController extends BaseController
     }
 
     /**
-     * Cancel a travel request
+     * Cancel a travel request (UNIFIED APPROACH)
      */
     public function cancel(Request $request, string $tripId): JsonResponse
     {
@@ -136,19 +160,29 @@ class TravelController extends BaseController
         $reason = $request->input('reason', 'Cancelled by admin');
 
         try {
-            $success = $this->travelRideService->cancelTravelRequest($tripId, $reason);
+            $trip = $this->tripRequestService->findOne(id: $tripId);
 
-            if ($success) {
+            if (!$trip || !$trip->isTravel()) {
                 return response()->json([
-                    'success' => true,
-                    'message' => 'Travel request cancelled',
-                ]);
+                    'success' => false,
+                    'message' => 'Travel request not found',
+                ], 404);
             }
 
+            // Update trip status to cancelled
+            $this->tripRequestService->update(
+                id: $tripId,
+                data: [
+                    'current_status' => 'cancelled',
+                    'travel_status' => 'cancelled', // Backward compatibility
+                    'trip_cancellation_reason' => $reason,
+                ]
+            );
+
             return response()->json([
-                'success' => false,
-                'message' => 'Failed to cancel travel request',
-            ], 400);
+                'success' => true,
+                'message' => 'Travel request cancelled',
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -158,7 +192,7 @@ class TravelController extends BaseController
     }
 
     /**
-     * Get available VIP drivers for AJAX dropdown
+     * Get available VIP drivers for AJAX dropdown (UNIFIED APPROACH)
      */
     public function getAvailableDrivers(Request $request): JsonResponse
     {
@@ -166,25 +200,45 @@ class TravelController extends BaseController
 
         $lat = $request->input('lat');
         $lng = $request->input('lng');
-        $radiusKm = $request->input('radius', 30);
+        $radiusKm = $request->input('radius', 50); // Default travel radius
 
-        if ($lat && $lng) {
-            $drivers = $this->travelRideService->getAvailableVipDrivers(
-                (float) $lat,
-                (float) $lng,
-                (float) $radiusKm
-            );
-        } else {
-            // Get all online VIP drivers
-            $drivers = $this->driverService->getBy(
-                criteria: ['user_type' => 'driver', 'is_active' => true],
-                relations: ['vehicle.category', 'driverDetails', 'lastLocations']
-            )->filter(function ($driver) {
-                return $driver->vehicle?->category?->category_level === VehicleCategory::LEVEL_VIP
-                    && $driver->driverDetails?->is_online
-                    && $driver->driverDetails?->availability_status === 'available';
-            });
-        }
+        // Get all online VIP drivers
+        $drivers = $this->driverService->getBy(
+            criteria: ['user_type' => 'driver', 'is_active' => true],
+            relations: ['vehicle.category', 'driverDetails', 'lastLocations']
+        )->filter(function ($driver) use ($lat, $lng, $radiusKm) {
+            // Must be VIP
+            $isVip = $driver->vehicle?->category?->category_level === VehicleCategory::LEVEL_VIP;
+            if (!$isVip) return false;
+
+            // Must be online and available
+            $isAvailable = $driver->driverDetails?->is_online
+                && $driver->driverDetails?->availability_status === 'available';
+            if (!$isAvailable) return false;
+
+            // If location provided, filter by radius
+            if ($lat && $lng && $driver->lastLocations) {
+                $driverLat = $driver->lastLocations->latitude;
+                $driverLng = $driver->lastLocations->longitude;
+
+                // Calculate distance in km using Haversine formula
+                $earthRadius = 6371; // km
+                $latDiff = deg2rad($driverLat - $lat);
+                $lngDiff = deg2rad($driverLng - $lng);
+
+                $a = sin($latDiff / 2) * sin($latDiff / 2) +
+                     cos(deg2rad($lat)) * cos(deg2rad($driverLat)) *
+                     sin($lngDiff / 2) * sin($lngDiff / 2);
+                $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+                $distance = $earthRadius * $c;
+
+                $driver->distance_km = round($distance, 2);
+
+                return $distance <= $radiusKm;
+            }
+
+            return true;
+        });
 
         $driverData = $drivers->map(function ($driver) {
             $user = $driver->user ?? $driver;
@@ -194,7 +248,7 @@ class TravelController extends BaseController
                 'phone' => $user->phone,
                 'distance_km' => $driver->distance_km ?? null,
             ];
-        });
+        })->sortBy('distance_km');
 
         return response()->json([
             'success' => true,

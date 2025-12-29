@@ -61,15 +61,16 @@ Route::group(['prefix' => 'customer', 'middleware' => ['auth:api', 'maintenance_
         });
     });
 
-    // Travel Mode routes (VIP scheduled rides with fixed pricing)
-    Route::group(['prefix' => 'travel'], function () {
-        Route::controller(\Modules\TripManagement\Http\Controllers\Api\New\Customer\TripRequestController::class)->group(function () {
-            Route::post('create', 'createTravelRequest');
-            Route::get('price-estimate', 'getTravelPriceEstimate');
-            Route::get('{tripId}', 'getTravelStatus');
-            Route::post('{tripId}/cancel', 'cancelTravelRequest');
-        });
-    });
+    // DEPRECATED: Travel Mode routes - now unified into normal ride endpoints
+    // Use trip_type='travel' parameter in regular ride/create and ride/get-estimated-fare endpoints
+    // Route::group(['prefix' => 'travel'], function () {
+    //     Route::controller(\Modules\TripManagement\Http\Controllers\Api\New\Customer\TripRequestController::class)->group(function () {
+    //         Route::post('create', 'createTravelRequest'); // Use ride/create with trip_type=travel
+    //         Route::get('price-estimate', 'getTravelPriceEstimate'); // Use ride/get-estimated-fare with trip_type=travel
+    //         Route::get('{tripId}', 'getTravelStatus'); // Use ride/details/{trip_request_id}
+    //         Route::post('{tripId}/cancel', 'cancelTravelRequest'); // Use ride/update-status/{trip_request_id}
+    //     });
+    // });
 });
 
 
@@ -126,14 +127,15 @@ Route::group(['prefix' => 'driver', 'middleware' => ['auth:api', 'maintenance_mo
         });
     });
 
-    // Travel Mode routes for VIP drivers
-    Route::group(['prefix' => 'travel'], function () {
-        Route::controller(\Modules\TripManagement\Http\Controllers\Api\New\Driver\TripRequestController::class)->group(function () {
-            Route::get('pending', 'pendingTravelList');
-            Route::post('accept', 'acceptTravelRequest');
-            Route::get('{tripId}', 'travelDetails');
-        });
-    });
+    // DEPRECATED: Travel Mode routes for VIP drivers - now unified into normal ride endpoints
+    // Travel trips now appear in ride/pending-ride-list for VIP drivers automatically
+    // Route::group(['prefix' => 'travel'], function () {
+    //     Route::controller(\Modules\TripManagement\Http\Controllers\Api\New\Driver\TripRequestController::class)->group(function () {
+    //         Route::get('pending', 'pendingTravelList'); // Now included in ride/pending-ride-list
+    //         Route::post('accept', 'acceptTravelRequest'); // Use ride/trip-action
+    //         Route::get('{tripId}', 'travelDetails'); // Use ride/details/{ride_request_id}
+    //     });
+    // });
 });
 
 Route::post('ride/store-screenshot', [TripRequestController::class, 'storeScreenshot'])->middleware('auth:api');

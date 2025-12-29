@@ -166,7 +166,10 @@
                                                     <td class="level">{{ $driver->level?->name }}</td>
                                                     <td class="total-trip">{{ $driver->driverTrips->count() }}</td>
                                                     <td>
-                                                        {{ set_currency_symbol($driver->userAccount->received_balance + $driver->userAccount->total_withdrawn) }}
+                                                        {{ set_currency_symbol(
+                                                            (optional($driver->userAccount)->received_balance ?? 0) +
+                                                            (optional($driver->userAccount)->total_withdrawn ?? 0)
+                                                        ) }}
                                                     </td>
                                                     @can('user_edit')
                                                         <td class="status">
@@ -203,7 +206,7 @@
                                                                 </a>
                                                             @endcan
                                                             @can('user_delete')
-                                                                    @if(count($driver->getDriverLastTrip())!=0|| $driver?->userAccount->payable_balance>0 || $driver?->userAccount->pending_balance>0 || $driver?->userAccount->receivable_balance>0)
+                                                                    @if(count($driver->getDriverLastTrip())!=0|| ($driver->userAccount && ($driver->userAccount->payable_balance>0 || $driver->userAccount->pending_balance>0 || $driver->userAccount->receivable_balance>0)))
                                                                             <button data-id="delete-{{ $driver->id }}"
                                                                                     data-message="{{ translate("Sorry you can't delete this driver, because there are ongoing rides or payment due this driver.?") }}"
                                                                                     type="button"

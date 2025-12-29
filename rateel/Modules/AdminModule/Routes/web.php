@@ -48,6 +48,7 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
         Route::get('leader-board-customer', 'leaderBoardCustomer')->name('leader-board-customer');
         Route::get('earning-statistics', 'adminEarningStatistics')->name('earning-statistics');
         Route::get('zone-wise-statistics', 'zoneWiseStatistics')->name('zone-wise-statistics');
+        Route::post('clear-cache', 'clearCache')->name('clear-cache');
         Route::get('chatting', 'chatting')->name('chatting');
         Route::get('driver-conversation/{channelId}', 'getDriverConversation')->name('driver-conversation');
         Route::post('send-message-to-driver', 'sendMessageToDriver')->name('send-message-to-driver');

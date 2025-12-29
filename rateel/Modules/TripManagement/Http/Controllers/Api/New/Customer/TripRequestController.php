@@ -108,6 +108,10 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(ZONE_404), 403);
         }
 
+        // Check trip type (normal or travel)
+        $tripType = $request->input('trip_type', 'normal');
+        $isTravel = $tripType === 'travel';
+
         // Handle coordinates - they might be sent as JSON string or array
         $pickupCoordinates = is_array($request['pickup_coordinates'])
             ? $request['pickup_coordinates']
@@ -122,7 +126,43 @@ class TripRequestController extends Controller
         $destination_point = new Point($destinationCoordinates[1], $destinationCoordinates[0], 4326);
         $customer_point = new Point($customer_coordinates[1], $customer_coordinates[0], 4326);
 
-        $request->merge([
+        // Travel mode validations
+        if ($isTravel) {
+            $validator = Validator::make($request->all(), [
+                'scheduled_at' => 'required|date|after:now',
+                'seats_requested' => 'nullable|integer|min:1|max:10',
+                'offer_price' => 'required|numeric|min:0',
+                'estimated_distance' => 'nullable|numeric|min:0',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 400);
+            }
+
+            // Auto-calculate min_price based on admin settings
+            $distanceKm = $request->input('estimated_distance', 0);
+            $baseFare = $request->estimated_fare ?? 0;
+
+            // Method 1: Use travel price per km from admin settings
+            $perKmRate = (float)(get_cache('travel_price_per_km'));
+            if ($perKmRate > 0 && $distanceKm > 0) {
+                $minPrice = round($distanceKm * $perKmRate, 2);
+            } else {
+                // Method 2: Use travel multiplier on base fare
+                $travelMultiplier = (float)(get_cache('travel_price_multiplier') ?? 1.0);
+                $minPrice = round($baseFare * $travelMultiplier, 2);
+            }
+
+            // Validate offer_price >= auto-calculated min_price
+            if ($request->offer_price < $minPrice) {
+                return response()->json(responseFormatter(constant: DEFAULT_400, errors: [[
+                    'code' => 'offer_price',
+                    'message' => "Offer price must be at least {$minPrice} (minimum calculated based on distance)"
+                ]]), 400);
+            }
+        }
+
+        $mergeData = [
             'customer_id' => auth('api')->id(),
             'zone_id' => $request->header('zoneId'),
             'pickup_coordinates' => $pickup_point,
@@ -130,7 +170,26 @@ class TripRequestController extends Controller
             'estimated_fare' => $request->estimated_fare,
             'actual_fare' => (get_cache('bid_on_fare') ?? 0) ? $request->actual_fare : $request->estimated_fare,
             'customer_request_coordinates' => $customer_point,
-        ]);
+            'trip_type' => $tripType,
+        ];
+
+        // Add travel-specific fields
+        if ($isTravel) {
+            $mergeData['scheduled_at'] = $request->scheduled_at;
+            $mergeData['seats_requested'] = $request->input('seats_requested', 1);
+            $mergeData['min_price'] = $minPrice;  // Auto-calculated above
+            $mergeData['offer_price'] = $request->offer_price;
+            $mergeData['travel_radius_km'] = (float)(get_cache('travel_search_radius') ?? 50);
+
+            // Backward compatibility: also set old travel fields
+            $mergeData['is_travel'] = true;
+            $mergeData['fixed_price'] = $request->offer_price;
+            $mergeData['travel_date'] = $request->scheduled_at;
+            $mergeData['travel_passengers'] = $request->input('seats_requested', 1);
+            $mergeData['travel_status'] = 'pending';
+        }
+
+        $request->merge($mergeData);
 
         $trip = $this->tripRequestservice->makeRideRequest($request, $pickupCoordinates);
 
@@ -151,6 +210,10 @@ class TripRequestController extends Controller
         if (!$zone) {
             return response()->json(responseFormatter(ZONE_404), 403);
         }
+
+        // Check if this is a travel mode request
+        $tripType = $request->input('trip_type', 'normal');
+        $isTravelMode = $tripType === 'travel';
 
         $user = auth('api')->user();
         $pickupCoordinates = is_array($request->pickup_coordinates)
@@ -240,6 +303,66 @@ class TripRequestController extends Controller
             tripFare: $tripFare,
         );
 
+        // Apply normal trip pricing overrides (if enabled in admin settings)
+        if (!$isTravelMode) {
+            $distanceKm = is_array($estimated_fare) ? ($estimated_fare['distance'] ?? 0) : 0;
+            $calculatedFare = is_array($estimated_fare) ? ($estimated_fare['estimated_fare'] ?? 0) : $estimated_fare;
+
+            // Get admin settings
+            $normalPerKmRate = (float)(get_cache('normal_price_per_km'));
+            $normalPerKmEnabled = (bool)(businessConfig('normal_price_per_km', TRIP_SETTINGS)?->value['status'] ?? false);
+            $normalMinPrice = (float)(get_cache('normal_min_price'));
+            $normalMinPriceEnabled = (bool)(businessConfig('normal_min_price', TRIP_SETTINGS)?->value['status'] ?? false);
+
+            // Step 1: Calculate fare (per-km or use existing)
+            $perKmFare = 0;
+            if ($normalPerKmEnabled && $normalPerKmRate > 0 && $distanceKm > 0) {
+                $perKmFare = round($distanceKm * $normalPerKmRate, 2);
+            }
+
+            // Step 2: Determine minimum price (floor)
+            $minPriceFloor = 0;
+            if ($normalMinPriceEnabled && $normalMinPrice > 0) {
+                $minPriceFloor = $normalMinPrice;
+            }
+
+            // Step 3: Apply priority logic - min_price is the floor, per-km only if higher
+            $finalFare = $calculatedFare; // Start with existing engine result
+            $pricingMethod = 'default_engine';
+
+            if ($normalPerKmEnabled && $perKmFare > 0) {
+                // Use per-km if enabled, but respect minimum floor
+                if ($normalMinPriceEnabled && $minPriceFloor > 0) {
+                    // Both enabled: max(per_km, min_price)
+                    $finalFare = max($perKmFare, $minPriceFloor);
+                    $pricingMethod = $perKmFare >= $minPriceFloor ? 'per_km' : 'min_price_floor';
+                } else {
+                    // Only per-km enabled
+                    $finalFare = $perKmFare;
+                    $pricingMethod = 'per_km';
+                }
+            } elseif ($normalMinPriceEnabled && $minPriceFloor > 0) {
+                // Only minimum enabled: max(default_engine, min_price)
+                $finalFare = max($calculatedFare, $minPriceFloor);
+                $pricingMethod = $calculatedFare >= $minPriceFloor ? 'default_engine' : 'min_price_floor';
+            }
+
+            // Update the response
+            if (is_array($estimated_fare)) {
+                $estimated_fare['estimated_fare'] = $finalFare;
+                $estimated_fare['pricing_method'] = $pricingMethod;
+                $estimated_fare['breakdown'] = [
+                    'default_engine_fare' => $calculatedFare,
+                    'per_km_rate' => $normalPerKmRate,
+                    'per_km_fare' => $perKmFare > 0 ? $perKmFare : null,
+                    'min_price_floor' => $minPriceFloor > 0 ? $minPriceFloor : null,
+                    'final_fare' => $finalFare,
+                ];
+            } else {
+                $estimated_fare = $finalFare;
+            }
+        }
+
         $debugRoutes = filter_var($request->input('debug_routes'), FILTER_VALIDATE_BOOLEAN);
         if ($debugRoutes) {
             return response()->json(responseFormatter(DEFAULT_200, [
@@ -256,6 +379,52 @@ class TripRequestController extends Controller
             'pickup_address' => $request->pickup_address,
             'destination_address' => $request->destination_address,
         ]);
+
+        // For travel mode, return min_price and suggested offer range
+        if ($isTravelMode) {
+            // Extract the base fare from estimated_fare array
+            $baseFare = is_array($estimated_fare) ? ($estimated_fare['estimated_fare'] ?? 0) : $estimated_fare;
+            $distanceKm = is_array($estimated_fare) ? ($estimated_fare['distance'] ?? 0) : 0;
+
+            // Calculate min_price based on admin settings (price per km)
+            // Get base per-km rate from trip fare settings or use fare from estimation
+            $travelMultiplier = (float)(get_cache('travel_price_multiplier') ?? 1.0); // Default no markup
+            $minPrice = round($baseFare * $travelMultiplier, 2);
+
+            // Alternative: Use distance-based calculation if per_km_rate is set
+            $perKmRate = (float)(get_cache('travel_price_per_km'));
+            if ($perKmRate > 0 && $distanceKm > 0) {
+                $minPrice = round($distanceKm * $perKmRate, 2);
+            }
+
+            // Suggest offer price range (min to 1.5x min)
+            $maxSuggestedOffer = round($minPrice * 1.5, 2);
+
+            $travelFare = [
+                'trip_type' => 'travel',
+                'min_price' => $minPrice,  // Auto-calculated from admin settings
+                'suggested_offer_range' => [
+                    'min' => $minPrice,
+                    'max' => $maxSuggestedOffer,
+                ],
+                'distance_km' => $distanceKm,
+                'duration_min' => is_array($estimated_fare) ? ($estimated_fare['duration'] ?? 0) : 0,
+                'currency' => get_cache('currency_code') ?? 'USD',
+                'note' => 'Minimum price calculated automatically. Set your offer_price (must be >= min_price). Higher offers may attract drivers faster.',
+                'pricing_info' => [
+                    'base_fare' => $baseFare,
+                    'travel_multiplier' => $travelMultiplier,
+                    'per_km_rate' => $perKmRate ?? null,
+                ],
+            ];
+
+            // Include original estimated_fare details if array
+            if (is_array($estimated_fare)) {
+                $travelFare = array_merge($estimated_fare, $travelFare);
+            }
+
+            return response()->json(responseFormatter(DEFAULT_200, $travelFare), 200);
+        }
 
         return response()->json(responseFormatter(DEFAULT_200, $estimated_fare), 200);
     }

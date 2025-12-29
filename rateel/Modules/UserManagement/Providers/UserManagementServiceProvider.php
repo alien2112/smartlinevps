@@ -5,7 +5,10 @@ namespace Modules\UserManagement\Providers;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Database\Eloquent\Factory;
 use Modules\UserManagement\Entities\Role;
+use Modules\UserManagement\Entities\User;
 use Modules\UserManagement\Observers\RoleObserver;
+use Modules\UserManagement\Observers\UserObserver;
+use Modules\UserManagement\Console\RepairMissingUserAccounts;
 
 class UserManagementServiceProvider extends ServiceProvider
 {
@@ -30,7 +33,17 @@ class UserManagementServiceProvider extends ServiceProvider
         $this->registerConfig();
         $this->registerViews();
         $this->loadMigrationsFrom(module_path($this->moduleName, 'Database/Migrations'));
+
+        // Register observers
         Role::observe(RoleObserver::class);
+        User::observe(UserObserver::class);
+
+        // Register console commands
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                RepairMissingUserAccounts::class,
+            ]);
+        }
     }
 
     /**

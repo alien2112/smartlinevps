@@ -269,11 +269,11 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
         $driverRateInfoData = $this->driverRateInfo($driver);
 
         $commonData = [
-            'collectable_amount' => $driver?->userAccount->payable_balance > $driver?->userAccount->receivable_balance ? ($driver?->userAccount->payable_balance - $driver?->userAccount->receivable_balance) : 0,
-            'pending_withdraw' => $driver?->userAccount->pending_balance,
-            'already_withdrawn' => $driver?->userAccount->total_withdrawn,
-            'withdrawable_amount' => $driver?->userAccount->receivable_balance > $driver?->userAccount->payable_balance ? ($driver?->userAccount->receivable_balance - $driver?->userAccount->payable_balance) : 0,
-            'total_earning' => $driver?->userAccount->received_balance,
+            'collectable_amount' => ($driver->userAccount && $driver->userAccount->payable_balance > $driver->userAccount->receivable_balance) ? ($driver->userAccount->payable_balance - $driver->userAccount->receivable_balance) : 0,
+            'pending_withdraw' => $driver->userAccount?->pending_balance ?? 0,
+            'already_withdrawn' => $driver->userAccount?->total_withdrawn ?? 0,
+            'withdrawable_amount' => ($driver->userAccount && $driver->userAccount->receivable_balance > $driver->userAccount->payable_balance) ? ($driver->userAccount->receivable_balance - $driver->userAccount->payable_balance) : 0,
+            'total_earning' => $driver->userAccount?->received_balance ?? 0,
             'idle_rate_today' => $driverRateInfoData['idleRateToday'],
             'avg_active_day' => $driverRateInfoData['avgActiveRateByDay'],
             'driver_avg_earning' => $driverRateInfoData['driverAvgEarning'],
@@ -414,7 +414,7 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
             ->first();
 
         $paidTripsCount = $tripStats->paid_trips_count ?? 1;
-        $driverAvgEarning = ($driver?->userAccount?->received_balance + $driver?->userAccount?->receivable_balance) / ($paidTripsCount > 0 ? $paidTripsCount : 1);
+        $driverAvgEarning = (($driver->userAccount?->received_balance ?? 0) + ($driver->userAccount?->receivable_balance ?? 0)) / ($paidTripsCount > 0 ? $paidTripsCount : 1);
 
         //Positive review rate (keep as-is, already uses selectRaw)
         $positiveReviewRate = $driver->receivedReviews()
@@ -656,7 +656,7 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
             }
 
             $ids = $item->driverTripsStatus->whereNotNull('completed')->pluck('trip_request_id');
-            $earning = set_currency_symbol($item->userAccount->received_balance + $item->userAccount->total_withdrawn);
+            $earning = set_currency_symbol(($item->userAccount?->received_balance ?? 0) + ($item->userAccount?->total_withdrawn ?? 0));
 
             return [
                 'Id' => $item['id'],

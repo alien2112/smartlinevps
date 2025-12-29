@@ -1,6 +1,7 @@
 <div class="tab-pane fade active show" role="tabpanel">
     <h2 class="fs-22 mb-3">{{ translate('vehicle') }}</h2>
 
+    @if($commonData['driver']?->vehicle)
     <div class="card mb-3">
         <div class="card-body">
             <div class="d-flex align-items-start justify-content-between gap-2 mb-4">
@@ -14,8 +15,8 @@
                     <div class="media flex-wrap gap-3 gap-lg-4">
                         <div class="avatar avatar-135 rounded">
                             <img src="{{ onErrorImage(
-                                $commonData['driver']?->vehicle?->model?->image,
-                                asset('storage/app/public/vehicle/model') . '/' . $commonData['driver']?->vehicle?->model?->image,
+                                $commonData['driver']->vehicle->model?->image,
+                                asset('storage/app/public/vehicle/model') . '/' . $commonData['driver']->vehicle->model?->image,
                                 asset('public/assets/admin-module/img/media/upload-file.png'),
                                 'vehicle/model/',
                             ) }}"
@@ -23,27 +24,27 @@
                         </div>
                         <div class="media-body">
                             <div class="d-flex flex-column align-items-start gap-1">
-                                <h6 class="mb-10">{{ $commonData['driver']?->vehicle?->brand?->name }}
-                                    - {{ $commonData['driver']?->vehicle?->model?->name ?? 'Not found' }}</h6>
+                                <h6 class="mb-10">{{ $commonData['driver']->vehicle->brand?->name ?? 'Unknown brand' }}
+                                    - {{ $commonData['driver']->vehicle->model?->name ?? 'Unknown model' }}</h6>
                                 <ul class="nav text-dark d-flex flex-column gap-2 mb-0">
                                     <li>
                                         <span class="text-muted">{{ translate('owner') }}</span>
-                                        <span class="">{{ $commonData['driver']?->vehicle?->ownership }}</span>
+                                        <span class="">{{ $commonData['driver']->vehicle->ownership ?? 'N/A' }}</span>
                                     </li>
                                     <li>
                                         <span class="text-muted">{{ translate('category') }}</span>
                                         <span class="">
-                                            {{ $commonData['driver']?->vehicle?->category->name }}</span>
+                                            {{ $commonData['driver']->vehicle->category?->name ?? 'Uncategorized' }}</span>
                                     </li>
                                     <li>
                                         <span class="text-muted">{{ translate('brand') }}</span>
                                         <span
-                                            class="">{{ $commonData['driver']?->vehicle?->brand?->name }}</span>
+                                            class="">{{ $commonData['driver']->vehicle->brand?->name ?? 'Unknown brand' }}</span>
                                     </li>
                                     <li>
                                         <span class="text-muted">{{ translate('model') }}</span>
                                         <span
-                                            class="">{{ $commonData['driver']?->vehicle?->model?->name }}</span>
+                                            class="">{{ $commonData['driver']->vehicle->model?->name ?? 'Unknown model' }}</span>
                                     </li>
                                 </ul>
                             </div>
@@ -89,27 +90,27 @@
                     <tbody>
                         <tr>
                             <td>{{ translate('viin') }}</td>
-                            <td>{{ $commonData['driver']?->vehicle?->vin_number }}</td>
+                            <td>{{ $commonData['driver']->vehicle->vin_number ?? 'N/A' }}</td>
                             <td>{{ translate('fuel_type') }}</td>
-                            <td>{{ translate($commonData['driver']?->vehicle?->fuel_type) }}</td>
+                            <td>{{ $commonData['driver']->vehicle->fuel_type ? translate($commonData['driver']->vehicle->fuel_type) : 'N/A' }}</td>
                         </tr>
                         <tr>
                             <td>{{ translate('licence_plate_number') }}</td>
-                            <td>{{ $commonData['driver']?->vehicle?->licence_plate_number }}</td>
+                            <td>{{ $commonData['driver']->vehicle->licence_plate_number ?? 'N/A' }}</td>
                             <td>{{ translate('engine') }}</td>
-                            <td>{{ $commonData['driver']?->vehicle?->model?->engine }} {{ translate('cc') }}</td>
+                            <td>{{ $commonData['driver']->vehicle->model?->engine ?? 'N/A' }} {{ $commonData['driver']->vehicle->model?->engine ? translate('cc') : '' }}</td>
                         </tr>
                         <tr>
                             <td>{{ translate('licence_expire_date') }}</td>
-                            <td>{{ $commonData['driver']?->vehicle?->licence_expire_date }}</td>
+                            <td>{{ $commonData['driver']->vehicle->licence_expire_date ?? 'N/A' }}</td>
                             <td>{{ translate('seat_capacity') }}</td>
-                            <td>{{ $commonData['driver']?->vehicle?->model?->seat_capacity }}</td>
+                            <td>{{ $commonData['driver']->vehicle->model?->seat_capacity ?? 'N/A' }}</td>
                         </tr>
                         <tr>
                             <td>{{ translate('transmission') }}</td>
-                            <td>{{ $commonData['driver']?->vehicle?->transmission }}</td>
+                            <td>{{ $commonData['driver']->vehicle->transmission ?? 'N/A' }}</td>
                             <td>{{ translate('hatch_bag_capacity') }}</td>
-                            <td>{{ $commonData['driver']?->vehicle?->model?->hatch_bag_capacity }}</td>
+                            <td>{{ $commonData['driver']->vehicle->model?->hatch_bag_capacity ?? 'N/A' }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -121,19 +122,32 @@
         <div class="card-body">
             <h5 class="text-primary mb-3 d-flex align-items-center gap-2"><i
                     class="bi bi-paperclip"></i>{{ translate('attached_documents') }}</h5>
-            @foreach ($commonData['driver']->vehicle->documents ?? [] as $document)
-                <div class="d-flex align-items-center gap-3 flex-wrap">
-                    <a download="{{ $document }}"
-                        href="{{ asset('storage/app/public/vehicle/document') }}/{{ $document }}"
-                        class="border rounded p-3 d-flex align-items-center gap-3">
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-paperclip fs-22"></i>
-                            <h6 class="fs-12">{{ $document }}</h6>
-                        </div>
-                        <i class="bi bi-arrow-down-circle-fill fs-16 text-primary"></i>
-                    </a>
-                </div>
-            @endforeach
+            @if(!empty($commonData['driver']->vehicle->documents) && is_array($commonData['driver']->vehicle->documents))
+                @foreach ($commonData['driver']->vehicle->documents as $document)
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                        <a download="{{ $document }}"
+                            href="{{ asset('storage/app/public/vehicle/document') }}/{{ $document }}"
+                            class="border rounded p-3 d-flex align-items-center gap-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-paperclip fs-22"></i>
+                                <h6 class="fs-12">{{ $document }}</h6>
+                            </div>
+                            <i class="bi bi-arrow-down-circle-fill fs-16 text-primary"></i>
+                        </a>
+                    </div>
+                @endforeach
+            @else
+                <p class="text-muted">{{ translate('no_documents_attached') }}</p>
+            @endif
         </div>
     </div>
+    @else
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="bi bi-car-front fs-1 text-muted mb-3"></i>
+            <h5 class="text-muted">{{ translate('no_vehicle_assigned') }}</h5>
+            <p class="text-muted">{{ translate('this_driver_has_no_vehicle_assigned_yet') }}</p>
+        </div>
+    </div>
+    @endif
 </div>

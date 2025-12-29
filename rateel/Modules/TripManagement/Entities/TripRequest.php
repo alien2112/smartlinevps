@@ -68,7 +68,7 @@ class TripRequest extends Model
         'tips',
         'is_paused',
         'map_screenshot',
-        // Travel Mode fields
+        // Travel Mode fields (old - kept for backward compatibility)
         'is_travel',
         'fixed_price',
         'travel_date',
@@ -77,6 +77,15 @@ class TripRequest extends Model
         'travel_notes',
         'travel_status',
         'travel_dispatched_at',
+        // New unified travel fields
+        'trip_type',
+        'scheduled_at',
+        'seats_requested',
+        'seats_capacity',
+        'seats_taken',
+        'min_price',
+        'offer_price',
+        'travel_radius_km',
         'deleted_at',
         'created_at',
         'updated_at',
@@ -107,21 +116,60 @@ class TripRequest extends Model
         "is_paused" => 'boolean',
         "female_driver_only" => 'boolean',
         "rise_request_count" => 'integer',
-        // Travel Mode casts
+        // Travel Mode casts (old - kept for backward compatibility)
         'is_travel' => 'boolean',
         'fixed_price' => 'float',
         'travel_date' => 'datetime',
         'travel_passengers' => 'integer',
         'travel_luggage' => 'integer',
         'travel_dispatched_at' => 'datetime',
+        // New unified travel casts
+        'scheduled_at' => 'datetime',
+        'seats_requested' => 'integer',
+        'seats_capacity' => 'integer',
+        'seats_taken' => 'integer',
+        'min_price' => 'float',
+        'offer_price' => 'float',
+        'travel_radius_km' => 'float',
     ];
 
     /**
-     * Check if this is a Travel Mode trip
+     * Check if this is a Travel Mode trip (unified approach)
      */
     public function isTravel(): bool
     {
-        return (bool) $this->is_travel;
+        // Support both old is_travel boolean and new trip_type enum
+        return $this->trip_type === 'travel' || (bool) $this->is_travel;
+    }
+
+    /**
+     * Get seats left for travel trips (for carpooling/shuttle)
+     */
+    public function getSeatsLeftAttribute(): int
+    {
+        if (!$this->isTravel() || !$this->seats_capacity) {
+            return 0;
+        }
+        return max(0, $this->seats_capacity - $this->seats_taken);
+    }
+
+    /**
+     * Check if travel trip has available seats
+     */
+    public function hasAvailableSeats(int $requestedSeats = 1): bool
+    {
+        if (!$this->isTravel()) {
+            return false;
+        }
+        return $this->getSeatsLeftAttribute() >= $requestedSeats;
+    }
+
+    /**
+     * Check if trip is normal (non-travel)
+     */
+    public function isNormal(): bool
+    {
+        return $this->trip_type === 'normal' || !$this->isTravel();
     }
 
     /**
@@ -133,12 +181,19 @@ class TripRequest extends Model
     }
 
     /**
-     * Get the effective fare (fixed_price for travel, actual_fare for normal)
+     * Get the effective fare (offer_price for travel, actual_fare for normal)
      */
     public function getEffectiveFare(): float
     {
-        if ($this->isTravel() && $this->fixed_price) {
-            return $this->fixed_price;
+        if ($this->isTravel()) {
+            // New unified approach: offer_price
+            if ($this->offer_price) {
+                return $this->offer_price;
+            }
+            // Fallback to old fixed_price for backward compatibility
+            if ($this->fixed_price) {
+                return $this->fixed_price;
+            }
         }
         return $this->actual_fare ?? $this->estimated_fare ?? 0;
     }
@@ -160,19 +215,52 @@ class TripRequest extends Model
     }
 
     /**
-     * Scope for travel trips only
+     * Scope for travel trips only (supports both old and new fields)
      */
     public function scopeTravel($query)
     {
-        return $query->where('is_travel', true);
+        return $query->where(function($q) {
+            $q->where('trip_type', 'travel')
+              ->orWhere('is_travel', true);
+        });
     }
 
     /**
-     * Scope for pending travel trips
+     * Scope for normal (non-travel) trips
+     */
+    public function scopeNormal($query)
+    {
+        return $query->where('trip_type', 'normal')
+                     ->where(function($q) {
+                         $q->where('is_travel', false)
+                           ->orWhereNull('is_travel');
+                     });
+    }
+
+    /**
+     * Scope for pending travel trips with available seats
      */
     public function scopeTravelPending($query)
     {
-        return $query->where('is_travel', true)->where('travel_status', 'pending');
+        return $query->travel()
+            ->where(function($q) {
+                // Old travel_status field
+                $q->where('travel_status', 'pending')
+                  // Or new approach: pending current_status and scheduled_at in future
+                  ->orWhere(function($q2) {
+                      $q2->where('current_status', 'pending')
+                         ->where('scheduled_at', '>', now());
+                  });
+            });
+    }
+
+    /**
+     * Scope for travel trips with available seats
+     */
+    public function scopeWithAvailableSeats($query, int $requestedSeats = 1)
+    {
+        return $query->travel()
+            ->whereRaw('(seats_capacity - seats_taken) >= ?', [$requestedSeats]);
     }
 
     protected static function newFactory()

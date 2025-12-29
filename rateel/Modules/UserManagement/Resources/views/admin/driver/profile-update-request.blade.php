@@ -148,7 +148,10 @@
                                                     <td class="level">{{ $driver->level?->name }}</td>
                                                     <td class="total-trip">{{ $driver->driverTrips->count() }}</td>
                                                     <td>
-                                                        {{ set_currency_symbol($driver->userAccount->received_balance + $driver->userAccount->total_withdrawn) }}
+                                                        {{ set_currency_symbol(
+                                                            (optional($driver->userAccount)->received_balance ?? 0) +
+                                                            (optional($driver->userAccount)->total_withdrawn ?? 0)
+                                                        ) }}
                                                     </td>
                                                     @can('user_edit')
                                                         <td class="status">

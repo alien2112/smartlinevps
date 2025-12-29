@@ -65,6 +65,24 @@ return [
             'visibility' => 'private',
         ],
 
+        // Local secure media storage - temporarily replacing R2
+        // Files stored in /root/new/ with organized directory structure
+        'secure_local' => [
+            'driver' => 'local',
+            'root' => '/root/new',
+            'visibility' => 'private',
+            'permissions' => [
+                'file' => [
+                    'public' => 0644,
+                    'private' => 0640,
+                ],
+                'dir' => [
+                    'public' => 0755,
+                    'private' => 0750,
+                ],
+            ],
+        ],
+
     ],
 
     /*
