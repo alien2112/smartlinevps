@@ -137,6 +137,7 @@
             src="{{asset('public/assets/admin-module/plugins/daterangepicker/moment.min.js')}}"></script>
     <script src="{{asset('public/assets/admin-module/plugins/daterangepicker/daterangepicker.min.js')}}"></script>
     <script src="{{asset('public/assets/admin-module/js/date-range-picker.js')}}"></script>
+    <script src="{{asset('public/assets/admin-module/js/maps/coordinate-validator.js')}}"></script>
     <script src="{{asset('public/assets/admin-module/js/maps/map-init-overview.js')}}"></script>
 
     <script>

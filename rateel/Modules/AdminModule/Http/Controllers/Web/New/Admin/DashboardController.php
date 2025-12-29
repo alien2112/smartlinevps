@@ -257,19 +257,26 @@ class DashboardController extends BaseController
         $polygons = json_encode(formatZoneCoordinates($zones));
 
         $markers = json_encode($markers->values());
-        // Calculate center lat/lng
+
+        // Calculate map center from zone centroids (production-grade)
         $latSum = 0;
         $lngSum = 0;
-        $totalPoints = 0;
+        $zoneCount = 0;
 
         foreach ($zones as $zone) {
-            $latSum += trim(explode(' ', $zone->center)[1], 'POINT()');
-            $lngSum += trim(explode(' ', $zone->center)[0], 'POINT()');
-            $totalPoints++;
+            if ($zone->coordinates) {
+                [$lat, $lng] = $this->calculatePolygonCentroid($zone->coordinates);
+                if ($lat !== 0 || $lng !== 0) {
+                    $latSum += $lat;
+                    $lngSum += $lng;
+                    $zoneCount++;
+                }
+            }
         }
 
-        $centerLat = $latSum / ($totalPoints == 0 ? 1 : $totalPoints);
-        $centerLng = $lngSum / ($totalPoints == 0 ? 1 : $totalPoints);
+        $centerLat = $zoneCount > 0 ? $latSum / $zoneCount : 0;
+        $centerLng = $zoneCount > 0 ? $lngSum / $zoneCount : 0;
+
         return view('adminmodule::heat-map', compact('zones', 'totalRideRequests', 'totalParcelRequests', 'markers', 'polygons', 'centerLat', 'centerLng'));
     }
 
@@ -301,18 +308,26 @@ class DashboardController extends BaseController
         })->filter(fn($m) => $m['position']['lat'] != 0 || $m['position']['lng'] != 0)->values();
         $polygons = json_encode(formatZoneCoordinates($zones));
         $markers = json_encode($markers);
-        // Calculate center lat/lng
+
+        // Calculate map center from zone centroids (production-grade)
         $latSum = 0;
         $lngSum = 0;
-        $totalPoints = 0;
+        $zoneCount = 0;
+
         foreach ($zones as $zone) {
-            $latSum += trim(explode(' ', $zone->center)[1], 'POINT()');
-            $lngSum += trim(explode(' ', $zone->center)[0], 'POINT()');
-            $totalPoints++;
+            if ($zone->coordinates) {
+                [$lat, $lng] = $this->calculatePolygonCentroid($zone->coordinates);
+                if ($lat !== 0 || $lng !== 0) {
+                    $latSum += $lat;
+                    $lngSum += $lng;
+                    $zoneCount++;
+                }
+            }
         }
 
-        $centerLat = $latSum / ($totalPoints == 0 ? 1 : $totalPoints);
-        $centerLng = $lngSum / ($totalPoints == 0 ? 1 : $totalPoints);
+        $centerLat = $zoneCount > 0 ? $latSum / $zoneCount : 0;
+        $centerLng = $zoneCount > 0 ? $lngSum / $zoneCount : 0;
+
         return response()
             ->json(view('adminmodule::partials.heat-map._overview-map', compact('polygons', 'markers', 'centerLat', 'centerLng'))
                 ->render());
@@ -585,6 +600,93 @@ class DashboardController extends BaseController
         }
 
         return redirect()->back()->with('error', $result['message']);
+    }
+
+    /**
+     * Production-grade helper to extract [lat, lng] from any geometry point format
+     *
+     * Supports:
+     * - MySQL Spatial arrays: [lng, lat]
+     * - GeoJSON objects: { latitude: X, longitude: Y }
+     * - Alternative formats: { lat: X, lng: Y }
+     * - Point objects with properties
+     *
+     * @param mixed $point The point data in any supported format
+     * @return array|null Returns [lat, lng] or null if invalid
+     */
+    private function getLatLng($point): ?array
+    {
+        // Handle null/empty
+        if (!$point) {
+            return null;
+        }
+
+        // Case 1: Array format [lng, lat] or [lat, lng]
+        if (is_array($point)) {
+            // MySQL spatial returns [longitude, latitude]
+            if (count($point) >= 2 && is_numeric($point[0]) && is_numeric($point[1])) {
+                // Assume [lng, lat] format (MySQL standard)
+                return [(float)$point[1], (float)$point[0]];
+            }
+            return null;
+        }
+
+        // Case 2: Object with latitude/longitude properties
+        if (is_object($point)) {
+            // Try latitude/longitude
+            if (isset($point->latitude) && isset($point->longitude)) {
+                return [(float)$point->latitude, (float)$point->longitude];
+            }
+            // Try lat/lng
+            if (isset($point->lat) && isset($point->lng)) {
+                return [(float)$point->lat, (float)$point->lng];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Calculate centroid from zone polygon coordinates
+     *
+     * @param mixed $coordinates The zone coordinates (Polygon object or array)
+     * @return array Returns [lat, lng] or [0, 0] if invalid
+     */
+    private function calculatePolygonCentroid($coordinates): array
+    {
+        if (!$coordinates) {
+            return [0, 0];
+        }
+
+        $latSum = 0;
+        $lngSum = 0;
+        $pointCount = 0;
+
+        // Extract points from Polygon object
+        $points = [];
+        if (is_object($coordinates) && method_exists($coordinates, 'getCoordinates')) {
+            $points = $coordinates->getCoordinates()[0] ?? [];
+        } elseif (is_array($coordinates)) {
+            $points = $coordinates[0] ?? $coordinates;
+        }
+
+        // Process each point
+        foreach ($points as $point) {
+            $latLng = $this->getLatLng($point);
+            if ($latLng) {
+                [$lat, $lng] = $latLng;
+                $latSum += $lat;
+                $lngSum += $lng;
+                $pointCount++;
+            }
+        }
+
+        // Return centroid or [0, 0] if no valid points
+        if ($pointCount === 0) {
+            return [0, 0];
+        }
+
+        return [$latSum / $pointCount, $lngSum / $pointCount];
     }
 
 }

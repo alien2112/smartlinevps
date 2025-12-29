@@ -25,7 +25,9 @@
       "Bash(php:*)",
       "Bash(pm2 restart:*)",
       "Bash(pm2 logs:*)",
-      "Bash(redis-cli ping:*)"
+      "Bash(redis-cli ping:*)",
+      "WebSearch",
+      "WebFetch(domain:developers.kashier.io)"
     ]
   }
 }
