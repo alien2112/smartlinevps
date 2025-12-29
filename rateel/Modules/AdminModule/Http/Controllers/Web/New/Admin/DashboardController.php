@@ -293,19 +293,46 @@ class DashboardController extends BaseController
             'id' => $request['zone_ids'] ?? []
         ];
         $zones = $this->zoneService->getBy(whereInCriteria: $whereInCriteria);
-        $tripWhereInCriteria = [
-            'zone_id' => $zones->pluck('id')->toArray(),
-        ];
-        $trips = $this->tripRequestService->getBy(whereInCriteria: $tripWhereInCriteria, whereBetweenCriteria: $whereBetweenCriteria, relations: ['coordinate', 'zone']);
+        $zoneIds = $zones->pluck('id')->toArray();
+        
+        // PERFORMANCE FIX: Use raw query with limit instead of loading all trips via Eloquent
+        $maxHeatMapPoints = config('app.max_heatmap_points', 5000);
+        
+        $trips = \DB::table('trip_requests')
+            ->join('trip_request_coordinates', 'trip_requests.id', '=', 'trip_request_coordinates.trip_request_id')
+            ->whereIn('trip_requests.zone_id', $zoneIds)
+            ->when(!empty($whereBetweenCriteria), function ($query) use ($whereBetweenCriteria) {
+                foreach ($whereBetweenCriteria as $column => $range) {
+                    $query->whereBetween('trip_requests.' . $column, $range);
+                }
+            })
+            ->select(
+                'trip_requests.ref_id',
+                \DB::raw('ST_AsText(trip_request_coordinates.pickup_coordinates) as pickup_coordinates')
+            )
+            ->limit($maxHeatMapPoints)
+            ->get();
+        
         $markers = $trips->map(function ($trip) {
+            $lat = 0;
+            $lng = 0;
+            if ($trip->pickup_coordinates) {
+                if (is_string($trip->pickup_coordinates)) {
+                    if (preg_match('/POINT\s*\(\s*([0-9.-]+)\s+([0-9.-]+)\s*\)/i', $trip->pickup_coordinates, $matches)) {
+                        $lng = (float)$matches[1];
+                        $lat = (float)$matches[2];
+                    }
+                }
+            }
             return [
                 'position' => [
-                    'lat' => $trip?->coordinate?->pickup_coordinates?->latitude ?? 0, // Default to 0 if not defined
-                    'lng' => $trip?->coordinate?->pickup_coordinates?->longitude ?? 0, // Default to 0 if not defined
+                    'lat' => $lat,
+                    'lng' => $lng,
                 ],
-                'title' => "Trip Id #" . $trip?->ref_id,
+                'title' => "Trip Id #" . $trip->ref_id,
             ];
         })->filter(fn($m) => $m['position']['lat'] != 0 || $m['position']['lng'] != 0)->values();
+        
         $polygons = json_encode(formatZoneCoordinates($zones));
         $markers = json_encode($markers);
 
@@ -357,8 +384,17 @@ class DashboardController extends BaseController
             'created_at' => [$startDate, $endDate],
         ];
 
-        $tripCount = $this->tripRequestService->getBy(criteria: ['zone_id' => $zone?->id], whereBetweenCriteria: $whereBetweenCriteria, relations: ['coordinate', 'zone'])->count();
+        // PERFORMANCE FIX: Use count query instead of loading all trips just to count
+        $tripCount = \DB::table('trip_requests')
+            ->where('zone_id', $zone?->id)
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+            
         $dateWiseTrips = $this->tripRequestService->getTripHeatMapCompareDataBy(data: ['zone_id' => $zone?->id, 'date_range' => $dateRange]);
+        
+        // PERFORMANCE FIX: Cap markers per time period to prevent browser crash
+        $maxMarkersPerPeriod = config('app.max_heatmap_points_per_period', 1000);
+        
         if ($dateWiseTrips->isNotEmpty()) {
             $markers = [];
             foreach ($dateWiseTrips as $dateWiseTrip) {
@@ -438,16 +474,42 @@ class DashboardController extends BaseController
                 $dateWiseTrip->startDate = $showStartDate;
                 $dateWiseTrip->endDate = $showEndDate;
                 $dateWiseTrip->markerKey = $markerKey;
-                $trips = $this->tripRequestService->getBy(criteria: ['zone_id' => $zone?->id], whereBetweenCriteria: $whereMarkerBetweenCriteria, relations: ['coordinate', 'zone']);
+                
+                // PERFORMANCE FIX: Use raw query with limit instead of loading all trips via Eloquent
+                $periodStart = $whereMarkerBetweenCriteria['created_at'][0];
+                $periodEnd = $whereMarkerBetweenCriteria['created_at'][1];
+                
+                $trips = \DB::table('trip_requests')
+                    ->join('trip_request_coordinates', 'trip_requests.id', '=', 'trip_request_coordinates.trip_request_id')
+                    ->where('trip_requests.zone_id', $zone?->id)
+                    ->whereBetween('trip_requests.created_at', [$periodStart, $periodEnd])
+                    ->select(
+                        'trip_requests.ref_id',
+                        \DB::raw('ST_AsText(trip_request_coordinates.pickup_coordinates) as pickup_coordinates')
+                    )
+                    ->limit($maxMarkersPerPeriod)
+                    ->get();
+                
                 $mappedMarkers = $trips->map(function ($trip) {
+                    $lat = 0;
+                    $lng = 0;
+                    if ($trip->pickup_coordinates) {
+                        if (is_string($trip->pickup_coordinates)) {
+                            if (preg_match('/POINT\s*\(\s*([0-9.-]+)\s+([0-9.-]+)\s*\)/i', $trip->pickup_coordinates, $matches)) {
+                                $lng = (float)$matches[1];
+                                $lat = (float)$matches[2];
+                            }
+                        }
+                    }
                     return [
                         'position' => [
-                            'lat' => $trip?->coordinate?->pickup_coordinates?->latitude ?? 0, // Default to 0 if not defined
-                            'lng' => $trip?->coordinate?->pickup_coordinates?->longitude ?? 0, // Default to 0 if not defined
+                            'lat' => $lat,
+                            'lng' => $lng,
                         ],
-                        'title' => "Trip Id #" . $trip?->ref_id,
+                        'title' => "Trip Id #" . $trip->ref_id,
                     ];
-                });
+                })->filter(fn($m) => $m['position']['lat'] != 0 || $m['position']['lng'] != 0)->values();
+                
                 $markers[$markerKey] = $mappedMarkers;
             }
         } else {

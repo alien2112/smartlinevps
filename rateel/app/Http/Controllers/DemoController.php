@@ -20,6 +20,9 @@ use Modules\UserManagement\Entities\User;
 use Modules\UserManagement\Entities\WithdrawRequest;
 use Modules\UserManagement\Service\Interface\EmployeeRoleServiceInterface;
 use Modules\UserManagement\Service\Interface\EmployeeServiceInterface;
+use Modules\TripManagement\Entities\TripRequest;
+use App\Events\NewMessage;
+use App\Events\SampleEvent;
 
 class DemoController extends Controller
 {
@@ -363,5 +366,49 @@ Parcel ID is {ParcelId} You can track this parcel from this link {TrackingLink}"
         }
     }
 
+    /**
+     * Test event sender route (converted from closure for route caching)
+     */
+    public function sender()
+    {
+        return event(new NewMessage("hello"));
+    }
+
+    /**
+     * Test Pusher connection (converted from closure for route caching)
+     */
+    public function testConnection()
+    {
+        $trip = TripRequest::first();
+        try {
+            checkPusherConnection(\App\Events\CustomerTripRequestEvent::broadcast($trip->driver, $trip));
+        } catch (\Exception $exception) {
+            // Silent fail for test endpoint
+        }
+        return response()->json(['status' => 'connection test complete']);
+    }
+
+    /**
+     * Trigger sample broadcast event (converted from closure for route caching)
+     */
+    public function trigger()
+    {
+        broadcast(new SampleEvent('Hello'));
+        return response()->json(['status' => true]);
+    }
+
+    /**
+     * Test topic notification (converted from closure for route caching)
+     */
+    public function testNotification()
+    {
+        sendTopicNotification(
+            'admin_message',
+            translate('new_request_notification'),
+            translate('new_request_has_been_placed'),
+            'null'
+        );
+        return response()->json(['status' => true]);
+    }
 
 }

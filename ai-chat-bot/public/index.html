@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, maximum-scale=1.0, user-scalable=no">
+        <title>RideAI Support - Demo</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+            rel="stylesheet">
+        <style>
+            :root {
+                --bg-primary: #0a0a0f;
+                --bg-secondary: #12121a;
+                --bg-tertiary: #1a1a25;
+                --accent-primary: #00d4aa;
+                --accent-secondary: #00b894;
+                --accent-glow: rgba(0, 212, 170, 0.3);
+                --text-primary: #ffffff;
+                --text-secondary: #a0a0b0;
+                --text-muted: #606070;
+                --danger: #ff6b6b;
+                --warning: #ffd93d;
+                --success: #00d4aa;
+                --border: rgba(255, 255, 255, 0.08);
+                --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            }
+
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family: 'Space Grotesk', sans-serif;
+                background: var(--bg-primary);
+                color: var(--text-primary);
+                min-height: 100vh;
+                overflow-x: hidden;
+            }
+
+            /* Animated background */
+            .bg-pattern {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background:
+                    radial-gradient(ellipse at 20% 20%, rgba(0, 212, 170, 0.08) 0%, transparent 50%),
+                    radial-gradient(ellipse at 80% 80%, rgba(0, 184, 148, 0.06) 0%, transparent 50%),
+                    radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, 0) 0%, var(--bg-primary) 100%);
+                pointer-events: none;
+                z-index: 0;
+            }
+
+            .container {
+                position: relative;
+                z-index: 1;
+                max-width: 1400px;
+                margin: 0 auto;
+                padding: 20px;
+                display: grid;
+                grid-template-columns: 380px 1fr;
+                gap: 24px;
+                min-height: 100vh;
+            }
+
+            /* Header */
+            .header {
+                grid-column: 1 / -1;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 16px 24px;
+                background: var(--bg-secondary);
+                border-radius: 16px;
+                border: 1px solid var(--border);
+            }
+
+            .logo {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .logo-icon {
+                width: 44px;
+                height: 44px;
+                background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 22px;
+            }
+
+            .logo-text h1 {
+                font-size: 20px;
+                font-weight: 700;
+                letter-spacing: -0.5px;
+            }
+
+            .logo-text span {
+                font-size: 12px;
+                color: var(--text-muted);
+                font-weight: 500;
+            }
+
+            .status-badge {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 16px;
+                background: rgba(0, 212, 170, 0.1);
+                border: 1px solid rgba(0, 212, 170, 0.3);
+                border-radius: 20px;
+                font-size: 13px;
+                font-weight: 500;
+            }
+
+            .status-dot {
+                width: 8px;
+                height: 8px;
+                background: var(--accent-primary);
+                border-radius: 50%;
+                animation: pulse 2s infinite;
+            }
+
+            @keyframes pulse {
+
+                0%,
+                100% {
+                    opacity: 1;
+                }
+
+                50% {
+                    opacity: 0.5;
+                }
+            }
+
+            /* Phone Mockup */
+            .phone-container {
+                display: flex;
+                justify-content: center;
+                align-items: flex-start;
+                padding-top: 20px;
+            }
+
+            .phone {
+                width: 375px;
+                height: 750px;
+                background: var(--bg-secondary);
+                border-radius: 44px;
+                border: 3px solid #2a2a35;
+                box-shadow:
+                    var(--shadow),
+                    inset 0 0 0 2px rgba(255, 255, 255, 0.05);
+                overflow: hidden;
+                position: relative;
+            }
+
+            .phone-notch {
+                position: absolute;
+                top: 12px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 140px;
+                height: 28px;
+                background: #000;
+                border-radius: 20px;
+                z-index: 10;
+            }
+
+            .phone-screen {
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                padding-top: 50px;
+            }
+
+            .chat-header {
+                padding: 16px 20px;
+                background: var(--bg-tertiary);
+                border-bottom: 1px solid var(--border);
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .chat-avatar {
+                width: 40px;
+                height: 40px;
+                background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 18px;
+            }
+
+            .chat-info h3 {
+                font-size: 15px;
+                font-weight: 600;
+            }
+
+            .chat-info span {
+                font-size: 12px;
+                color: var(--accent-primary);
+            }
+
+            .chat-messages {
+                flex: 1;
+                overflow-y: auto;
+                padding: 20px;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .message {
+                max-width: 85%;
+                padding: 12px 16px;
+                border-radius: 18px;
+                font-size: 14px;
+                line-height: 1.5;
+                animation: messageIn 0.3s ease-out;
+            }
+
+            @keyframes messageIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(10px);
+                }
+
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            .message.user {
+                align-self: flex-end;
+                background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+                color: #000;
+                border-bottom-right-radius: 6px;
+            }
+
+            .message.assistant {
+                align-self: flex-start;
+                background: var(--bg-tertiary);
+                border: 1px solid var(--border);
+                border-bottom-left-radius: 6px;
+            }
+
+            .message-meta {
+                display: flex;
+                gap: 8px;
+                margin-top: 6px;
+                font-size: 11px;
+            }
+
+            .confidence-badge {
+                padding: 2px 8px;
+                border-radius: 10px;
+                font-weight: 500;
+                font-family: 'JetBrains Mono', monospace;
+            }
+
+            .confidence-high {
+                background: rgba(0, 212, 170, 0.2);
+                color: var(--success);
+            }
+
+            .confidence-medium {
+                background: rgba(255, 217, 61, 0.2);
+                color: var(--warning);
+            }
+
+            .confidence-low {
+                background: rgba(255, 107, 107, 0.2);
+                color: var(--danger);
+            }
+
+            .handoff-badge {
+                padding: 2px 8px;
+                background: rgba(255, 107, 107, 0.2);
+                color: var(--danger);
+                border-radius: 10px;
+                font-weight: 500;
+            }
+
+            .typing-indicator {
+                display: none;
+                align-self: flex-start;
+                padding: 12px 16px;
+                background: var(--bg-tertiary);
+                border-radius: 18px;
+                border-bottom-left-radius: 6px;
+            }
+
+            .typing-indicator.show {
+                display: flex;
+                gap: 4px;
+            }
+
+            .typing-dot {
+                width: 8px;
+                height: 8px;
+                background: var(--text-muted);
+                border-radius: 50%;
+                animation: typingBounce 1.4s infinite;
+            }
+
+            .typing-dot:nth-child(2) {
+                animation-delay: 0.2s;
+            }
+
+            .typing-dot:nth-child(3) {
+                animation-delay: 0.4s;
+            }
+
+            @keyframes typingBounce {
+
+                0%,
+                60%,
+                100% {
+                    transform: translateY(0);
+                }
+
+                30% {
+                    transform: translateY(-6px);
+                }
+            }
+
+            .chat-input-container {
+                padding: 16px 20px 30px;
+                background: var(--bg-tertiary);
+                border-top: 1px solid var(--border);
+            }
+
+            .chat-input-wrapper {
+                display: flex;
+                gap: 10px;
+                align-items: center;
+            }
+
+            .chat-input {
+                flex: 1;
+                padding: 12px 16px;
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: 24px;
+                color: var(--text-primary);
+                font-size: 14px;
+                font-family: inherit;
+                outline: none;
+                transition: border-color 0.2s;
+            }
+
+            .chat-input:focus {
+                border-color: var(--accent-primary);
+            }
+
+            .chat-input::placeholder {
+                color: var(--text-muted);
+            }
+
+            .send-btn {
+                width: 44px;
+                height: 44px;
+                background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+                border: none;
+                border-radius: 50%;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: transform 0.2s, box-shadow 0.2s;
+            }
+
+            .send-btn:hover {
+                transform: scale(1.05);
+                box-shadow: 0 4px 20px var(--accent-glow);
+            }
+
+            .send-btn:active {
+                transform: scale(0.95);
+            }
+
+            .send-btn svg {
+                width: 20px;
+                height: 20px;
+                fill: #000;
+            }
+
+            /* Control Panel */
+            .control-panel {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .panel {
+                background: var(--bg-secondary);
+                border-radius: 16px;
+                border: 1px solid var(--border);
+                overflow: hidden;
+            }
+
+            .panel-header {
+                padding: 16px 20px;
+                background: var(--bg-tertiary);
+                border-bottom: 1px solid var(--border);
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .panel-header h2 {
+                font-size: 15px;
+                font-weight: 600;
+            }
+
+            .panel-header .icon {
+                font-size: 18px;
+            }
+
+            .panel-content {
+                padding: 20px;
+            }
+
+            /* User Config */
+            .config-group {
+                margin-bottom: 16px;
+            }
+
+            .config-group:last-child {
+                margin-bottom: 0;
+            }
+
+            .config-label {
+                display: block;
+                font-size: 12px;
+                color: var(--text-secondary);
+                margin-bottom: 6px;
+                font-weight: 500;
+            }
+
+            .config-input {
+                width: 100%;
+                padding: 10px 14px;
+                background: var(--bg-primary);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                color: var(--text-primary);
+                font-size: 14px;
+                font-family: 'JetBrains Mono', monospace;
+                outline: none;
+                transition: border-color 0.2s;
+            }
+
+            .config-input:focus {
+                border-color: var(--accent-primary);
+            }
+
+            .config-select {
+                width: 100%;
+                padding: 10px 14px;
+                background: var(--bg-primary);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                color: var(--text-primary);
+                font-size: 14px;
+                font-family: inherit;
+                outline: none;
+                cursor: pointer;
+            }
+
+            /* Ride Info */
+            .ride-card {
+                background: var(--bg-primary);
+                border-radius: 12px;
+                padding: 16px;
+                border: 1px solid var(--border);
+            }
+
+            .ride-status {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 12px;
+                background: rgba(0, 212, 170, 0.1);
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: 600;
+                color: var(--accent-primary);
+                margin-bottom: 12px;
+            }
+
+            .ride-status.pending {
+                background: rgba(255, 217, 61, 0.1);
+                color: var(--warning);
+            }
+
+            .ride-status.completed {
+                background: rgba(160, 160, 176, 0.1);
+                color: var(--text-secondary);
+            }
+
+            .ride-details {
+                display: grid;
+                gap: 10px;
+            }
+
+            .ride-detail {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .ride-detail-icon {
+                width: 32px;
+                height: 32px;
+                background: var(--bg-tertiary);
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 14px;
+            }
+
+            .ride-detail-text {
+                flex: 1;
+            }
+
+            .ride-detail-label {
+                font-size: 11px;
+                color: var(--text-muted);
+            }
+
+            .ride-detail-value {
+                font-size: 13px;
+                font-weight: 500;
+            }
+
+            /* Action Buttons */
+            .action-buttons {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+            }
+
+            .action-btn {
+                padding: 10px 16px;
+                border: none;
+                border-radius: 10px;
+                font-size: 13px;
+                font-weight: 500;
+                font-family: inherit;
+                cursor: pointer;
+                transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+            }
+
+            .action-btn.primary {
+                background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+                color: #000;
+            }
+
+            .action-btn.primary:hover {
+                box-shadow: 0 4px 20px var(--accent-glow);
+            }
+
+            .action-btn.secondary {
+                background: var(--bg-tertiary);
+                color: var(--text-primary);
+                border: 1px solid var(--border);
+            }
+
+            .action-btn.secondary:hover {
+                background: var(--bg-primary);
+            }
+
+            .action-btn.danger {
+                background: rgba(255, 107, 107, 0.1);
+                color: var(--danger);
+                border: 1px solid rgba(255, 107, 107, 0.3);
+            }
+
+            .action-btn.danger:hover {
+                background: rgba(255, 107, 107, 0.2);
+            }
+
+            .action-btn.full {
+                grid-column: 1 / -1;
+            }
+
+            /* API Log */
+            .api-log {
+                max-height: 300px;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .log-entry {
+                padding: 12px;
+                background: var(--bg-primary);
+                border-radius: 8px;
+                border: 1px solid var(--border);
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 11px;
+            }
+
+            .log-entry .method {
+                color: var(--accent-primary);
+                font-weight: 600;
+            }
+
+            .log-entry .endpoint {
+                color: var(--text-secondary);
+            }
+
+            .log-entry .timestamp {
+                color: var(--text-muted);
+                font-size: 10px;
+            }
+
+            .log-entry pre {
+                margin-top: 8px;
+                padding: 8px;
+                background: rgba(0, 0, 0, 0.3);
+                border-radius: 6px;
+                overflow-x: auto;
+                white-space: pre-wrap;
+                word-break: break-all;
+            }
+
+            /* Toast Notifications */
+            .toast-container {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                z-index: 1000;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .toast {
+                padding: 12px 20px;
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                box-shadow: var(--shadow);
+                animation: toastIn 0.3s ease-out;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .toast.success {
+                border-left: 3px solid var(--success);
+            }
+
+            .toast.error {
+                border-left: 3px solid var(--danger);
+            }
+
+            .toast.warning {
+                border-left: 3px solid var(--warning);
+            }
+
+            @keyframes toastIn {
+                from {
+                    opacity: 0;
+                    transform: translateX(100px);
+                }
+
+                to {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+            }
+
+            /* Scrollbar */
+            ::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            ::-webkit-scrollbar-track {
+                background: transparent;
+            }
+
+            ::-webkit-scrollbar-thumb {
+                background: var(--border);
+                border-radius: 3px;
+            }
+
+            ::-webkit-scrollbar-thumb:hover {
+                background: var(--text-muted);
+            }
+
+            /* Responsive */
+            @media (max-width: 900px) {
+                .container {
+                    grid-template-columns: 1fr;
+                }
+
+                .phone-container {
+                    order: -1;
+                }
+
+                .phone {
+                    width: 100%;
+                    max-width: 375px;
+                    height: 600px;
+                }
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="bg-pattern"></div>
+
+        <div class="container">
+            <header class="header">
+                <div class="logo">
+                    <div class="logo-icon">🚗</div>
+                    <div class="logo-text">
+                        <h1>RideAI Support</h1>
+                        <span>Backend Demo Interface</span>
+                    </div>
+                </div>
+                <div class="status-badge">
+                    <div class="status-dot"></div>
+                    <span>API Connected</span>
+                </div>
+            </header>
+
+            <!-- Phone Mockup -->
+            <div class="phone-container">
+                <div class="phone">
+                    <div class="phone-notch"></div>
+                    <div class="phone-screen">
+                        <div class="chat-header">
+                            <div class="chat-avatar">🤖</div>
+                            <div class="chat-info">
+                                <h3>AI Support</h3>
+                                <span>● Online</span>
+                            </div>
+                        </div>
+
+                        <div class="chat-messages" id="chatMessages">
+                            <div class="message assistant">
+                                Hello! How can I assist you with your ride today?
+                            </div>
+                        </div>
+
+                        <div class="typing-indicator" id="typingIndicator">
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot"></div>
+                        </div>
+
+                        <div class="chat-input-container">
+                            <div class="chat-input-wrapper">
+                                <input type="text" class="chat-input" id="messageInput" placeholder="Type a message..."
+                                    maxlength="300">
+                                <button class="send-btn" id="sendBtn">
+                                    <svg viewBox="0 0 24 24">
+                                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="control-panel">
+                <!-- User Config -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="icon">👤</span>
+                        <h2>User Configuration</h2>
+                    </div>
+                    <div class="panel-content">
+                        <div class="config-group">
+                            <label class="config-label">User ID</label>
+                            <input type="text" class="config-input" id="userId" value="u_demo_123">
+                        </div>
+                        <div class="config-group">
+                            <label class="config-label">Language (Auto-detected from message)</label>
+                            <select class="config-select" id="language">
+                                <option value="en">🇬🇧 English</option>
+                                <option value="ar">🇸🇦 العربية (Arabic)</option>
+                            </select>
+                        </div>
+                        <div class="config-group">
+                            <label class="config-label">AI Model</label>
+                            <select class="config-select" id="aiModel">
+                                <option value="llama-3.3-70b">🦙 Llama 3.3 70B (Groq) - Best Quality</option>
+                                <option value="llama-3.1-8b">⚡ Llama 3.1 8B (Groq) - Fast</option>
+                                <option value="mistral-7b">🌀 Mistral 7B (OpenRouter) - Balanced</option>
+                            </select>
+                        </div>
+                        <div class="action-buttons" style="margin-top: 16px;">
+                            <button class="action-btn secondary" onclick="clearMemory()">🗑️ Clear Memory</button>
+                            <button class="action-btn secondary" onclick="unblockUser()">🔓 Unblock</button>
+                            <button class="action-btn primary full" onclick="resetUser()">🔄 Full Reset (Unblock + Clear
+                                All)</button>
+                            <button class="action-btn danger full" onclick="resetAllUsers()">⚠️ Reset ALL Users</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ride Simulation -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="icon">🚕</span>
+                        <h2>Active Ride</h2>
+                    </div>
+                    <div class="panel-content">
+                        <div class="ride-card">
+                            <div class="ride-status" id="rideStatusBadge">
+                                <span>●</span> ongoing
+                            </div>
+                            <div class="ride-details">
+                                <div class="ride-detail">
+                                    <div class="ride-detail-icon">👨‍✈️</div>
+                                    <div class="ride-detail-text">
+                                        <div class="ride-detail-label">Driver</div>
+                                        <div class="ride-detail-value" id="driverName">Ahmed</div>
+                                    </div>
+                                </div>
+                                <div class="ride-detail">
+                                    <div class="ride-detail-icon">📍</div>
+                                    <div class="ride-detail-text">
+                                        <div class="ride-detail-label">Pickup</div>
+                                        <div class="ride-detail-value" id="pickup">Mall</div>
+                                    </div>
+                                </div>
+                                <div class="ride-detail">
+                                    <div class="ride-detail-icon">🏁</div>
+                                    <div class="ride-detail-text">
+                                        <div class="ride-detail-label">Destination</div>
+                                        <div class="ride-detail-value" id="destination">Airport</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="action-buttons" style="margin-top: 16px;">
+                            <button class="action-btn primary full" onclick="createRide()">➕ Create/Update Ride</button>
+                        </div>
+                        <div class="action-buttons" style="margin-top: 10px;">
+                            <button class="action-btn secondary" onclick="updateRideStatus('ongoing')">🚗
+                                Ongoing</button>
+                            <button class="action-btn secondary" onclick="updateRideStatus('completed')">✅
+                                Complete</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Messages English -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="icon">🇬🇧</span>
+                        <h2>Quick Test - English</h2>
+                    </div>
+                    <div class="panel-content">
+                        <div class="action-buttons">
+                            <button class="action-btn secondary" onclick="sendQuickMessage('Hello')">👋 Hello</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessage('Where is my driver?')">🔍
+                                Where is driver?</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessage('Driver is late')">⏰ Driver
+                                late</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessage('I want to cancel')">❌
+                                Cancel</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessage('Bad driving')">🚗 Bad
+                                driving</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessage('I need a refund')">💰
+                                Refund</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessage('I had an accident')">🚨
+                                Emergency</button>
+                            <button class="action-btn secondary"
+                                onclick="sendQuickMessage('I left something in the car')">📦 Lost item</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessage('Book a ride')">🚕 Book
+                                ride</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessage('Thank you')">🙏
+                                Thanks</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Messages Arabic -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="icon">🇸🇦</span>
+                        <h2>Quick Test - العربية</h2>
+                    </div>
+                    <div class="panel-content">
+                        <div class="action-buttons">
+                            <button class="action-btn secondary" onclick="sendQuickMessageAr('مرحبا')">👋 مرحبا</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessageAr('أين السائق')">🔍 أين
+                                السائق</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessageAr('السائق تأخر')">⏰ السائق
+                                تأخر</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessageAr('أريد إلغاء الرحلة')">❌
+                                إلغاء</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessageAr('قيادة سيئة')">🚗 قيادة
+                                سيئة</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessageAr('أريد عمل رحلة')">🚕 رحلة
+                                جديدة</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessageAr('عندي مشكلة مع السائق')">😠
+                                مشكلة سائق</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessageAr('نسيت غرض في السيارة')">📦
+                                غرض منسي</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessageAr('أريد استرداد')">💰
+                                استرداد</button>
+                            <button class="action-btn secondary" onclick="sendQuickMessageAr('شكراً')">🙏 شكراً</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API Log -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="icon">📋</span>
+                        <h2>API Log</h2>
+                    </div>
+                    <div class="panel-content">
+                        <div class="api-log" id="apiLog">
+                            <div class="log-entry">
+                                <span class="timestamp">Ready</span>
+                                <div>Waiting for API calls...</div>
+                            </div>
+                        </div>
+                        <button class="action-btn danger full" style="margin-top: 12px;" onclick="clearLog()">🗑️ Clear
+                            Log</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="toast-container" id="toastContainer"></div>
+
+        <script>
+            const API_BASE = 'http://localhost:3000';
+
+            // DOM Elements
+            const chatMessages = document.getElementById('chatMessages');
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const typingIndicator = document.getElementById('typingIndicator');
+            const apiLog = document.getElementById('apiLog');
+            const toastContainer = document.getElementById('toastContainer');
+
+            let currentRideId = 'r_demo_456';
+
+            // Send message on button click or Enter key
+            sendBtn.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+
+            // Auto-detect if message contains Arabic
+            function detectArabic(text) {
+                const arabicPattern = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/;
+                return arabicPattern.test(text);
+            }
+
+            async function sendMessage() {
+                const message = messageInput.value.trim();
+                if (!message) return;
+
+                const userId = document.getElementById('userId').value;
+
+                // Auto-detect language from message content
+                const detectedArabic = detectArabic(message);
+                const language = detectedArabic ? 'ar' : document.getElementById('language').value;
+
+                // Update language selector to match detected language
+                if (detectedArabic) {
+                    document.getElementById('language').value = 'ar';
+                }
+
+                // Add user message to chat
+                addMessage(message, 'user');
+                messageInput.value = '';
+
+                // Show typing indicator
+                typingIndicator.classList.add('show');
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                try {
+                    const startTime = Date.now();
+                    const selectedModel = document.getElementById('aiModel').value;
+                    const response = await fetch(`${API_BASE}/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                        body: JSON.stringify({ user_id: userId, message, language, model: selectedModel })
+                    });
+
+                    const data = await response.json();
+                    const duration = Date.now() - startTime;
+
+                    // Hide typing indicator
+                    typingIndicator.classList.remove('show');
+
+                    // Add AI response with model info
+                    const respLanguage = data.language || language;
+                    addMessage(data.reply, 'assistant', data.confidence, data.handoff, respLanguage, data.model);
+
+                    // Log API call
+                    logApiCall('POST', '/chat', { user_id: userId, message, language, model: selectedModel }, data, duration, response.status);
+
+                    if (data.handoff) {
+                        showToast('Human support recommended', 'warning');
+                    }
+
+                } catch (error) {
+                    typingIndicator.classList.remove('show');
+                    addMessage('Connection error. Please check if the server is running.', 'assistant', 0.1, true);
+                    showToast('API Error: ' + error.message, 'error');
+                    logApiCall('POST', '/chat', { user_id: userId, message, language }, { error: error.message }, 0, 'ERR');
+                }
+            }
+
+            function sendQuickMessage(message) {
+                messageInput.value = message;
+                // Language will be auto-detected from message content
+                sendMessage();
+            }
+
+            // Alias for Arabic messages (same function, auto-detection handles it)
+            function sendQuickMessageAr(message) {
+                messageInput.value = message;
+                sendMessage();
+            }
+
+            function addMessage(content, role, confidence = null, handoff = false, language = 'en', modelInfo = null) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${role}`;
+
+                // Check if content contains Arabic for proper RTL display
+                const isArabic = detectArabic(content) || language === 'ar';
+                if (isArabic) {
+                    messageDiv.style.direction = 'rtl';
+                    messageDiv.style.textAlign = 'right';
+                }
+
+                let html = content;
+
+                if (role === 'assistant' && confidence !== null) {
+                    const confClass = confidence >= 0.7 ? 'high' : confidence >= 0.4 ? 'medium' : 'low';
+                    const modelIcon = modelInfo?.provider === 'groq' ? '🦙' : '🌀';
+                    const modelName = modelInfo?.name || 'Unknown';
+                    html += `
+                    <div class="message-meta" style="direction: ltr; text-align: left;">
+                        <span class="confidence-badge confidence-${confClass}">${(confidence * 100).toFixed(0)}%</span>
+                        ${handoff ? '<span class="handoff-badge">⚠️ Handoff</span>' : ''}
+                        ${isArabic ? '<span style="color: var(--text-muted); font-size: 10px;">🇸🇦</span>' : '<span style="color: var(--text-muted); font-size: 10px;">🇬🇧</span>'}
+                        <span style="color: var(--text-muted); font-size: 10px; margin-left: 4px;">${modelIcon} ${modelName}</span>
+                    </div>
+                `;
+                }
+
+                messageDiv.innerHTML = html;
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            async function createRide() {
+                const userId = document.getElementById('userId').value;
+                const driverName = document.getElementById('driverName').textContent;
+                const pickup = document.getElementById('pickup').textContent;
+                const destination = document.getElementById('destination').textContent;
+
+                try {
+                    const response = await fetch(`${API_BASE}/admin/create-ride`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            ride_id: currentRideId,
+                            user_id: userId,
+                            driver_name: driverName,
+                            pickup: pickup,
+                            destination: destination,
+                            status: 'ongoing'
+                        })
+                    });
+
+                    const data = await response.json();
+                    logApiCall('POST', '/admin/create-ride', { ride_id: currentRideId, user_id: userId }, data, 0, response.status);
+                    showToast('Ride created successfully!', 'success');
+                    updateRideStatusBadge('ongoing');
+
+                } catch (error) {
+                    showToast('Failed to create ride: ' + error.message, 'error');
+                }
+            }
+
+            async function updateRideStatus(status) {
+                try {
+                    const response = await fetch(`${API_BASE}/admin/update-ride`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ride_id: currentRideId, status })
+                    });
+
+                    const data = await response.json();
+                    logApiCall('POST', '/admin/update-ride', { ride_id: currentRideId, status }, data, 0, response.status);
+                    showToast(`Ride status: ${status}`, 'success');
+                    updateRideStatusBadge(status);
+
+                } catch (error) {
+                    showToast('Failed to update ride: ' + error.message, 'error');
+                }
+            }
+
+            function updateRideStatusBadge(status) {
+                const badge = document.getElementById('rideStatusBadge');
+                badge.innerHTML = `<span>●</span> ${status}`;
+                badge.className = 'ride-status ' + status;
+            }
+
+            async function clearMemory() {
+                const userId = document.getElementById('userId').value;
+
+                try {
+                    const response = await fetch(`${API_BASE}/admin/clear-memory`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: userId })
+                    });
+
+                    const data = await response.json();
+                    logApiCall('POST', '/admin/clear-memory', { user_id: userId }, data, 0, response.status);
+                    showToast('Memory cleared!', 'success');
+
+                    // Clear chat UI
+                    chatMessages.innerHTML = `
+                    <div class="message assistant">
+                        Hello! How can I assist you with your ride today?
+                    </div>
+                `;
+
+                } catch (error) {
+                    showToast('Failed to clear memory: ' + error.message, 'error');
+                }
+            }
+
+            async function unblockUser() {
+                const userId = document.getElementById('userId').value;
+
+                try {
+                    const response = await fetch(`${API_BASE}/admin/unblock`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: userId })
+                    });
+
+                    const data = await response.json();
+                    logApiCall('POST', '/admin/unblock', { user_id: userId }, data, 0, response.status);
+                    showToast('User unblocked!', 'success');
+
+                } catch (error) {
+                    showToast('Failed to unblock user: ' + error.message, 'error');
+                }
+            }
+
+            async function resetUser() {
+                const userId = document.getElementById('userId').value;
+
+                try {
+                    const response = await fetch(`${API_BASE}/admin/reset-user`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: userId })
+                    });
+
+                    const data = await response.json();
+                    logApiCall('POST', '/admin/reset-user', { user_id: userId }, data, 0, response.status);
+                    showToast('User fully reset!', 'success');
+
+                    // Clear chat UI
+                    chatMessages.innerHTML = `
+                    <div class="message assistant">
+                        Hello! How can I assist you with your ride today?
+                    </div>
+                `;
+
+                } catch (error) {
+                    showToast('Failed to reset user: ' + error.message, 'error');
+                }
+            }
+
+            async function resetAllUsers() {
+                if (!confirm('Are you sure you want to reset ALL users? This will clear all rate limits, violations, and chat memory.')) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`${API_BASE}/admin/reset-all`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    const data = await response.json();
+                    logApiCall('POST', '/admin/reset-all', {}, data, 0, response.status);
+                    showToast('All users reset!', 'success');
+
+                    // Clear chat UI
+                    chatMessages.innerHTML = `
+                    <div class="message assistant">
+                        Hello! How can I assist you with your ride today?
+                    </div>
+                `;
+
+                } catch (error) {
+                    showToast('Failed to reset all users: ' + error.message, 'error');
+                }
+            }
+
+            function logApiCall(method, endpoint, request, response, duration, status) {
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+
+                const time = new Date().toLocaleTimeString();
+                const statusColor = status >= 200 && status < 300 ? 'var(--success)' : 'var(--danger)';
+
+                entry.innerHTML = `
+                <div>
+                    <span class="method">${method}</span>
+                    <span class="endpoint">${endpoint}</span>
+                    <span style="color: ${statusColor}; margin-left: 8px;">[${status}]</span>
+                    ${duration ? `<span style="color: var(--text-muted); margin-left: 8px;">${duration}ms</span>` : ''}
+                </div>
+                <span class="timestamp">${time}</span>
+                <pre>${JSON.stringify(response, null, 2)}</pre>
+            `;
+
+                apiLog.insertBefore(entry, apiLog.firstChild);
+            }
+
+            function clearLog() {
+                apiLog.innerHTML = `
+                <div class="log-entry">
+                    <span class="timestamp">Cleared</span>
+                    <div>Waiting for API calls...</div>
+                </div>
+            `;
+            }
+
+            function showToast(message, type = 'success') {
+                const toast = document.createElement('div');
+                toast.className = `toast ${type}`;
+
+                const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : '⚠️';
+                toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+
+                toastContainer.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateX(100px)';
+                    setTimeout(() => toast.remove(), 300);
+                }, 3000);
+            }
+
+            // Check API health on load
+            async function checkHealth() {
+                try {
+                    const response = await fetch(`${API_BASE}/health`);
+                    const data = await response.json();
+
+                    if (data.status === 'ok') {
+                        showToast('Connected to API server', 'success');
+                    }
+                } catch (error) {
+                    showToast('Cannot connect to API server', 'error');
+                    document.querySelector('.status-badge').innerHTML = `
+                    <div class="status-dot" style="background: var(--danger);"></div>
+                    <span>Disconnected</span>
+                `;
+                }
+            }
+
+            // Initialize
+            checkHealth();
+        </script>
+    </body>
+
+</html>

@@ -5,11 +5,7 @@ use App\Http\Controllers\LandingPageController;
 use App\Http\Controllers\MediaController;
 use App\Http\Controllers\ParcelTrackingController;
 use App\Http\Controllers\PaymentRecordController;
-use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
-use Modules\TripManagement\Entities\TripRequest;
-use Pusher\Pusher;
-use Pusher\PusherException;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,6 +16,9 @@ use Pusher\PusherException;
 | routes are loaded by the RouteServiceProvider within a group which
 | contains the "web" middleware group. Now create something great!
 |
+| NOTE: All routes must use controller methods (no closures) to enable
+| route caching with `php artisan route:cache` in production.
+|
 */
 
 // Media serving route - serves images from /root/new/
@@ -27,9 +26,11 @@ Route::get('/media/{path}', [MediaController::class, 'serve'])
     ->where('path', '.*')
     ->name('media.serve');
 
-Route::get('/sender', function () {
-    return event(new App\Events\NewMessage("hello"));
-});
+// Test/Debug routes (converted from closures for route caching)
+Route::get('/sender', [DemoController::class, 'sender'])->name('sender');
+Route::get('/test-connection', [DemoController::class, 'testConnection'])->name('test-connection');
+Route::get('trigger', [DemoController::class, 'trigger'])->name('trigger');
+Route::get('test', [DemoController::class, 'testNotification'])->name('test');
 
 Route::controller(LandingPageController::class)->group(function () {
     Route::get('/', 'index')->name('index');
@@ -37,16 +38,8 @@ Route::controller(LandingPageController::class)->group(function () {
     Route::get('/about-us', 'aboutUs')->name('about-us');
     Route::get('/privacy', 'privacy')->name('privacy');
     Route::get('/terms', 'terms')->name('terms');
-    Route::get('/test-connection', function () {
-        $trip = TripRequest::first();
-        try {
-            checkPusherConnection(\App\Events\CustomerTripRequestEvent::broadcast($trip->driver, $trip));
-        } catch (Exception $exception) {
-
-        }
-
-    });
 });
+
 Route::get('track-parcel/{id}', [ParcelTrackingController::class, 'trackingParcel'])->name('track-parcel');
 
 Route::get('add-payment-request', [PaymentRecordController::class, 'index']);
@@ -57,17 +50,3 @@ Route::get('payment-cancel', [PaymentRecordController::class, 'cancel'])->name('
 Route::get('/update-data-test', [DemoController::class, 'demo'])->name('demo');
 Route::get('sms-test', [DemoController::class, 'smsGatewayTest'])->name('sms-test');
 Route::get('firebase-gen', [DemoController::class, 'firebaseMessageConfigFileGen'])->name('firebase-gen');
-
-Route::get('trigger', function () {
-    broadcast(new \App\Events\SampleEvent('Hello'));
-    return true;
-});
-
-Route::get('test', function () {
-    sendTopicNotification(
-        'admin_message',
-        translate('new_request_notification'),
-        translate('new_request_has_been_placed'),
-        'null');
-    return true;
-});

@@ -153,6 +153,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Max Heat Map Points Per Period
+    |--------------------------------------------------------------------------
+    |
+    | Maximum number of points per time period in heat map compare view.
+    | This prevents loading excessive markers when comparing multiple dates.
+    |
+    */
+
+    'max_heatmap_points_per_period' => env('MAX_HEATMAP_POINTS_PER_PERIOD', 1000),
+
+    /*
+    |--------------------------------------------------------------------------
     | Autoloaded Service Providers
     |--------------------------------------------------------------------------
     |

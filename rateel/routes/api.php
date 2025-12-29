@@ -1,6 +1,6 @@
 <?php
 
-use Illuminate\Http\Request;
+use App\Http\Controllers\Api\AppConfigController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -12,23 +12,17 @@ use Illuminate\Support\Facades\Route;
 | routes are loaded by the RouteServiceProvider within a group which
 | is assigned the "api" middleware group. Enjoy building your API!
 |
+| NOTE: All routes must use controller methods (no closures) to enable
+| route caching with `php artisan route:cache` in production.
+|
 */
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
-});
+// Auth routes (converted from closures for route caching)
+Route::middleware('auth:sanctum')->get('/user', [AppConfigController::class, 'user']);
 
-Route::get('/version', function () {
-    $version = \App\Models\Version::where('is_active', 1)->latest('id')->first();
-    return response()->json(responseFormatter(DEFAULT_200, ['software_version' => $version ? $version->version : env('SOFTWARE_VERSION')]));
-});
+// Version API (converted from closure for route caching)
+Route::get('/version', [AppConfigController::class, 'version']);
 
-// Internal settings API for Node.js realtime service
-Route::get('/internal/settings', function () {
-    $settings = app(\App\Services\SettingsService::class)->getAsKeyValueArray();
-    return response()->json([
-        'success' => true,
-        'settings' => $settings,
-        'version' => \Cache::get('app_settings:version', 1),
-    ]);
-})->middleware('throttle:60,1');
+// Internal settings API for Node.js realtime service (converted from closure for route caching)
+Route::get('/internal/settings', [AppConfigController::class, 'internalSettings'])
+    ->middleware('throttle:60,1');
