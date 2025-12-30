@@ -27,19 +27,26 @@
 @endsection
 
 @push('script')
+    @php
+        $heatPoints = $hotspots->map(function ($point) {
+            return [(float)$point->latitude, (float)$point->longitude, 0.5];
+        })->values();
+    @endphp
     <script>
-        var map = L.map('map').setView([30.0444, 31.2357], 10); // Default to Cairo, Egypt
+        var heatPoints = @json($heatPoints);
+        var defaultCenter = [30.0444, 31.2357]; // Default to Cairo, Egypt
+        var center = heatPoints.length > 0
+            ? [heatPoints[0][0], heatPoints[0][1]]
+            : defaultCenter;
+        var zoomLevel = heatPoints.length > 0 ? 11 : 10;
+        var map = L.map('map').setView(center, zoomLevel);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
-        var heatPoints = [
-            @foreach($hotspots as $point)
-                [{{ $point->latitude }}, {{ $point->longitude }}, 0.5], // 0.5 intensity
-            @endforeach
-        ];
-
-        var heat = L.heatLayer(heatPoints, {radius: 25}).addTo(map);
+        if (heatPoints.length > 0) {
+            L.heatLayer(heatPoints, {radius: 25}).addTo(map);
+        }
     </script>
 @endpush

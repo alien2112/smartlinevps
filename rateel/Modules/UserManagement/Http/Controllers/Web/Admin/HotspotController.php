@@ -20,6 +20,8 @@ class HotspotController extends Controller
         // Optimization: In a real large app, you'd aggregate this with a DB query
         // e.g. clustering nearby points. For 10k users, fetching points is okay for now but limit it.
         $hotspots = UserAddress::select('latitude', 'longitude', 'address_label')
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
             ->limit(1000) 
             ->get();
             

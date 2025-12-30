@@ -62,6 +62,10 @@ class ConfigController extends Controller
         $loyaltyPoints = $info
             ->where('key_name', 'loyalty_points')
             ->firstWhere('settings_type', 'customer_settings')?->value;
+        $aiChatbotEnable = (bool)($info
+            ->where('settings_type', 'ai_config')
+            ->firstWhere('key_name', 'ai_chatbot_enable')
+            ?->value ?? 0);
         $martExternalSetting = false;
         if (checkSelfExternalConfiguration()) {
             $martBaseUrl = externalConfig('mart_base_url')?->value;
@@ -106,6 +110,7 @@ class ConfigController extends Controller
             'business_name' => (string)$info->firstWhere('key_name', 'business_name')?->value ?? null,
             'logo' => $info->firstWhere('key_name', 'header_logo')->value ?? null,
             'bid_on_fare' => (bool)$info->firstWhere('key_name', 'bid_on_fare')?->value ?? 0,
+            'ai_chatbot_enable' => $aiChatbotEnable,
             'country_code' => (string)$info->firstWhere('key_name', 'country_code')?->value ?? null,
             'business_address' => (string)$info->firstWhere('key_name', 'business_address')?->value ?? null,
             'business_contact_phone' => (string)$info->firstWhere('key_name', 'business_contact_phone')?->value ?? null,
