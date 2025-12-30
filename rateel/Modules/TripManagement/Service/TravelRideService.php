@@ -122,6 +122,12 @@ class TravelRideService implements TravelRideServiceInterface
 
     /**
      * Get available VIP drivers for travel request
+     * 
+     * CRITICAL: Only drivers with travel_status = 'approved' can receive travel bookings
+     * This prevents:
+     * - Unqualified travel drivers
+     * - Fraud and VIP abuse
+     * - Bad vehicles/service quality
      */
     public function getAvailableVipDrivers(float $lat, float $lng, float $radiusKm = 30): Collection
     {
@@ -131,20 +137,25 @@ class TravelRideService implements TravelRideServiceInterface
             ->pluck('id');
 
         if ($vipCategoryIds->isEmpty()) {
+            Log::warning('No active VIP categories found for travel dispatch');
             return collect();
         }
 
-        // Find online VIP drivers within radius
+        // Find online VIP drivers within radius WITH APPROVED TRAVEL STATUS
         $drivers = UserLastLocation::query()
             ->whereHas('user', function ($q) use ($vipCategoryIds) {
                 $q->where('user_type', 'driver')
                     ->where('is_active', true)
+                    // Must have VIP vehicle
                     ->whereHas('vehicle', function ($vq) use ($vipCategoryIds) {
                         $vq->whereIn('category_id', $vipCategoryIds);
                     })
+                    // Must be online and available
                     ->whereHas('driverDetails', function ($dq) {
                         $dq->where('is_online', true)
-                            ->where('availability_status', 'available');
+                            ->where('availability_status', 'available')
+                            // CRITICAL: Only travel-approved drivers
+                            ->where('travel_status', 'approved');
                     });
             })
             ->selectRaw("
@@ -159,6 +170,13 @@ class TravelRideService implements TravelRideServiceInterface
             ->limit(50)
             ->with(['user.vehicle', 'user.driverDetails'])
             ->get();
+
+        Log::info('Travel dispatch - found approved drivers', [
+            'lat' => $lat,
+            'lng' => $lng,
+            'radius_km' => $radiusKm,
+            'approved_drivers_count' => $drivers->count(),
+        ]);
 
         return $drivers;
     }
@@ -335,6 +353,12 @@ class TravelRideService implements TravelRideServiceInterface
             $driverCategory = $driver->vehicle?->category;
             if (!$driverCategory || $driverCategory->category_level < VehicleCategory::LEVEL_VIP) {
                 throw new \Exception('Driver must be VIP category');
+            }
+
+            // CRITICAL: Verify driver has approved travel status
+            $driverDetails = $driver->driverDetails;
+            if (!$driverDetails || $driverDetails->travel_status !== 'approved') {
+                throw new \Exception('Driver must have approved travel status. Current status: ' . ($driverDetails->travel_status ?? 'none'));
             }
 
             // Assign driver

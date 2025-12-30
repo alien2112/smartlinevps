@@ -189,4 +189,252 @@ class DriverController extends Controller
         }
         return response()->json(responseFormatter(DEFAULT_401), 401);
     }
+
+    // ============================================
+    // VEHICLE SELECTION & TRAVEL APPROVAL SYSTEM
+    // Enterprise-grade design: Travel is permission-based
+    // ============================================
+
+    /**
+     * Select vehicle category with optional travel request
+     * POST /api/driver/auth/select-vehicle
+     * 
+     * Flow:
+     * - Budget/Pro/VIP: Save immediately
+     * - Travel: Must be VIP + submit approval request
+     */
+    public function selectVehicle(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'category_id' => 'required|exists:vehicle_categories,id',
+            'request_travel' => 'sometimes|boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
+        }
+
+        $driver = auth('api')->user();
+        if (!$driver || $driver->user_type !== DRIVER) {
+            return response()->json(responseFormatter(DEFAULT_401), 401);
+        }
+
+        // Get requested category
+        $category = \Modules\VehicleManagement\Entities\VehicleCategory::find($request->category_id);
+        if (!$category) {
+            return response()->json(responseFormatter([
+                'response_code' => 'category_not_found_404',
+                'message' => translate('Vehicle category not found'),
+            ]), 404);
+        }
+
+        // Update vehicle category
+        if ($driver->vehicle) {
+            $driver->vehicle->update(['category_id' => $request->category_id]);
+        }
+
+        $driverDetails = $driver->driverDetails;
+        $requestTravel = $request->boolean('request_travel');
+
+        // Handle travel request
+        if ($requestTravel) {
+            // Travel requires VIP category
+            if ($category->category_level < \Modules\VehicleManagement\Entities\VehicleCategory::LEVEL_VIP) {
+                return response()->json(responseFormatter([
+                    'response_code' => 'vip_required_403',
+                    'message' => translate('Travel mode requires VIP category. Please upgrade your vehicle.'),
+                ]), 403);
+            }
+
+            // Check if already approved
+            if ($driverDetails && $driverDetails->isTravelApproved()) {
+                return response()->json(responseFormatter([
+                    'response_code' => 'already_approved_200',
+                    'message' => translate('You are already approved for travel bookings'),
+                    'data' => $driverDetails->getTravelStatusInfo(),
+                ]), 200);
+            }
+
+            // Check if already pending
+            if ($driverDetails && $driverDetails->hasPendingTravelRequest()) {
+                return response()->json(responseFormatter([
+                    'response_code' => 'already_requested_200',
+                    'message' => translate('Your travel request is pending admin approval'),
+                    'data' => $driverDetails->getTravelStatusInfo(),
+                ]), 200);
+            }
+
+            // Submit travel request
+            if ($driverDetails) {
+                $driverDetails->requestTravelPrivilege();
+                
+                // Create admin notification
+                \Modules\AdminModule\Entities\AdminNotification::create([
+                    'model' => 'driver_travel_request',
+                    'model_id' => $driver->id,
+                    'message' => 'new_travel_request',
+                ]);
+
+                return response()->json(responseFormatter([
+                    'response_code' => 'travel_requested_201',
+                    'message' => translate('Travel request submitted successfully. Pending admin approval.'),
+                    'data' => [
+                        'category_id' => $request->category_id,
+                        'category_name' => $category->name,
+                        ...$driverDetails->fresh()->getTravelStatusInfo(),
+                    ],
+                ]), 201);
+            }
+        } else {
+            // Not requesting travel - reset status if needed
+            if ($driverDetails && $driverDetails->travel_status === 'requested') {
+                // Keep as requested, don't auto-cancel
+            }
+        }
+
+        return response()->json(responseFormatter([
+            'response_code' => 'vehicle_updated_200',
+            'message' => translate('Vehicle category updated successfully'),
+            'data' => [
+                'category_id' => $request->category_id,
+                'category_name' => $category->name,
+                'category_level' => $category->category_level,
+                ...($driverDetails ? $driverDetails->getTravelStatusInfo() : ['travel_status' => 'none', 'travel_enabled' => false]),
+            ],
+        ]), 200);
+    }
+
+    /**
+     * Get current travel status
+     * GET /api/driver/auth/travel-status
+     */
+    public function travelStatus(): JsonResponse
+    {
+        $driver = auth('api')->user();
+        if (!$driver || $driver->user_type !== DRIVER) {
+            return response()->json(responseFormatter(DEFAULT_401), 401);
+        }
+
+        $driverDetails = $driver->driverDetails;
+        $vehicle = $driver->vehicle;
+
+        $data = [
+            'vehicle_category_id' => $vehicle?->category_id,
+            'vehicle_category_name' => $vehicle?->category?->name,
+            'vehicle_category_level' => $vehicle?->category?->category_level,
+            'is_vip' => ($vehicle?->category?->category_level ?? 0) >= \Modules\VehicleManagement\Entities\VehicleCategory::LEVEL_VIP,
+            ...($driverDetails ? $driverDetails->getTravelStatusInfo() : [
+                'travel_status' => 'none',
+                'travel_enabled' => false,
+                'can_request_travel' => true,
+            ]),
+        ];
+
+        return response()->json(responseFormatter(DEFAULT_200, $data), 200);
+    }
+
+    /**
+     * Request travel privilege (standalone)
+     * POST /api/driver/auth/request-travel
+     */
+    public function requestTravel(): JsonResponse
+    {
+        $driver = auth('api')->user();
+        if (!$driver || $driver->user_type !== DRIVER) {
+            return response()->json(responseFormatter(DEFAULT_401), 401);
+        }
+
+        $vehicle = $driver->vehicle;
+        if (!$vehicle || !$vehicle->category) {
+            return response()->json(responseFormatter([
+                'response_code' => 'no_vehicle_403',
+                'message' => translate('Please add your vehicle first'),
+            ]), 403);
+        }
+
+        // Verify VIP category
+        if ($vehicle->category->category_level < \Modules\VehicleManagement\Entities\VehicleCategory::LEVEL_VIP) {
+            return response()->json(responseFormatter([
+                'response_code' => 'vip_required_403',
+                'message' => translate('Travel mode requires VIP category. Your current category: ') . $vehicle->category->name,
+            ]), 403);
+        }
+
+        $driverDetails = $driver->driverDetails;
+        if (!$driverDetails) {
+            return response()->json(responseFormatter([
+                'response_code' => 'profile_incomplete_403',
+                'message' => translate('Please complete your driver profile first'),
+            ]), 403);
+        }
+
+        // Check current status
+        if ($driverDetails->isTravelApproved()) {
+            return response()->json(responseFormatter([
+                'response_code' => 'already_approved_200',
+                'message' => translate('You are already approved for travel bookings'),
+                'data' => $driverDetails->getTravelStatusInfo(),
+            ]), 200);
+        }
+
+        if ($driverDetails->hasPendingTravelRequest()) {
+            return response()->json(responseFormatter([
+                'response_code' => 'already_requested_200',
+                'message' => translate('Your travel request is already pending admin approval'),
+                'data' => $driverDetails->getTravelStatusInfo(),
+            ]), 200);
+        }
+
+        // Submit request
+        $driverDetails->requestTravelPrivilege();
+
+        // Create admin notification
+        \Modules\AdminModule\Entities\AdminNotification::create([
+            'model' => 'driver_travel_request',
+            'model_id' => $driver->id,
+            'message' => 'new_travel_request',
+        ]);
+
+        return response()->json(responseFormatter([
+            'response_code' => 'travel_requested_201',
+            'message' => translate('Travel request submitted successfully. You will be notified when approved.'),
+            'data' => $driverDetails->fresh()->getTravelStatusInfo(),
+        ]), 201);
+    }
+
+    /**
+     * Cancel travel request (if pending)
+     * POST /api/driver/auth/cancel-travel-request
+     */
+    public function cancelTravelRequest(): JsonResponse
+    {
+        $driver = auth('api')->user();
+        if (!$driver || $driver->user_type !== DRIVER) {
+            return response()->json(responseFormatter(DEFAULT_401), 401);
+        }
+
+        $driverDetails = $driver->driverDetails;
+        if (!$driverDetails) {
+            return response()->json(responseFormatter(DEFAULT_404), 404);
+        }
+
+        if (!$driverDetails->hasPendingTravelRequest()) {
+            return response()->json(responseFormatter([
+                'response_code' => 'no_pending_request_404',
+                'message' => translate('No pending travel request found'),
+            ]), 404);
+        }
+
+        // Reset to none
+        $driverDetails->update([
+            'travel_status' => 'none',
+            'travel_requested_at' => null,
+        ]);
+
+        return response()->json(responseFormatter([
+            'response_code' => 'request_cancelled_200',
+            'message' => translate('Travel request cancelled'),
+            'data' => $driverDetails->fresh()->getTravelStatusInfo(),
+        ]), 200);
+    }
 }

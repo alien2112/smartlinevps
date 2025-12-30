@@ -79,6 +79,12 @@ Route::group(['prefix' => 'driver'], function () {
             Route::get('income-statement', 'incomeStatement');
             Route::put('update/profile', 'updateProfile');
             Route::get('referral-details', 'referralDetails');
+            
+            // Travel Approval System - Enterprise-grade
+            Route::post('select-vehicle', 'selectVehicle');           // Select category + optional travel request
+            Route::get('travel-status', 'travelStatus');              // Get current travel approval status
+            Route::post('request-travel', 'requestTravel');           // Request travel privilege (standalone)
+            Route::post('cancel-travel-request', 'cancelTravelRequest'); // Cancel pending travel request
         });
         //new controller
         Route::group(['prefix' => 'level'], function () {

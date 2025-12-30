@@ -371,6 +371,18 @@
                                     {{translate('driver_identity_request_list')}}
                                 </a>
                             </li>
+                            <li class="{{Request::is('admin/driver/travel-approval*') ? 'active open' : ''}}">
+                                <a class="text-capitalize" href="{{route('admin.driver.travel-approval.index')}}">
+                                    <i class="bi bi-airplane-engines"></i>
+                                    {{translate('Travel_Approval')}}
+                                    @php
+                                        $pendingTravelCount = \Modules\UserManagement\Entities\DriverDetail::where('travel_status', 'requested')->count();
+                                    @endphp
+                                    @if($pendingTravelCount > 0)
+                                        <span class="badge bg-warning text-dark ms-1">{{$pendingTravelCount}}</span>
+                                    @endif
+                                </a>
+                            </li>
                         </ul>
                         <!-- End Sub Menu -->
                     </li>

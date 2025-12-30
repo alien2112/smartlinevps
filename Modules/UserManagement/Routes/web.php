@@ -166,6 +166,18 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
             });
         });
 
+        // Travel Approval System - Enterprise-grade
+        Route::group(['prefix' => 'travel-approval', 'as' => 'travel-approval.'], function () {
+            Route::controller(\Modules\UserManagement\Http\Controllers\Web\New\Admin\Driver\TravelApprovalController::class)->group(function () {
+                Route::get('/', 'index')->name('index');                          // List travel requests
+                Route::post('approve/{id}', 'approve')->name('approve');          // Approve travel request
+                Route::post('reject/{id}', 'reject')->name('reject');             // Reject travel request
+                Route::post('revoke/{id}', 'revoke')->name('revoke');             // Revoke approved privilege
+                Route::post('bulk-approve', 'bulkApprove')->name('bulk-approve'); // Bulk approve
+                Route::get('statistics', 'statistics')->name('statistics');       // Dashboard stats
+            });
+        });
+
     });
 
     Route::group(['prefix' => 'employee', 'as' => 'employee.'], function () {
