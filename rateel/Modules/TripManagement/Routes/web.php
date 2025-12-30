@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\TripManagement\Http\Controllers\Web\New\RefundController;
 use Modules\TripManagement\Http\Controllers\Web\New\SafetyAlertController;
 use Modules\TripManagement\Http\Controllers\Web\TripController;
+use Modules\TripManagement\Http\Controllers\Web\Admin\TravelOperationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -64,6 +65,11 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
 
     // Travel Mode Management Routes (VIP scheduled rides)
     Route::group(['prefix' => 'travel', 'as' => 'travel.'], function () {
+        Route::controller(TravelOperationController::class)->group(function () {
+             Route::get('calendar', 'calendar')->name('calendar');
+             Route::get('analytics', 'analytics')->name('analytics');
+        });
+        
         Route::controller(\Modules\TripManagement\Http\Controllers\Web\New\TravelController::class)->group(function () {
             Route::get('/', 'index')->name('index');
             Route::get('{tripId}', 'show')->name('show');

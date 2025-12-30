@@ -9,6 +9,7 @@ use Modules\AdminModule\Http\Controllers\Web\New\Admin\SettingController;
 use Modules\AdminModule\Http\Controllers\Web\New\Admin\SharedController;
 use Modules\AdminModule\Http\Controllers\Web\New\Admin\FleetMapViewController;
 use Modules\AdminModule\Http\Controllers\Web\New\Admin\NotificationController;
+use Modules\AdminModule\Http\Controllers\Web\Admin\AiChatbotController;
 
 /*
 |--------------------------------------------------------------------------
@@ -78,6 +79,12 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
         Route::post('delete', 'delete')->name('delete');
         Route::get('push', 'push_notification')->name('push');
         Route::post('update-push-notification', 'update_push_notification')->name('update-push-notification');
+    });
+
+    Route::controller(AiChatbotController::class)->group(function () {
+        Route::get('chatbot/config', 'index')->name('chatbot.index');
+        Route::post('chatbot/update', 'update')->name('chatbot.update');
+        Route::get('chatbot/logs', 'logs')->name('chatbot.logs');
     });
 
     // App Settings (Tracking, Dispatch, Travel, Map)

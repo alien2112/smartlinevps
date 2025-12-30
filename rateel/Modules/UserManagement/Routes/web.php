@@ -13,6 +13,7 @@ use Modules\UserManagement\Http\Controllers\Web\New\Admin\Employee\EmployeeContr
 use Modules\UserManagement\Http\Controllers\Web\New\Admin\Employee\EmployeeRoleController;
 use Modules\UserManagement\Http\Controllers\Web\New\Admin\LevelAccessController;
 use Modules\UserManagement\Http\Controllers\Web\Api\UserSearchController;
+use Modules\UserManagement\Http\Controllers\Web\Admin\HotspotController;
 
 /*
 |--------------------------------------------------------------------------
@@ -199,6 +200,14 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
             });
         });
     });
+    
+    Route::group(['prefix' => 'hotspots', 'as' => 'hotspots.'], function () {
+        Route::controller(HotspotController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+        });
+    });
 
 });
+
+
 
