@@ -1,0 +1,363 @@
+{
+    "info": {
+        "_postman_id": "ai-chatbot-v2-collection",
+        "name": "AI Chatbot V2 - Flutter Integration",
+        "description": "API endpoints for the AI Chatbot with action-based responses",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:3000",
+            "type": "string"
+        },
+        {
+            "key": "user_id",
+            "value": "test-user-123",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "Health Check",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/health",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "health"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Get Action Types",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/action-types",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "action-types"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Chat - Greeting",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"user_id\": \"{{user_id}}\",\n    \"message\": \"مرحبا\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/chat",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "chat"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Chat - Book Trip",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"user_id\": \"{{user_id}}\",\n    \"message\": \"أريد حجز رحلة\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/chat",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "chat"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Chat - Select Option 1",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"user_id\": \"{{user_id}}\",\n    \"message\": \"1\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/chat",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "chat"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Chat - Trip Status",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"user_id\": \"{{user_id}}\",\n    \"message\": \"أين رحلتي\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/chat",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "chat"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Chat - Complaint",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"user_id\": \"{{user_id}}\",\n    \"message\": \"عندي شكوى\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/chat",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "chat"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Chat - Safety Emergency",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"user_id\": \"{{user_id}}\",\n    \"message\": \"في خطر\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/chat",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "chat"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Chat - Request Human",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"user_id\": \"{{user_id}}\",\n    \"message\": \"أبغى موظف\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/chat",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "chat"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Submit Location - Pickup",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"user_id\": \"{{user_id}}\",\n    \"lat\": 24.7136,\n    \"lng\": 46.6753,\n    \"address\": \"الرياض، حي العليا\",\n    \"type\": \"pickup\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/submit-location",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "submit-location"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Submit Location - Destination",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"user_id\": \"{{user_id}}\",\n    \"lat\": 24.7741,\n    \"lng\": 46.7386,\n    \"address\": \"الرياض مول\",\n    \"type\": \"destination\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/submit-location",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "submit-location"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Admin - Get User State",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/admin/user-state/{{user_id}}",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "admin",
+                        "user-state",
+                        "{{user_id}}"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Admin - Reset User State",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"user_id\": \"{{user_id}}\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/admin/reset-state",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "admin",
+                        "reset-state"
+                    ]
+                }
+            },
+            "response": []
+        },
+        {
+            "name": "Admin - Clear Memory",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"user_id\": \"{{user_id}}\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/admin/clear-memory",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "admin",
+                        "clear-memory"
+                    ]
+                }
+            },
+            "response": []
+        }
+    ]
+}

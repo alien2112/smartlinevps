@@ -168,15 +168,16 @@
                         <h5 class="text-primary align-items-center mb-3 text-uppercase">{{ translate('attached_documents') }}</h5>
                         <div class="d-flex gap-3 flex-wrap">
                             @foreach($vehicle?->documents as $doc)
+                                @php $docUrl = getMediaUrl($doc); @endphp
                                 <div class="mb-2">
-                                    <a href="{{ asset('storage/app/public/vehicle/document/') }}/{{ $doc }}"
-                                       download="{{ $doc }}"
+                                    <a href="{{ $docUrl }}"
+                                       download="{{ basename($doc) }}"
                                        class="border border-C5D2D2 rounded p-3 d-flex align-items-center gap-3">
                                         <div class="d-flex align-items-center gap-2">
                                             <img class="w-30px aspect-1"
                                                  src="{{ getExtensionIcon($doc) }}"
                                                  alt="">
-                                            <h6 class="fs-12">{{ $doc }}</h6>
+                                            <h6 class="fs-12">{{ basename($doc) }}</h6>
                                         </div>
                                         <i class="bi bi-arrow-down-circle-fill fs-20 text-primary"></i>
                                     </a>

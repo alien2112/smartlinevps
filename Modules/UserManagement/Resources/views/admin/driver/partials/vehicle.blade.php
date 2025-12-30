@@ -122,13 +122,14 @@
             <h5 class="text-primary mb-3 d-flex align-items-center gap-2"><i
                     class="bi bi-paperclip"></i>{{ translate('attached_documents') }}</h5>
             @foreach ($commonData['driver']->vehicle->documents ?? [] as $document)
+                @php $docUrl = getMediaUrl($document); @endphp
                 <div class="d-flex align-items-center gap-3 flex-wrap">
-                    <a download="{{ $document }}"
-                        href="{{ asset('storage/app/public/vehicle/document') }}/{{ $document }}"
+                    <a download="{{ basename($document) }}"
+                        href="{{ $docUrl }}"
                         class="border rounded p-3 d-flex align-items-center gap-3">
                         <div class="d-flex align-items-center gap-2">
                             <i class="bi bi-paperclip fs-22"></i>
-                            <h6 class="fs-12">{{ $document }}</h6>
+                            <h6 class="fs-12">{{ basename($document) }}</h6>
                         </div>
                         <i class="bi bi-arrow-down-circle-fill fs-16 text-primary"></i>
                     </a>

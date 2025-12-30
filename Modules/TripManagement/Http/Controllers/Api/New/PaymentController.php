@@ -50,6 +50,16 @@ class PaymentController extends Controller
         }
 
         $tips = 0;
+        $method = '';
+        
+        // ⚡ EARLY BALANCE CHECK for wallet payments (before any DB changes)
+        if ($request->payment_method == 'wallet') {
+            $totalAmount = $trip->paid_fare + ($request->tips ?? 0);
+            if ($trip->customer->userAccount->wallet_balance < $totalAmount) {
+                return response()->json(responseFormatter(INSUFFICIENT_FUND_403), 403);
+            }
+        }
+        
         DB::beginTransaction();
         try {
             if (!is_null($request->tips) && $request->payment_method == 'wallet') {
@@ -63,23 +73,26 @@ class PaymentController extends Controller
                 'paid_fare' => $trip->paid_fare + $tips,
                 'payment_status' => PAID
             ];
+            
+            if ($request->payment_method == 'wallet') {
+                // Wallet transaction handles its own lock and balance re-check
+                // Pass the amount to deduct for atomic operation
+                $this->walletTransaction($trip, $trip->paid_fare + $tips);
+                $method = '_with_wallet_balance';
+            } elseif ($request->payment_method == 'cash') {
+                $method = '_by_cash';
+                $this->cashTransaction($trip);
+            }
+            
+            // Update trip AFTER successful transaction
             $trip->fee()->update($feeAttributes);
             $trip = $this->tripRequestservice->update(id: $request->trip_request_id, data: $data);
-            if ($request->payment_method == 'wallet') {
-            if ($trip->customer->userAccount->wallet_balance < ($trip->paid_fare)) {
-
-                return response()->json(responseFormatter(INSUFFICIENT_FUND_403), 403);
-            }
-            $method = '_with_wallet_balance';
-            $this->walletTransaction($trip);
-        } // driver only make cash payment
-        elseif ($request->payment_method == 'cash') {
-            $method = '_by_cash';
-            $this->cashTransaction($trip);
-        }
 
             $this->amountChecker($trip->customer, $trip->paid_fare);
             DB::commit();
+        } catch (\Modules\TransactionManagement\Exceptions\InsufficientFundsException $e) {
+            DB::rollBack();
+            return response()->json(responseFormatter(INSUFFICIENT_FUND_403), 403);
         } catch (\Exception $exception) {
             DB::rollBack();
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['code' => 'payment_error', 'message' => $exception->getMessage()]]), 400);

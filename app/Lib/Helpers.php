@@ -908,12 +908,77 @@ if (!function_exists('getRoutes')) {
 if (!function_exists('onErrorImage')) {
     function onErrorImage($data, $src, $error_src, $path)
     {
-        if (isset($data) && strlen($data) > 1 && Storage::disk('public')->exists($path . $data)) {
-            return $src;
+        // If data is an array, get the first item
+        if (is_array($data)) {
+            $data = $data[0] ?? null;
+        }
+
+        if (isset($data) && strlen($data) > 1) {
+            // Use getMediaUrl to generate proper URL for the new storage system
+            // Pass the path parameter to ensure correct folder structure
+            return getMediaUrl($data, $path);
         }
         return $error_src;
     }
 }
+
+if (!function_exists('getMediaUrl')) {
+    /**
+     * Convert filesystem path or object key to accessible URL
+     * Handles /root/new/ paths from VPS database
+     *
+     * @param string|array|null $path The filesystem path, object key, or array of paths
+     * @param string|null $folderOrDefault Folder path for arrays, or default URL for strings
+     * @return string|array|null
+     */
+    function getMediaUrl(string|array|null $path, ?string $folderOrDefault = null): string|array|null
+    {
+        // Handle arrays
+        if (is_array($path)) {
+            $folder = $folderOrDefault ?? '';
+            return array_map(function($item) use ($folder) {
+                if (empty($item)) {
+                    return null;
+                }
+                // If it's already a URL, return as is
+                if (str_starts_with($item, 'http://') || str_starts_with($item, 'https://')) {
+                    return $item;
+                }
+                // If it's a full filesystem path starting with /root/new/
+                if (str_starts_with($item, '/root/new/')) {
+                    $relativePath = str_replace('/root/new/', '', $item);
+                    return url('media/' . $relativePath);
+                }
+                // If folder is provided, prepend it
+                if ($folder) {
+                    return url('media/' . ltrim($folder, '/') . '/' . ltrim($item, '/'));
+                }
+                // Otherwise, just prepend media URL
+                return url('media/' . ltrim($item, '/'));
+            }, $path);
+        }
+
+        // Handle strings
+        if (empty($path)) {
+            return $folderOrDefault;
+        }
+
+        // If it's already a URL, return as is
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            return $path;
+        }
+
+        // If it's a full filesystem path starting with /root/new/
+        if (str_starts_with($path, '/root/new/')) {
+            $relativePath = str_replace('/root/new/', '', $path);
+            return url('media/' . $relativePath);
+        }
+
+        // If it's a relative path, prepend media URL
+        return url('media/' . ltrim($path, '/'));
+    }
+}
+
 
 if (!function_exists('checkPusherConnection')) {
     function checkPusherConnection($event)

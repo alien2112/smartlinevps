@@ -1068,15 +1068,12 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(constant: DRIVER_UNAVAILABLE_403), 403);
         }
 
-        // Get active vehicle with single optimized query
+        // Get vehicle with single optimized query (prioritize active/approved, fallback to any)
         $vehicle = Vehicle::query()
             ->where('driver_id', $user->id)
-            ->where(function ($query) {
-                $query->where('is_active', 1)->orWhere('vehicle_request_status', APPROVED);
-            })
-            ->latest('updated_at')
-            ->first()
-            ?? Vehicle::query()->where('driver_id', $user->id)->latest('updated_at')->first();
+            ->orderByRaw('CASE WHEN is_active = 1 OR vehicle_request_status = ? THEN 0 ELSE 1 END', [APPROVED])
+            ->orderBy('updated_at', 'desc')
+            ->first();
 
         if (is_null($vehicle)) {
             return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404, content: []), 403);

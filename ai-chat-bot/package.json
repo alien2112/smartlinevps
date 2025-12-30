@@ -1,10 +1,12 @@
 {
-    "name": "chat-app",
-    "version": "1.0.0",
-    "description": "Simple chat app with MySQL",
-    "main": "chat.js",
+    "name": "ride-support-chatbot",
+    "version": "2.0.0",
+    "description": "AI Chatbot with Action-based Responses for Flutter Integration",
+    "main": "chat_v2.js",
     "scripts": {
-        "start": "node chat.js"
+        "start": "node chat_v2.js",
+        "start:v1": "node chat.js",
+        "start:v2": "node chat_v2.js"
     },
     "dependencies": {
         "body-parser": "^1.20.2",

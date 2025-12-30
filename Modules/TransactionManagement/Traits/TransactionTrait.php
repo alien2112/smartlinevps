@@ -472,32 +472,59 @@ trait TransactionTrait
         DB::commit();
     }
 
-    public function walletTransaction($trip): void
+    /**
+     * Process wallet payment transaction with atomic locking.
+     * 
+     * Uses lockForUpdate to prevent race conditions where multiple
+     * concurrent payments could pass balance check simultaneously.
+     * 
+     * @param mixed $trip The trip object
+     * @param float|null $amount Optional explicit amount (if null, uses trip->paid_fare)
+     * @throws \Modules\TransactionManagement\Exceptions\InsufficientFundsException
+     */
+    public function walletTransaction($trip, ?float $amount = null): void
     {
         $adminUserId = User::where('user_type', ADMIN_USER_TYPES[0])->first()->id;
+        $deductAmount = $amount ?? $trip->paid_fare;
 
         DB::beginTransaction();
         $adminReceived = $trip->fee->admin_commission;//30
-        $tripBalanceAfterRemoveCommission = $trip->paid_fare - $trip->fee->admin_commission; //70
+        $tripBalanceAfterRemoveCommission = $deductAmount - $trip->fee->admin_commission; //70
         $riderEarning = $tripBalanceAfterRemoveCommission;
 
-        //customer account debit
-        $customerAccount = UserAccount::where('user_id', $trip->customer->id)->first();
-        $customerAccount->wallet_balance -= $trip->paid_fare;
+        // ⚡ CRITICAL: Lock customer account row to prevent concurrent deductions
+        $customerAccount = UserAccount::where('user_id', $trip->customer->id)
+            ->lockForUpdate()
+            ->first();
+        
+        // Re-check balance INSIDE the lock (atomic check)
+        if ($customerAccount->wallet_balance < $deductAmount) {
+            DB::rollBack();
+            throw new \Modules\TransactionManagement\Exceptions\InsufficientFundsException(
+                'Insufficient wallet balance',
+                $deductAmount,
+                $customerAccount->wallet_balance
+            );
+        }
+        
+        // Safe to deduct now - we have exclusive lock
+        $customerAccount->wallet_balance -= $deductAmount;
         $customerAccount->save();
 
         //customer transaction (debit)
         $customerTransaction = new Transaction();
         $customerTransaction->attribute = 'wallet_payment';
         $customerTransaction->attribute_id = $trip->id;
-        $customerTransaction->debit = $trip->paid_fare;
+        $customerTransaction->debit = $deductAmount;
         $customerTransaction->balance = $customerAccount->wallet_balance;
         $customerTransaction->user_id = $trip->customer->id;
         $customerTransaction->account = 'wallet_balance';
         $customerTransaction->save();
 
         //Admin account update (payable and wallet balance +)
-        $adminAccount = UserAccount::where('user_id', $adminUserId)->first();
+        $adminAccount = UserAccount::where('user_id', $adminUserId)
+            ->lockForUpdate()
+            ->first();
         $adminAccount->payable_balance += $tripBalanceAfterRemoveCommission;
         $adminAccount->received_balance += $adminReceived;
         $adminAccount->save();
@@ -535,7 +562,9 @@ trait TransactionTrait
         }
 
         //Rider account update (+ receivable_balance)
-        $riderAccount = UserAccount::where('user_id', $trip->driver->id)->first();
+        $riderAccount = UserAccount::where('user_id', $trip->driver->id)
+            ->lockForUpdate()
+            ->first();
         $riderAccount->receivable_balance += $tripBalanceAfterRemoveCommission; //70
         $riderAccount->save();
 
