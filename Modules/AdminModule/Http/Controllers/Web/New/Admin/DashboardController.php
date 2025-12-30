@@ -74,31 +74,51 @@ class DashboardController extends BaseController
         $cacheTTL = 300; // 5 minutes
 
         $dashboardStats = Cache::remember($cacheKey, $cacheTTL, function () {
-            $whereHasRelations = [];
-            $whereHasRelations['fee'] = function ($query) {
-                $query->whereNull('cancelled_by')
-                    ->orWhere('cancelled_by', '=', 'CUSTOMER');
-            };
+            // Use efficient raw DB queries instead of loading entire collections
+            $customerCount = \DB::table('users')
+                ->where('user_type', CUSTOMER)
+                ->where('is_active', true)
+                ->whereNull('deleted_at')
+                ->count();
 
-            $totalTripsEarningCriteria = [
-                'type' => RIDE_REQUEST,
-                'payment_status' => PAID
-            ];
-            $totalParcelsEarningCriteria = [
-                'type' => PARCEL,
-                'payment_status' => PAID
-            ];
+            $driverCount = \DB::table('users')
+                ->where('user_type', DRIVER)
+                ->where('is_active', true)
+                ->whereNull('deleted_at')
+                ->count();
+
+            // Efficient aggregated query for trip stats
+            $tripStats = \DB::table('trip_requests')
+                ->selectRaw('
+                    SUM(CASE WHEN payment_status = "paid" THEN coupon_amount ELSE 0 END) as total_coupon,
+                    SUM(CASE WHEN payment_status = "paid" THEN discount_amount ELSE 0 END) as total_discount,
+                    SUM(CASE WHEN type = "ride_request" THEN 1 ELSE 0 END) as total_trips,
+                    SUM(CASE WHEN type = "parcel" THEN 1 ELSE 0 END) as total_parcels
+                ')
+                ->first();
+
+            // Earning stats with fee join
+            $earningStats = \DB::table('trip_requests')
+                ->leftJoin('trip_request_fees', 'trip_requests.id', '=', 'trip_request_fees.trip_request_id')
+                ->whereRaw('trip_requests.payment_status = "paid"')
+                ->whereRaw('(trip_request_fees.cancelled_by IS NULL OR trip_request_fees.cancelled_by = "CUSTOMER")')
+                ->selectRaw('
+                    SUM(trip_request_fees.admin_commission) as total_earning,
+                    SUM(CASE WHEN trip_requests.type = "ride_request" THEN trip_request_fees.admin_commission ELSE 0 END) as trips_earning,
+                    SUM(CASE WHEN trip_requests.type = "parcel" THEN trip_request_fees.admin_commission ELSE 0 END) as parcels_earning
+                ')
+                ->first();
 
             return [
-                'customers' => $this->customerService->getBy(criteria: ['user_type' => CUSTOMER, 'is_active' => true])->count(),
-                'drivers' => $this->driverService->getBy(criteria: ['user_type' => DRIVER, 'is_active' => true])->count(),
-                'totalCouponAmountGiven' => $this->tripRequestService->getBy(criteria: ['payment_status' => PAID])->sum('coupon_amount'),
-                'totalDiscountAmountGiven' => $this->tripRequestService->getBy(criteria: ['payment_status' => PAID])->sum('discount_amount'),
-                'totalTrips' => $this->tripRequestService->getBy(criteria: ['type' => RIDE_REQUEST])->count(),
-                'totalParcels' => $this->tripRequestService->getBy(criteria: ['type' => PARCEL])->count(),
-                'totalEarning' => $this->tripRequestService->getBy(criteria: ['payment_status' => PAID], whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission'),
-                'totalTripsEarning' => $this->tripRequestService->getBy(criteria: $totalTripsEarningCriteria, whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission'),
-                'totalParcelsEarning' => $this->tripRequestService->getBy(criteria: $totalParcelsEarningCriteria, whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission'),
+                'customers' => $customerCount,
+                'drivers' => $driverCount,
+                'totalCouponAmountGiven' => $tripStats->total_coupon ?? 0,
+                'totalDiscountAmountGiven' => $tripStats->total_discount ?? 0,
+                'totalTrips' => $tripStats->total_trips ?? 0,
+                'totalParcels' => $tripStats->total_parcels ?? 0,
+                'totalEarning' => $earningStats->total_earning ?? 0,
+                'totalTripsEarning' => $earningStats->trips_earning ?? 0,
+                'totalParcelsEarning' => $earningStats->parcels_earning ?? 0,
             ];
         });
 

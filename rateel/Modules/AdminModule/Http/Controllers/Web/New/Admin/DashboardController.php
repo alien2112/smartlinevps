@@ -87,13 +87,19 @@ class DashboardController extends BaseController
         $superAdmin = $this->employeeService->findOneBy(criteria: ['user_type' => 'super-admin']);
         $superAdminAccount = $this->userAccountService->findOneBy(criteria: ['user_id' => $superAdmin?->id]);
 
-        // Cache customer and driver counts for 10 minutes
+        // Cache customer and driver counts for 10 minutes using efficient direct COUNT queries
         $customers = \Cache::remember('admin_dashboard_customer_count', 600, function () {
-            return $this->customerService->getBy(criteria: ['user_type' => CUSTOMER], limit: 1000000)->count();
+            return \DB::table('users')
+                ->where('user_type', CUSTOMER)
+                ->whereNull('deleted_at')
+                ->count();
         });
 
         $drivers = \Cache::remember('admin_dashboard_driver_count', 600, function () {
-            return $this->driverService->getBy(criteria: ['user_type' => DRIVER], limit: 1000000)->count();
+            return \DB::table('users')
+                ->where('user_type', DRIVER)
+                ->whereNull('deleted_at')
+                ->count();
         });
 
         // Use aggregated metrics instead of separate queries
