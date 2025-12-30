@@ -120,14 +120,15 @@
                     <div class="d-flex align-items-center gap-3 flex-wrap">
                         @forelse($customer->other_documents ?? [] as $doc)
                             <div class="mb-2">
-                                <a href="{{ asset('storage/app/public/customer/document/') }}/{{ $doc }}"
-                                   download="{{ $doc }}"
+                                <a href="{{ getMediaUrl($doc, 'customer/document') }}"
+                                   download="{{ basename($doc) }}"
+                                   target="_blank"
                                    class="border border-C5D2D2 rounded p-3 d-flex align-items-center gap-3">
                                     <div class="d-flex align-items-center gap-2">
                                         <img class="w-30px aspect-1"
                                              src="{{ getExtensionIcon($doc) }}"
                                              alt="">
-                                        <h6 class="fs-12">{{ $doc }}</h6>
+                                        <h6 class="fs-12">{{ basename($doc) }}</h6>
                                     </div>
                                     <i class="bi bi-arrow-down-circle-fill fs-20 text-primary"></i>
                                 </a>

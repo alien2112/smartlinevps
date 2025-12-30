@@ -125,9 +125,9 @@
                                                             <img loading="lazy"
                                                                  src="{{ onErrorImage(
                                                                         $driver?->profile_image,
-                                                                        asset('storage/app/public/driver/profile') . '/' . $driver?->profile_image,
+                                                                        getMediaUrl($driver?->profile_image, 'driver/profile'),
                                                                         asset('public/assets/admin-module/img/avatar/avatar.png'),
-                                                                        'driver/profile/',
+                                                                        'driver/profile',
                                                                     ) }}"
                                                                  class="rounded custom-box-size" alt=""
                                                                  style="--size: 20px">
@@ -240,7 +240,7 @@
                                                                                                 @foreach($driver->old_identification_image as $image)
                                                                                                     <div class="col-md-6 p-2">
                                                                                                         <img class="img-fluid mb-3"
-                                                                                                             src="{{ asset('storage/app/public/driver/identity/'.$image) }}"
+                                                                                                             src="{{ getMediaUrl($image, 'driver/identity') }}"
                                                                                                              alt="Not found"
                                                                                                              width="240" height="240">
                                                                                                     </div>
@@ -253,7 +253,7 @@
                                                                                                 @foreach($driver->identification_image as $image)
                                                                                                     <div class="col-md-6 p-2">
                                                                                                         <img class="img-fluid mb-3"
-                                                                                                             src="{{ asset('storage/app/public/driver/identity/'.$image) }}"
+                                                                                                             src="{{ getMediaUrl($image, 'driver/identity') }}"
                                                                                                              alt="Not found"
                                                                                                              width="240" height="240">
                                                                                                     </div>

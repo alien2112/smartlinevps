@@ -992,7 +992,11 @@ if (!function_exists('getMediaUrl')) {
                 }
                 // If folder is provided, prepend it
                 if ($folder) {
-                    return url('media/' . ltrim($folder, '/') . '/' . ltrim($item, '/'));
+                    $folder = trim($folder, '/');
+                    if ($folder == 'driver/identity') {
+                        $item = str_replace('.png', '.webp', $item);
+                    }
+                    return url('media/' . $folder . '/' . ltrim($item, '/'));
                 }
                 // Otherwise, just prepend media URL
                 return url('media/' . ltrim($item, '/'));
@@ -1013,6 +1017,15 @@ if (!function_exists('getMediaUrl')) {
         if (str_starts_with($path, '/root/new/')) {
             $relativePath = str_replace('/root/new/', '', $path);
             return url('media/' . $relativePath);
+        }
+
+        // If folder is provided, prepend it
+        if ($folderOrDefault) {
+            $folder = trim($folderOrDefault, '/');
+            if ($folder == 'driver/identity') {
+                $path = str_replace('.png', '.webp', $path);
+            }
+            return url('media/' . $folder . '/' . ltrim($path, '/'));
         }
 
         // If it's a relative path, prepend media URL

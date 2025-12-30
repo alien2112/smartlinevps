@@ -56,6 +56,11 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
         Route::get('search-drivers', 'searchDriversList')->name('search-drivers');
         Route::get('search-saved-topic-answers', 'searchSavedTopicAnswer')->name('search-saved-topic-answers');
         Route::put('create-channel-with-admin', 'createChannelWithAdmin')->name('create-channel-with-admin');
+
+        // Feature toggles
+        Route::get('feature-toggles', 'getFeatureToggles')->name('feature-toggles');
+        Route::post('toggle-ai-chatbot', 'toggleAiChatbot')->name('toggle-ai-chatbot');
+        Route::post('toggle-honeycomb', 'toggleHoneycomb')->name('toggle-honeycomb');
     });
     Route::controller(ActivityLogController::class)->group(function () {
         Route::get('log', 'log')->name('log');

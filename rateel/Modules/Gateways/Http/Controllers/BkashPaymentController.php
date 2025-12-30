@@ -30,13 +30,14 @@ class BkashPaymentController extends Controller
     public function __construct(PaymentRequest $payment, User $user)
     {
         $config = $this->paymentConfig('bkash', PAYMENT_CONFIG);
+        $this->config_values = null;
         if (!is_null($config) && $config->mode == 'live') {
             $this->config_values = json_decode($config->live_values);
         } elseif (!is_null($config) && $config->mode == 'test') {
             $this->config_values = json_decode($config->test_values);
         }
 
-        if ($config) {
+        if ($config && $this->config_values) {
             $this->app_key = $this->config_values->app_key;
             $this->app_secret = $this->config_values->app_secret;
             $this->username = $this->config_values->username;

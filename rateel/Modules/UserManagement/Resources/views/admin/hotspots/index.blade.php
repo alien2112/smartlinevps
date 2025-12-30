@@ -28,7 +28,7 @@
 
 @push('script')
     <script>
-        var map = L.map('map').setView([24.7136, 46.6753], 11); // Default to Riyadh
+        var map = L.map('map').setView([30.0444, 31.2357], 10); // Default to Cairo, Egypt
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'

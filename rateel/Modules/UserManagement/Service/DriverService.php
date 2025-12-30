@@ -60,7 +60,7 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
         $identityImages = [];
         if (array_key_exists('identity_images', $data)) {
             foreach ($data['identity_images'] as $image) {
-                $identityImages[] = fileUploader('driver/identity/', 'png', $image);
+                $identityImages[] = fileUploader('driver/identity/', 'webp', $image);
             }
         }
 
@@ -70,39 +70,39 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
                 $otherDocuments[] = fileUploader('driver/document/', $document->getClientOriginalExtension(), $document);
             }
         }
-        // $drivingLicense = array_key_exists('driving_license', $data) ? fileUploader('driver/license/', 'png', $data['driving_license']) : null;
-        // $vehicleLicense = array_key_exists('vehicle_license', $data) ? fileUploader('driver/vehicle/', 'png', $data['vehicle_license']) : null;
-        // $criminalRecord = array_key_exists('criminal_record', $data) ? fileUploader('driver/record/', 'png', $data['criminal_record']) : null;
-        // $carFrontImage = array_key_exists('car_front_image', $data) ? fileUploader('driver/car/', 'png', $data['car_front_image']) : null;
-        // $carBackImage = array_key_exists('car_back_image', $data) ? fileUploader('driver/car/', 'png', $data['car_back_image']) : null;
+        // $drivingLicense = array_key_exists('driving_license', $data) ? fileUploader('driver/license/', 'webp', $data['driving_license']) : null;
+        // $vehicleLicense = array_key_exists('vehicle_license', $data) ? fileUploader('driver/vehicle/', 'webp', $data['vehicle_license']) : null;
+        // $criminalRecord = array_key_exists('criminal_record', $data) ? fileUploader('driver/record/', 'webp', $data['criminal_record']) : null;
+        // $carFrontImage = array_key_exists('car_front_image', $data) ? fileUploader('driver/car/', 'webp', $data['car_front_image']) : null;
+        // $carBackImage = array_key_exists('car_back_image', $data) ? fileUploader('driver/car/', 'webp', $data['car_back_image']) : null;
         
 //         $drivingLicense = array_key_exists('driving_license', $data) && is_array($data['driving_license'])
 //     ? array_map(function($file) {
-//         return fileUploader('driver/license/', 'png', $file);
+//         return fileUploader('driver/license/', 'webp', $file);
 //     }, $data['driving_license'])
 //     : [];
 
 // $vehicleLicense = array_key_exists('vehicle_license', $data) && is_array($data['vehicle_license'])
 //     ? array_map(function($file) {
-//         return fileUploader('driver/vehicle/', 'png', $file);
+//         return fileUploader('driver/vehicle/', 'webp', $file);
 //     }, $data['vehicle_license'])
 //     : [];
 
 // $criminalRecord = array_key_exists('criminal_record', $data) && is_array($data['criminal_record'])
 //     ? array_map(function($file) {
-//         return fileUploader('driver/record/', 'png', $file);
+//         return fileUploader('driver/record/', 'webp', $file);
 //     }, $data['criminal_record'])
 //     : [];
 
 // $carFrontImage = array_key_exists('car_front_image', $data) && is_array($data['car_front_image'])
 //     ? array_map(function($file) {
-//         return fileUploader('driver/car/', 'png', $file);
+//         return fileUploader('driver/car/', 'webp', $file);
 //     }, $data['car_front_image'])
 //     : [];
 
 // $carBackImage = array_key_exists('car_back_image', $data) && is_array($data['car_back_image'])
 //     ? array_map(function($file) {
-//         return fileUploader('driver/car/', 'png', $file);
+//         return fileUploader('driver/car/', 'webp', $file);
 //     }, $data['car_back_image'])
 //     : [];
 
@@ -111,7 +111,7 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
             'user_type' => DRIVER,
             'password' => array_key_exists('password', $data) ? bcrypt($data['password']) : null,
             'user_level_id' => $firstLevel?->id,
-            'profile_image' => array_key_exists('profile_image', $data) ? fileUploader('driver/profile/', 'png', $data['profile_image']) : null,
+            'profile_image' => array_key_exists('profile_image', $data) ? fileUploader('driver/profile/', 'webp', $data['profile_image']) : null,
             'other_documents' => $otherDocuments ?? null,
             'identification_image' => $identityImages ?? null,
             'driving_license' => $drivingLicense ?? null,
@@ -150,7 +150,7 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
         if (array_key_exists('type', $data)) {
             if (array_key_exists('identity_images', $data)) {
                 foreach ($data['identity_images'] as $image) {
-                    $identityImages[] = fileUploader('driver/identity/', 'png', $image);
+                    $identityImages[] = fileUploader('driver/identity/', 'webp', $image);
                 }
             } else {
                 $identityImages = $driver?->identification_image;
@@ -158,7 +158,7 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
         } else {
             if (array_key_exists('identity_images', $data)) {
                 foreach ($data['identity_images'] as $image) {
-                    $identityImages[] = fileUploader('driver/identity/', 'png', $image);
+                    $identityImages[] = fileUploader('driver/identity/', 'webp', $image);
                 }
                 if ($driver?->identification_image != null && count($driver?->identification_image) > 0 && $driver?->old_identification_image == null) {
                     $oldIdentityImages = $driver?->identification_image;
@@ -171,7 +171,7 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
 
 
         if (array_key_exists('profile_image', $data)) {
-            $profile_image = fileUploader('driver/profile/', 'png', $data['profile_image'], $driver?->profile_image);
+            $profile_image = fileUploader('driver/profile/', 'webp', $data['profile_image'], $driver?->profile_image);
         }
 
         if (array_key_exists('password', $data) && !is_null($data['password'])) {
@@ -189,19 +189,19 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
             'identification_image' => $identityImages,
             'old_identification_image' => $oldIdentityImages,
             'driving_license' => array_key_exists('driving_license', $data)
-            ? fileUploader('driver/license/', 'png', $data['driving_license'], $driver->driving_license)
+            ? fileUploader('driver/license/', 'webp', $data['driving_license'], $driver->driving_license)
             : $driver->driving_license,
         'vehicle_license' => array_key_exists('vehicle_license', $data)
-            ? fileUploader('driver/vehicle/', 'png', $data['vehicle_license'], $driver->vehicle_license)
+            ? fileUploader('driver/vehicle/', 'webp', $data['vehicle_license'], $driver->vehicle_license)
             : $driver->vehicle_license,
         'criminal_record' => array_key_exists('criminal_record', $data)
-            ? fileUploader('driver/record/', 'png', $data['criminal_record'], $driver->criminal_record)
+            ? fileUploader('driver/record/', 'webp', $data['criminal_record'], $driver->criminal_record)
             : $driver->criminal_record,
         'car_front_image' => array_key_exists('car_front_image', $data)
-            ? fileUploader('driver/car/', 'png', $data['car_front_image'], $driver->car_front_image)
+            ? fileUploader('driver/car/', 'webp', $data['car_front_image'], $driver->car_front_image)
             : $driver->car_front_image,
         'car_back_image' => array_key_exists('car_back_image', $data)
-            ? fileUploader('driver/car/', 'png', $data['car_back_image'], $driver->car_back_image)
+            ? fileUploader('driver/car/', 'webp', $data['car_back_image'], $driver->car_back_image)
             : $driver->car_back_image,
             'is_active' => $driver?->is_active ?? 1,
         ]);
@@ -728,7 +728,7 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
         $criteria['user_type'] = DRIVER;
         $searchData = [];
         if (array_key_exists('search', $data) && $data['search'] != '') {
-            $searchData['fields'] = ['full_name', 'first_name', 'last_name'];
+            $searchData['fields'] = ['full_name', 'first_name', 'last_name', 'phone'];
             $searchData['value'] = $data['search'];
         }
         $whereInCriteria = [

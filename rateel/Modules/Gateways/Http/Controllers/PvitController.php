@@ -28,14 +28,14 @@ class PvitController extends Controller
     public function __construct(PaymentRequest $payment)
     {
         $config = $this->paymentConfig('pvit', PAYMENT_CONFIG);
-
+        $this->config_values = null;
         if (!is_null($config) && $config->mode == 'live') {
             $this->config_values = json_decode($config->live_values);
         } elseif (!is_null($config) && $config->mode == 'test') {
             $this->config_values = json_decode($config->test_values);
         }
 
-        if ($config) {
+        if ($config && $this->config_values) {
             $this->mc_tel_merchant = $this->config_values->mc_tel_merchant;
             $this->access_token = $this->config_values->access_token;
             $this->mc_merchant_code = $this->config_values->mc_merchant_code;

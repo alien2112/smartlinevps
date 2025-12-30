@@ -24,6 +24,74 @@
                 </div>
             </div>
 
+            <!-- Quick Feature Controls -->
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                        <div>
+                            <h5 class="mb-1">{{ translate('Quick Controls')}}</h5>
+                            <p class="text-muted fs-12 mb-0">{{ translate('Manage key features from dashboard')}}</p>
+                        </div>
+                        <div class="d-flex gap-3 flex-wrap">
+                            <!-- AI Chatbot Toggle -->
+                            <div class="d-flex align-items-center gap-2 p-2 border rounded">
+                                <div class="d-flex align-items-center gap-2 flex-grow-1">
+                                    <i class="bi bi-robot fs-4 text-primary"></i>
+                                    <div>
+                                        <div class="fw-semibold fs-14">{{ translate('AI Chatbot')}}</div>
+                                        <a href="{{ route('admin.chatbot.index') }}" class="text-muted fs-12" style="text-decoration: none;">{{ translate('Configure')}}</a>
+                                    </div>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input feature-toggle"
+                                           type="checkbox"
+                                           id="aiChatbotToggle"
+                                           data-feature="ai_chatbot"
+                                           style="cursor: pointer;">
+                                </div>
+                            </div>
+
+                            <!-- Honeycomb Toggle -->
+                            <div class="d-flex align-items-center gap-2 p-2 border rounded">
+                                <div class="d-flex align-items-center gap-2 flex-grow-1">
+                                    <i class="bi bi-hexagon fs-4 text-warning"></i>
+                                    <div>
+                                        <div class="fw-semibold fs-14">{{ translate('Honeycomb System')}}</div>
+                                        <a href="{{ route('admin.dispatch.honeycomb.index') }}" class="text-muted fs-12" style="text-decoration: none;">{{ translate('Configure')}}</a>
+                                    </div>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input feature-toggle"
+                                           type="checkbox"
+                                           id="honeycombToggle"
+                                           data-feature="honeycomb"
+                                           style="cursor: pointer;">
+                                </div>
+                            </div>
+
+                            <!-- Honeycomb Dispatch Toggle -->
+                            <div class="d-flex align-items-center gap-2 p-2 border rounded">
+                                <div class="d-flex align-items-center gap-2 flex-grow-1">
+                                    <i class="bi bi-geo-alt fs-4 text-success"></i>
+                                    <div>
+                                        <div class="fw-semibold fs-14">{{ translate('Honeycomb Dispatch')}}</div>
+                                        <a href="{{ route('admin.dispatch.honeycomb.index') }}" class="text-muted fs-12" style="text-decoration: none;">{{ translate('Configure')}}</a>
+                                    </div>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input feature-toggle"
+                                           type="checkbox"
+                                           id="honeycombDispatchToggle"
+                                           data-feature="honeycomb_dispatch"
+                                           style="cursor: pointer;">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- End Quick Feature Controls -->
+
             @can('dashboard')
                 <div class="row gy-4">
                     <div class="col-md-7">
@@ -347,6 +415,105 @@
 
     <script>
         "use strict";
+
+        // Feature Toggles Management
+        $(document).ready(function() {
+            // Load current toggle states
+            loadFeatureToggles();
+
+            // Handle toggle changes
+            $('.feature-toggle').on('change', function() {
+                const feature = $(this).data('feature');
+                const enabled = $(this).prop('checked');
+                const $toggle = $(this);
+
+                // Disable toggle while processing
+                $toggle.prop('disabled', true);
+
+                if (feature === 'ai_chatbot') {
+                    toggleAiChatbot(enabled, $toggle);
+                } else if (feature === 'honeycomb') {
+                    toggleHoneycomb('enabled', enabled, $toggle);
+                } else if (feature === 'honeycomb_dispatch') {
+                    toggleHoneycomb('dispatch_enabled', enabled, $toggle);
+                }
+            });
+        });
+
+        function loadFeatureToggles() {
+            $.ajax({
+                url: '{{ route('admin.feature-toggles') }}',
+                method: 'GET',
+                success: function(response) {
+                    if (response.success) {
+                        // Set AI Chatbot toggle
+                        $('#aiChatbotToggle').prop('checked', response.data.ai_chatbot.enabled);
+
+                        // Set Honeycomb toggles
+                        $('#honeycombToggle').prop('checked', response.data.honeycomb.enabled);
+                        $('#honeycombDispatchToggle').prop('checked', response.data.honeycomb.dispatch_enabled);
+                    }
+                },
+                error: function() {
+                    console.error('Failed to load feature toggles');
+                }
+            });
+        }
+
+        function toggleAiChatbot(enabled, $toggle) {
+            $.ajax({
+                url: '{{ route('admin.toggle-ai-chatbot') }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    enabled: enabled
+                },
+                success: function(response) {
+                    if (response.success) {
+                        toastr.success(response.message || '{{ translate('AI Chatbot updated successfully') }}');
+                        $toggle.prop('checked', response.enabled);
+                    } else {
+                        toastr.error(response.message || '{{ translate('Failed to update AI Chatbot') }}');
+                        $toggle.prop('checked', !enabled);
+                    }
+                },
+                error: function() {
+                    toastr.error('{{ translate('Failed to update AI Chatbot') }}');
+                    $toggle.prop('checked', !enabled);
+                },
+                complete: function() {
+                    $toggle.prop('disabled', false);
+                }
+            });
+        }
+
+        function toggleHoneycomb(feature, enabled, $toggle) {
+            $.ajax({
+                url: '{{ route('admin.toggle-honeycomb') }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    feature: feature,
+                    enabled: enabled
+                },
+                success: function(response) {
+                    if (response.success) {
+                        toastr.success(response.message || '{{ translate('Honeycomb updated successfully') }}');
+                        $toggle.prop('checked', response.enabled);
+                    } else {
+                        toastr.error(response.message || '{{ translate('Failed to update Honeycomb') }}');
+                        $toggle.prop('checked', !enabled);
+                    }
+                },
+                error: function() {
+                    toastr.error('{{ translate('Failed to update Honeycomb') }}');
+                    $toggle.prop('checked', !enabled);
+                },
+                complete: function() {
+                    $toggle.prop('disabled', false);
+                }
+            });
+        }
 
         $(".leader-board-customer").on('click', function () {
             let data = $(this).val();

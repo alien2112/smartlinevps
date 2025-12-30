@@ -27,6 +27,7 @@ class SenangPayController extends Controller
     public function __construct(PaymentRequest $payment, User $user)
     {
         $config = $this->paymentConfig('senang_pay', PAYMENT_CONFIG);
+        $this->config_values = null;
         if (!is_null($config) && $config->mode == 'live') {
             $this->config_values = json_decode($config->live_values);
         } elseif (!is_null($config) && $config->mode == 'test') {

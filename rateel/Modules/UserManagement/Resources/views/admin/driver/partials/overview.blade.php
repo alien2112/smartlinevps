@@ -107,19 +107,20 @@
             <div class="card h-100">
                 <div class="card-body">
                     <h5 class="text-primary mb-3 d-flex align-items-center gap-2"><i class="bi bi-paperclip"></i>
-                        Attached Documents
+                        {{ translate('Attached Documents') }}
                     </h5>
                     <div class="d-flex align-items-center gap-3 flex-wrap">
                         @forelse($driver->other_documents ?? [] as $doc)
                             <div class="mb-2">
-                                <a href="{{ asset('storage/app/public/driver/document/') }}/{{ $doc }}"
-                                   download="{{ $doc }}"
+                                <a href="{{ getMediaUrl($doc, 'driver/document') }}"
+                                   download="{{ basename($doc) }}"
+                                   target="_blank"
                                    class="border border-C5D2D2 rounded p-3 d-flex align-items-center gap-3">
                                     <div class="d-flex align-items-center gap-2">
                                         <img class="w-30px aspect-1"
                                              src="{{ getExtensionIcon($doc) }}"
                                              alt="">
-                                        <h6 class="fs-12">{{ $doc }}</h6>
+                                        <h6 class="fs-12">{{ basename($doc) }}</h6>
                                     </div>
                                     <i class="bi bi-arrow-down-circle-fill fs-20 text-primary"></i>
                                 </a>

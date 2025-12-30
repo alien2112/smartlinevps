@@ -66,6 +66,103 @@ class DashboardController extends BaseController
         $this->channelConversationService = $channelConversationService;
     }
 
+    /**
+     * Get feature toggle states for dashboard
+     */
+    public function getFeatureToggles()
+    {
+        // Get AI Chatbot status
+        $aiChatbot = \Modules\BusinessManagement\Entities\BusinessSetting::where([
+            'key_name' => 'ai_chatbot_enable',
+            'settings_type' => 'ai_config'
+        ])->first();
+
+        // Get Honeycomb status (global settings)
+        $honeycomb = \Modules\DispatchManagement\Entities\HoneycombSetting::whereNull('zone_id')->first();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'ai_chatbot' => [
+                    'enabled' => $aiChatbot ? (bool)$aiChatbot->value : false,
+                    'url' => route('admin.chatbot.index'),
+                ],
+                'honeycomb' => [
+                    'enabled' => $honeycomb ? (bool)$honeycomb->enabled : false,
+                    'dispatch_enabled' => $honeycomb ? (bool)$honeycomb->dispatch_enabled : false,
+                    'url' => route('admin.dispatch.honeycomb.index'),
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Toggle AI Chatbot from dashboard
+     */
+    public function toggleAiChatbot(Request $request)
+    {
+        $enabled = $request->input('enabled', false);
+
+        \Modules\BusinessManagement\Entities\BusinessSetting::updateOrCreate(
+            ['key_name' => 'ai_chatbot_enable', 'settings_type' => 'ai_config'],
+            ['value' => $enabled ? 1 : 0]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => $enabled ? 'AI Chatbot enabled successfully' : 'AI Chatbot disabled successfully',
+            'enabled' => $enabled,
+        ]);
+    }
+
+    /**
+     * Toggle Honeycomb features from dashboard
+     */
+    public function toggleHoneycomb(Request $request)
+    {
+        $feature = $request->input('feature', 'enabled');
+        $enabled = $request->input('enabled', false);
+
+        $validFeatures = ['enabled', 'dispatch_enabled'];
+        if (!in_array($feature, $validFeatures)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid feature',
+            ], 400);
+        }
+
+        $settings = \Modules\DispatchManagement\Entities\HoneycombSetting::firstOrCreate(
+            ['zone_id' => null],
+            [
+                'enabled' => false,
+                'dispatch_enabled' => false,
+                'heatmap_enabled' => false,
+                'hotspots_enabled' => false,
+                'surge_enabled' => false,
+                'incentives_enabled' => false,
+                'updated_by' => auth()->id(),
+            ]
+        );
+
+        $settings->$feature = $enabled;
+        $settings->updated_by = auth()->id();
+        $settings->save();
+
+        // Clear cache if HoneycombService exists
+        try {
+            $honeycombService = app(\App\Services\HoneycombService::class);
+            $honeycombService->clearSettingsCache(null);
+        } catch (\Exception $e) {
+            // Service might not exist, continue
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $enabled ? ucfirst(str_replace('_', ' ', $feature)) . ' successfully' : ucfirst(str_replace('_', ' ', $feature)) . ' disabled successfully',
+            'enabled' => $enabled,
+        ]);
+    }
+
     public function index(?Request $request, string $type = null): View|Collection|LengthAwarePaginator|null|callable|RedirectResponse
     {
         // Cache zones for 30 minutes since they don't change frequently
@@ -547,6 +644,9 @@ class DashboardController extends BaseController
     {
         $this->authorize('chatting_view');
         $driverList = $this->driverService->getChattingDriverList(data: $request->all());
+        if ($driverList->isEmpty() && (!isset($request->search) || $request->search == '')) {
+            $driverList = $this->driverService->getBy(criteria: ['user_type' => DRIVER, 'is_active' => 1], limit: 30);
+        }
         $savedReplies = $this->supportSavedReplyService->getBy(criteria: ['is_active' => 1]);
 
         return view('adminmodule::chatting', compact('driverList', 'savedReplies'));
@@ -567,6 +667,16 @@ class DashboardController extends BaseController
     public function searchDriversList(Request $request)
     {
         $driverList = $this->driverService->getChattingDriverList(data: $request->all());
+        if ($driverList->isEmpty() && isset($request->search) && $request->search != '') {
+            $driverList = $this->driverService->getBy(
+                criteria: ['user_type' => DRIVER, 'is_active' => 1],
+                searchCriteria: [
+                    'fields' => ['full_name', 'first_name', 'last_name', 'phone'],
+                    'value' => $request->search
+                ],
+                limit: 30
+            );
+        }
 
         return response()
             ->json(view('adminmodule::partials.chatting._search-drivers', compact('driverList'))

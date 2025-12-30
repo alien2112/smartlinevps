@@ -100,9 +100,9 @@
                                                      loading="lazy"
                                                      src="{{ onErrorImage(
                                                     $driver?->profile_image,
-                                                    asset('storage/app/public/driver/profile') . '/' . $driver?->profile_image,
+                                                    getMediaUrl($driver?->profile_image, 'driver/profile'),
                                                     asset('public/assets/admin-module/img/avatar/avatar.png'),
-                                                    'driver/profile/',
+                                                    'driver/profile',
                                                 ) }}"
                                                      alt="">
                                             </div>
@@ -125,9 +125,9 @@
                                                         <div class="upload-file__img upload-file__img_banner">
                                                             <img src="{{ onErrorImage(
                                                                 $img,
-                                                                asset('storage/app/public/driver/identity') . '/' . $img,
+                                                                getMediaUrl($img, 'driver/identity'),
                                                                 asset('public/assets/admin-module/img/media/banner-upload-file.png'),
-                                                                'driver/identity/',
+                                                                'driver/identity',
                                                             ) }}"
                                                                  class="rounded-circle dark-support"
                                                                  width="100%"
