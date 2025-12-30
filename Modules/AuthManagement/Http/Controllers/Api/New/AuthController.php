@@ -2,7 +2,6 @@
 
 namespace Modules\AuthManagement\Http\Controllers\Api\New;
 
-use App\Services\LogService;
 use Carbon\Carbon;
 use Carbon\CarbonInterval;
 use GuzzleHttp\Client;
@@ -82,6 +81,7 @@ class AuthController extends Controller
             'email' => 'email|unique:users',
             'phone' => 'required|regex:/^([0-9\s\-\+\(\)]*)$/|min:8|max:17|unique:users',
             'password' => 'required|min:8',
+            'gender' => 'required|in:male,female',
             'profile_image' => 'image|mimes:jpeg,jpg,png,gif,webp|max:10000',
             'identification_type' => 'in:nid,passport,driving_license',
             'identification_number' => 'sometimes',
@@ -106,7 +106,6 @@ class AuthController extends Controller
             'car_back_image.*'    => 'image|mimes:jpeg,jpg,png,gif,webp|max:10000',
             'fcm_token' => 'sometimes',
             'referral_code' => 'sometimes',
-            'gender' => 'sometimes|in:male,female',
             'service' => [
                 Rule::requiredIf(function () use ($driverRoute) {
                     return $driverRoute;
@@ -208,10 +207,7 @@ class AuthController extends Controller
         /**
          * phone no verification SMS_Body
          */
-        // $this->authService->sendOtpToClient($user);
-       // if (!$route) {
-         //   $this->authService->sendOtpToClient($user);
-       // }
+        $this->authService->sendOtpToClient($user);
         return response()->json(responseFormatter(REGISTRATION_200));
     }
 
@@ -220,10 +216,6 @@ class AuthController extends Controller
     {
         $user = $this->authService->checkClientRoute($request);
         if (!$user) {
-            LogService::authEvent('login_failed_user_not_found', null, [
-                'phone' => $request->phone ?? null,
-                'email' => $request->email ?? null,
-            ]);
             return response()->json(responseFormatter(constant: AUTH_LOGIN_404), 403);
         }
         foreach ($user->tokens as $token) {
@@ -236,10 +228,6 @@ class AuthController extends Controller
         if ($user->is_temp_blocked) {
             if (isset($user->blocked_at) && Carbon::parse($user->blocked_at)->DiffInSeconds() <= $block_time) {
                 $time = $block_time - Carbon::parse($user->blocked_at)->DiffInSeconds();
-                LogService::securityEvent('login_blocked_too_many_attempts', [
-                    'user_id' => $user->id,
-                    'blocked_remaining_seconds' => $time,
-                ]);
                 return response()->json([
                     "response_code" => "too_many_attempt_405",
                     "message" => translate('please_try_again_after_') . CarbonInterval::seconds($time)->cascade()->forHumans(),
@@ -256,15 +244,8 @@ class AuthController extends Controller
             if ($user->failed_attempt >= (int)$hit_limit) {
                 $user->is_temp_blocked = 1;
                 $user->blocked_at = now();
-                LogService::securityEvent('user_temp_blocked', [
-                    'user_id' => $user->id,
-                    'failed_attempts' => $user->failed_attempt,
-                ]);
             }
             $user->save();
-            LogService::authEvent('login_failed_wrong_password', $user, [
-                'failed_attempts' => $user->failed_attempt,
-            ]);
             return response()->json(responseFormatter(AUTH_LOGIN_401), 403);
         }
 
@@ -291,7 +272,6 @@ class AuthController extends Controller
                     'blocked_at' => null,
                 ];
                 $user = $this->authService->update(id: $user->id, data: $userData);
-                LogService::authEvent('login_success', $user);
                 return response()->json(responseFormatter(AUTH_LOGIN_200, $this->authenticate($user, $access_type)));
             }
             if ($user->user_type === 'driver') {
@@ -306,7 +286,6 @@ class AuthController extends Controller
     public function logout(): JsonResponse
     {
         if (Auth::user() !== null) {
-            LogService::authEvent('logout', Auth::user());
             Auth::user()->token()->revoke();
             Auth::user()->fcm_token = null;
             Auth::user()->save();
@@ -534,7 +513,7 @@ class AuthController extends Controller
         }
 
         if (strcmp($email, $data['email']) === 0) {
-            $user = $this->customerService->findOneBy(criteria: ['email' => $request['email'], 'user_type' => CUSTOMER]);
+            $user = $this->customer->getBy(column: 'email', value: $request['email']);
             if (!$user) {
                 $name = explode(' ', $data['name']);
                 $attributes = [
@@ -542,10 +521,9 @@ class AuthController extends Controller
                     'last_name' => end($name),
                     'email' => $data['email'],
                     'profile_image' => 'def.png',
-                    'password' => bcrypt(rand(1000000, 9999999)),
-                    'user_type' => CUSTOMER,
+                    'password' => bcrypt(rand(1000000, 9999999))
                 ];
-                $user = $this->customerService->create($attributes);
+                $user = $this->customer->store($attributes);
             }
             return response()->json(responseFormatter(AUTH_LOGIN_200, self::authenticate($user, CUSTOMER_PANEL_ACCESS)), 200);
         }
@@ -565,7 +543,16 @@ class AuthController extends Controller
         $user = $this->authService->checkClientRoute($request);
 
         if (!$user) {
-            return response()->json(responseFormatter(constant: USER_NOT_FOUND_404), 403);
+            //If customer not exists
+            $firstLevel = $user->user_type == CUSTOMER ? $this->customerLevelService->findOneBy(['user_type' => CUSTOMER, 'sequence' => 1]) : $this->driverLevelService->findOneBy(['user_type' => CUSTOMER, 'sequence' => 1]);
+            if (!$firstLevel) {
+
+                return response()->json(responseFormatter(LEVEL_403), 403);
+            }
+            $user = $this->authService->updateLoginUser(id: $user->id, data: [
+                'phone' => $request->phone_or_email,
+                'user_level_id' => $firstLevel->id
+            ]);
         }
 
         $verification = businessConfig('customer_verification', BUSINESS_INFORMATION)->value ?? 0;
@@ -690,23 +677,38 @@ class AuthController extends Controller
         if (!$user) {
             return response()->json(responseFormatter(constant: USER_NOT_FOUND_404), 403);
         }
-
-        return response()->json(responseFormatter(constant: DEFAULT_200, content: [
-            'exists' => true,
-            'user_id' => $user->id,
-            'user_type' => $user->user_type,
-            'is_active' => (bool)$user->is_active,
-        ]));
+        return response()->json(["user" => $user]);
     }
 
     private function authenticate($user, $access_type)
     {
-        return [
+        $response = [
             'token' => $user->createToken($access_type)->accessToken,
             'is_active' => $user->is_active,
             'is_phone_verified' => is_null($user['phone_verified_at']) ? 0 : 1,
             'is_profile_verified' => $user->isProfileVerified(),
         ];
+
+        // Add travel approval status for drivers
+        if ($user->user_type === 'driver' && $user->driverDetails) {
+            $driverDetails = $user->driverDetails;
+            $response['travel_status'] = $driverDetails->travel_status ?? 'none';
+            $response['travel_enabled'] = $driverDetails->isTravelApproved();
+            $response['can_request_travel'] = $driverDetails->canRequestTravel();
+            
+            // Include vehicle category info
+            $vehicle = $user->vehicle;
+            if ($vehicle && $vehicle->category) {
+                $response['vehicle_category'] = [
+                    'id' => $vehicle->category->id,
+                    'name' => $vehicle->category->name,
+                    'level' => $vehicle->category->level ?? 1,
+                    'is_vip' => ($vehicle->category->level ?? 1) >= 3,
+                ];
+            }
+        }
+
+        return $response;
     }
 
 

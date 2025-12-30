@@ -682,12 +682,33 @@ class AuthController extends Controller
 
     private function authenticate($user, $access_type)
     {
-        return [
+        $response = [
             'token' => $user->createToken($access_type)->accessToken,
             'is_active' => $user->is_active,
             'is_phone_verified' => is_null($user['phone_verified_at']) ? 0 : 1,
             'is_profile_verified' => $user->isProfileVerified(),
         ];
+
+        // Add travel approval status for drivers
+        if ($user->user_type === 'driver' && $user->driverDetails) {
+            $driverDetails = $user->driverDetails;
+            $response['travel_status'] = $driverDetails->travel_status ?? 'none';
+            $response['travel_enabled'] = $driverDetails->isTravelApproved();
+            $response['can_request_travel'] = $driverDetails->canRequestTravel();
+            
+            // Include vehicle category info
+            $vehicle = $user->vehicle;
+            if ($vehicle && $vehicle->category) {
+                $response['vehicle_category'] = [
+                    'id' => $vehicle->category->id,
+                    'name' => $vehicle->category->name,
+                    'level' => $vehicle->category->level ?? 1,
+                    'is_vip' => ($vehicle->category->level ?? 1) >= 3,
+                ];
+            }
+        }
+
+        return $response;
     }
 
 
