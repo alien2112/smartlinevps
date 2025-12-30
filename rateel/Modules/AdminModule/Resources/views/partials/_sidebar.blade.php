@@ -62,6 +62,14 @@
                         <span class="link-title">{{ translate('dashboard') }}</span>
                     </a>
                 </li>
+                
+                {{-- AI Chatbot Manager --}}
+                <li class="{{Request::is('admin/chatbot*') ?'active open':''}}">
+                    <a href="{{route('admin.chatbot.index')}}">
+                        <i class="bi bi-robot"></i>
+                        <span class="link-title">{{ translate('AI_Manager') }}</span>
+                    </a>
+                </li>
                 @can('dashboard')
                     <li class="{{Request::is('admin/heat-map*') ?'active open':''}}">
                         <a href="{{route('admin.heat-map')}}">
@@ -223,6 +231,28 @@
                             <i class="bi bi-airplane-fill"></i>
                             <span class="link-title text-capitalize">{{ translate('Travel_Requests') }}</span>
                         </a>
+                    </li>
+                    
+                    {{-- Travel Operations Sub-menu --}}
+                    <li class="has-sub-item {{Request::is('admin/travel/calendar') || Request::is('admin/travel/analytics') ? 'active sub-menu-opened' : ''}}">
+                        <a href="#">
+                            <i class="bi bi-calendar-event"></i>
+                            <span class="link-title text-capitalize">{{ translate('Travel_Operations') }}</span>
+                        </a>
+                        <ul class="nav sub-menu">
+                            <li class="{{Request::is('admin/travel/calendar') ? 'active open' : ''}}">
+                                <a href="{{route('admin.travel.calendar')}}" class="text-capitalize">
+                                    <i class="bi bi-dash-lg"></i>
+                                    {{ translate('Calendar_View') }}
+                                </a>
+                            </li>
+                            <li class="{{Request::is('admin/travel/analytics') ? 'active open' : ''}}">
+                                <a href="{{route('admin.travel.analytics')}}" class="text-capitalize">
+                                    <i class="bi bi-dash-lg"></i>
+                                    {{ translate('Price_Analytics') }}
+                                </a>
+                            </li>
+                        </ul>
                     </li>
                     <!----------------- End Trip Management ------------------------>
                 @endif
@@ -424,6 +454,13 @@
                         <a href="{{route('admin.customer.wallet.index')}}">
                             <i class="bi bi-wallet-fill"></i>
                             <span class="link-title text-capitalize">{{translate('customer_wallet')}}</span>
+                        </a>
+                    </li>
+                    
+                    <li class="{{Request::is('admin/hotspots')? 'active open' : ''}}">
+                        <a href="{{route('admin.hotspots.index')}}">
+                            <i class="bi bi-map-fill"></i>
+                            <span class="link-title text-capitalize">{{translate('User_Hotspots_Map')}}</span>
                         </a>
                     </li>
 
@@ -631,6 +668,12 @@
                                 <a class="text-capitalize" href="{{route('admin.business.pages-media.social-media')}}">
                                     <i class="bi bi-dash-lg"></i>
                                     {{translate('social_media_links')}}
+                                </a>
+                            </li>
+                            <li class="{{Request::is('admin/business/setup/onboarding') ? 'active open' : ''}}">
+                                <a class="text-capitalize" href="{{route('admin.business.setup.onboarding.index')}}">
+                                    <i class="bi bi-dash-lg"></i>
+                                    {{translate('App_Onboarding')}}
                                 </a>
                             </li>
                         </ul>
