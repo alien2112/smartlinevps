@@ -2,7 +2,7 @@
 
 namespace App\Observers;
 
-use App\Models\Modules\TripManagement\Entities\TripRequest;
+use Modules\TripManagement\Entities\TripRequest;
 use App\Services\AdminDashboardCacheService;
 
 class TripRequestObserver
