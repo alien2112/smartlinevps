@@ -20,6 +20,7 @@ use Modules\BusinessManagement\Http\Controllers\Web\Admin\PagesMedia\LandingPage
 use Modules\BusinessManagement\Http\Controllers\Web\Admin\PagesMedia\PagesMediaController;
 use Modules\BusinessManagement\Http\Controllers\Web\Admin\SystemSetting\LanguageController;
 use Modules\BusinessManagement\Http\Controllers\Web\Admin\SystemSetting\SystemSettingController;
+use Modules\BusinessManagement\Http\Controllers\Web\Admin\OnboardingController;
 
 
 #new route
@@ -145,6 +146,13 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
                         Route::delete('delete/{id}', 'destroyCancellationReason')->name('delete');
                         Route::get('status', 'statusCancellationReason')->name('status');
                     });
+                });
+            });
+            
+            Route::group(['prefix' => 'onboarding', 'as' => 'onboarding.'], function () {
+                Route::controller(OnboardingController::class)->group(function () {
+                    Route::get('/', 'index')->name('index');
+                    Route::post('update', 'update')->name('update');
                 });
             });
         });

@@ -1,0 +1,45 @@
+@section('title', translate('User_Hotspots'))
+
+@extends('adminmodule::layouts.master')
+
+@push('css_or_js')
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <style>
+        #map { height: 600px; width: 100%; border-radius: 12px; }
+    </style>
+@endpush
+
+@section('content')
+    <div class="main-content">
+        <div class="container-fluid">
+            <h2 class="fs-22 text-capitalize mb-3">{{ translate('User_Saved_Locations_Map') }}</h2>
+
+            <div class="card">
+                <div class="card-body">
+                    <p class="text-muted mb-3">{{ translate('Visualize_where_your_customers_live_and_work._Use_this_to_plan_driver_allocation.') }}</p>
+                    <div id="map"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+
+@push('script')
+    <script>
+        var map = L.map('map').setView([24.7136, 46.6753], 11); // Default to Riyadh
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        var heatPoints = [
+            @foreach($hotspots as $point)
+                [{{ $point->latitude }}, {{ $point->longitude }}, 0.5], // 0.5 intensity
+            @endforeach
+        ];
+
+        var heat = L.heatLayer(heatPoints, {radius: 25}).addTo(map);
+    </script>
+@endpush

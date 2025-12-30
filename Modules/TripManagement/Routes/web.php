@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\TripManagement\Http\Controllers\Web\New\RefundController;
 use Modules\TripManagement\Http\Controllers\Web\New\SafetyAlertController;
 use Modules\TripManagement\Http\Controllers\Web\TripController;
+use Modules\TripManagement\Http\Controllers\Web\Admin\TravelOperationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -49,6 +50,32 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
             Route::get('export/{type}', 'export')->name('export');
             Route::put('mark-as-solved/{id}', 'markAsSolved')->name('mark-as-solved');
             Route::put('ajax-mark-as-solved/{id}', 'ajaxMarkAsSolved')->name('ajax-mark-as-solved');
+        });
+    });
+
+    // Lost & Found Management Routes
+    Route::group(['prefix' => 'lost-items', 'as' => 'lost-items.'], function () {
+        Route::controller(\Modules\TripManagement\Http\Controllers\Web\New\LostItemController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/{id}', 'show')->name('show');
+            Route::patch('/{id}/status', 'updateStatus')->name('update-status');
+            Route::get('/export/download', 'export')->name('export');
+        });
+    });
+
+    // Travel Mode Management Routes (VIP scheduled rides)
+    Route::group(['prefix' => 'travel', 'as' => 'travel.'], function () {
+        Route::controller(TravelOperationController::class)->group(function () {
+             Route::get('calendar', 'calendar')->name('calendar');
+             Route::get('analytics', 'analytics')->name('analytics');
+        });
+        
+        Route::controller(\Modules\TripManagement\Http\Controllers\Web\New\TravelController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('{tripId}', 'show')->name('show');
+            Route::post('{tripId}/assign', 'assignDriver')->name('assign');
+            Route::post('{tripId}/cancel', 'cancel')->name('cancel');
+            Route::get('api/drivers', 'getAvailableDrivers')->name('api.drivers');
         });
     });
 

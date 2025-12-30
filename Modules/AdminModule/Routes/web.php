@@ -9,6 +9,7 @@ use Modules\AdminModule\Http\Controllers\Web\New\Admin\SettingController;
 use Modules\AdminModule\Http\Controllers\Web\New\Admin\SharedController;
 use Modules\AdminModule\Http\Controllers\Web\New\Admin\FleetMapViewController;
 use Modules\AdminModule\Http\Controllers\Web\New\Admin\NotificationController;
+use Modules\AdminModule\Http\Controllers\Web\Admin\AiChatbotController;
 
 /*
 |--------------------------------------------------------------------------
@@ -48,6 +49,7 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
         Route::get('leader-board-customer', 'leaderBoardCustomer')->name('leader-board-customer');
         Route::get('earning-statistics', 'adminEarningStatistics')->name('earning-statistics');
         Route::get('zone-wise-statistics', 'zoneWiseStatistics')->name('zone-wise-statistics');
+        Route::post('clear-cache', 'clearCache')->name('clear-cache');
         Route::get('chatting', 'chatting')->name('chatting');
         Route::get('driver-conversation/{channelId}', 'getDriverConversation')->name('driver-conversation');
         Route::post('send-message-to-driver', 'sendMessageToDriver')->name('send-message-to-driver');
@@ -77,6 +79,25 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
         Route::post('delete', 'delete')->name('delete');
         Route::get('push', 'push_notification')->name('push');
         Route::post('update-push-notification', 'update_push_notification')->name('update-push-notification');
+    });
+
+    Route::controller(AiChatbotController::class)->group(function () {
+        Route::get('chatbot/config', 'index')->name('chatbot.index');
+        Route::post('chatbot/update', 'update')->name('chatbot.update');
+        Route::get('chatbot/logs', 'logs')->name('chatbot.logs');
+    });
+
+    // App Settings (Tracking, Dispatch, Travel, Map)
+    Route::group(['prefix' => 'app-settings', 'as' => 'app-settings.'], function () {
+        Route::controller(\App\Http\Controllers\Admin\SettingsController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::post('/update', 'update')->name('update');
+            Route::post('/update-single', 'updateSingle')->name('update-single');
+            Route::post('/reset', 'resetToDefault')->name('reset');
+            Route::post('/reset-group', 'resetGroupToDefaults')->name('reset-group');
+            Route::get('/load-preview', 'loadPreview')->name('load-preview');
+            Route::get('/group/{group}', 'getGroupSettings')->name('group');
+        });
     });
 });
 Route::controller(SharedController::class)->group(function () {
