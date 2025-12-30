@@ -32,7 +32,7 @@ class BannerSetupService extends BaseService implements Interface\BannerSetupSer
             'banner_group'=>$data['banner_group'] ?? null,
             'start_date'=>$data['start_date'] ?? null,
             'end_date'=>$data['end_date'] ?? null,
-            'image'=>fileUploader('promotion/banner/', 'png', $data['banner_image']),
+            'image'=>fileUploader('promotion/banner/', 'webp', $data['banner_image']),
             'target_audience' => $data['target_audience'],
         ];
         return parent::create($storeData);
@@ -54,7 +54,7 @@ class BannerSetupService extends BaseService implements Interface\BannerSetupSer
         ];
         if (array_key_exists('banner_image', $data)) {
             $updateData = array_merge($updateData,[
-                'image'=>fileUploader('promotion/banner/', 'png', $data['banner_image'], $model->image),
+                'image'=>fileUploader('promotion/banner/', 'webp', $data['banner_image'], $model->image),
             ]);
         }
         return parent::update($id, $updateData);

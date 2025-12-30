@@ -53,3 +53,5 @@ debug_*.php
 
 
 
+ai-chat-bot/.env
+ai-chat-bot/node_modules/

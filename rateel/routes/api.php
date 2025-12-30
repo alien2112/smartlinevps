@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Auth routes (converted from closures for route caching)
-Route::middleware('auth:sanctum')->get('/user', [AppConfigController::class, 'user']);
+Route::middleware('auth:sanctum')->get('/user', [AppConfigController::class, 'currentUser']);
 
 // Version API (converted from closure for route caching)
 Route::get('/version', [AppConfigController::class, 'version']);

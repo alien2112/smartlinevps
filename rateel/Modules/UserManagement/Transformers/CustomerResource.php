@@ -30,7 +30,7 @@ class CustomerResource extends JsonResource
             'identification_image' => getMediaUrl($this->identification_image, 'customer/identity'),
             'other_documents' => getMediaUrl($this->other_documents, 'customer/document'),
             'date_of_birth' => $this->date_of_birth,
-            'profile_image' => getMediaUrl($this->profile_image),
+            'profile_image' => getMediaUrl($this->profile_image, 'customer/profile'),
             'fcm_token' => $this->fcm_token,
             'phone_verified_at' => $this->phone_verified_at,
             'email_verified_at' => $this->email_verified_at,

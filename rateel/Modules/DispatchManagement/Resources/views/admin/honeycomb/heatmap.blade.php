@@ -171,6 +171,10 @@
                     <div class="d-flex flex-wrap gap-4 align-items-center">
                         <span class="fw-semibold">مفتاح الألوان:</span>
                         <div class="d-flex align-items-center gap-2">
+                            <span class="rounded-circle d-inline-block" style="width: 16px; height: 16px; background: #e0e0e0; border: 1px solid #ccc;"></span>
+                            <small>فارغ (لا نشاط)</small>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
                             <span class="rounded-circle d-inline-block" style="width: 16px; height: 16px; background: #28a745;"></span>
                             <small>متوازن (< 1x)</small>
                         </div>
@@ -194,69 +198,88 @@
     <!-- End Main Content -->
 @endsection
 
+@push('css_or_js')
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+@endpush
+
 @push('script')
-    @if($selectedZoneId)
-        <script src="https://maps.googleapis.com/maps/api/js?key={{ env('GOOGLE_MAPS_API_KEY', '') }}&callback=initMap" async defer></script>
-    @endif
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
         "use strict";
 
         let map;
-        let markers = [];
+        let hexagons = [];
         let heatmapData = @json($heatmapData ?? []);
 
+        $(document).ready(function() {
+            @if($selectedZoneId)
+                initMap();
+            @endif
+        });
+
         function initMap() {
-            // Default center (can be overridden by cell data)
-            let center = { lat: 24.7136, lng: 46.6753 }; // Riyadh default
-            
+            // Default center (Egypt center)
+            let center = [26.8206, 30.8025];
+            let zoom = 10;
+
             if (heatmapData.length > 0) {
-                center = {
-                    lat: parseFloat(heatmapData[0].center.lat),
-                    lng: parseFloat(heatmapData[0].center.lng)
-                };
+                center = [
+                    parseFloat(heatmapData[0].center.lat),
+                    parseFloat(heatmapData[0].center.lng)
+                ];
             }
 
-            map = new google.maps.Map(document.getElementById('map'), {
-                zoom: 12,
+            // Initialize Leaflet map
+            map = L.map('map', {
                 center: center,
-                styles: [
-                    { featureType: "poi", stylers: [{ visibility: "off" }] }
-                ]
+                zoom: zoom,
+                zoomControl: true
             });
 
-            // Add markers for each cell
-            addCellMarkers(heatmapData);
+            // Add OpenStreetMap tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Draw hexagons for each cell
+            drawHexagons(heatmapData);
         }
 
-        function addCellMarkers(cells) {
-            // Clear existing markers
-            markers.forEach(m => m.setMap(null));
-            markers = [];
+        function drawHexagons(cells) {
+            // Clear existing hexagons
+            hexagons.forEach(h => map.removeLayer(h));
+            hexagons = [];
+
+            if (cells.length === 0) return;
+
+            let bounds = L.latLngBounds();
 
             cells.forEach(cell => {
-                const color = getColorForImbalance(cell.imbalance);
+                const isEmpty = cell.is_empty || (cell.supply === 0 && cell.demand === 0);
+                const color = isEmpty ? '#e0e0e0' : getColorForImbalance(cell.imbalance);
                 const isHotspot = cell.imbalance > 1.5 && cell.demand >= 2;
 
-                const marker = new google.maps.Marker({
-                    position: { 
-                        lat: parseFloat(cell.center.lat), 
-                        lng: parseFloat(cell.center.lng) 
-                    },
-                    map: map,
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        fillColor: color,
-                        fillOpacity: 0.7,
-                        strokeColor: isHotspot ? '#fff' : color,
-                        strokeWeight: isHotspot ? 3 : 1,
-                        scale: Math.max(10, Math.min(30, cell.demand * 5 + cell.supply * 2))
-                    },
-                    title: `عرض: ${cell.supply}, طلب: ${cell.demand}, نسبة: ${cell.imbalance.toFixed(2)}x`
-                });
+                const centerLat = parseFloat(cell.center.lat);
+                const centerLng = parseFloat(cell.center.lng);
 
-                const infoWindow = new google.maps.InfoWindow({
-                    content: `
+                // Generate hexagon vertices
+                const hexVertices = getHexagonVertices(centerLat, centerLng, 0.01);
+
+                const hexagon = L.polygon(hexVertices, {
+                    color: isHotspot ? '#ffffff' : (isEmpty ? '#cccccc' : color),
+                    weight: isHotspot ? 3 : 1,
+                    opacity: isEmpty ? 0.3 : 0.8,
+                    fillColor: color,
+                    fillOpacity: isEmpty ? 0.1 : 0.5
+                }).addTo(map);
+
+                // Add popup for non-empty cells
+                if (!isEmpty) {
+                    const popupContent = `
                         <div style="min-width: 150px; direction: rtl;">
                             <strong>${isHotspot ? '🔥 نقطة ساخنة' : 'خلية'}</strong><br>
                             <hr style="margin: 5px 0;">
@@ -265,29 +288,43 @@
                             <div>نسبة: <strong>${cell.imbalance.toFixed(2)}x</strong></div>
                             ${cell.surge_multiplier > 1 ? `<div>Surge: <strong>${cell.surge_multiplier}x</strong></div>` : ''}
                         </div>
-                    `
-                });
+                    `;
+                    hexagon.bindPopup(popupContent);
+                }
 
-                marker.addListener('click', () => {
-                    infoWindow.open(map, marker);
-                });
-
-                markers.push(marker);
+                hexagons.push(hexagon);
+                bounds.extend([centerLat, centerLng]);
             });
 
-            // Fit bounds to show all markers
-            if (markers.length > 0) {
-                const bounds = new google.maps.LatLngBounds();
-                markers.forEach(m => bounds.extend(m.getPosition()));
-                map.fitBounds(bounds);
+            // Fit map to show all hexagons
+            if (bounds.isValid()) {
+                map.fitBounds(bounds, { padding: [20, 20] });
             }
         }
 
+        /**
+         * Generate hexagon vertices around a center point
+         */
+        function getHexagonVertices(lat, lng, radius) {
+            const vertices = [];
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i; // 60 degrees per vertex
+                const dx = radius * Math.cos(angle);
+                const dy = radius * Math.sin(angle);
+                vertices.push([
+                    lat + dy,
+                    lng + dx / Math.cos(lat * Math.PI / 180) // Adjust for latitude distortion
+                ]);
+            }
+            return vertices;
+        }
+
         function getColorForImbalance(imbalance) {
-            if (imbalance > 2) return '#dc3545';      // Red - Hot
-            if (imbalance > 1.5) return '#fd7e14';    // Orange - High demand
-            if (imbalance > 1) return '#ffc107';      // Yellow - Medium
-            return '#28a745';                          // Green - Balanced
+            if (imbalance === 0) return '#e0e0e0';  // Empty/Gray
+            if (imbalance > 2) return '#dc3545';     // Red - Hot
+            if (imbalance > 1.5) return '#fd7e14';   // Orange - High demand
+            if (imbalance > 1) return '#ffc107';     // Yellow - Medium
+            return '#28a745';                         // Green - Balanced
         }
 
         function loadHeatmap(zoneId) {
@@ -302,20 +339,25 @@
                 return;
             }
 
+            if (!map) {
+                toastr.error('الخريطة غير جاهزة');
+                return;
+            }
+
             $.ajax({
                 url: "{{ route('admin.dispatch.honeycomb.heatmap.data') }}",
                 data: { zone_id: zoneId },
                 success: function(response) {
                     if (response.success) {
                         heatmapData = response.data.cells;
-                        addCellMarkers(heatmapData);
-                        
+                        drawHexagons(heatmapData);
+
                         // Update stats
                         $('#stat-cells').text(response.data.stats.total_cells);
                         $('#stat-supply').text(response.data.stats.total_supply);
                         $('#stat-demand').text(response.data.stats.total_demand);
                         $('#stat-hotspots').text(response.data.stats.hotspot_count);
-                        
+
                         toastr.success('تم التحديث');
                     }
                 },
@@ -335,8 +377,7 @@
             const lat = parseFloat($(this).data('lat'));
             const lng = parseFloat($(this).data('lng'));
             if (map && lat && lng) {
-                map.panTo({ lat, lng });
-                map.setZoom(14);
+                map.setView([lat, lng], 14);
             }
         });
     </script>

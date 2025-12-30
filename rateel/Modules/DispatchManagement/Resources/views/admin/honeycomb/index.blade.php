@@ -311,7 +311,7 @@
                                         <div class="input-group">
                                             <input type="number" step="1" class="form-control" name="max_incentive_amount"
                                                    value="{{ $settings->max_incentive_amount }}" min="0" max="200">
-                                            <span class="input-group-text">ر.س</span>
+                                            <span class="input-group-text">ج.م</span>
                                         </div>
                                     </div>
                                 </div>

@@ -20,7 +20,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const DB_CONFIG = {
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || 'root',
+    password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME || 'smartline_new2',
     waitForConnections: true,
     connectionLimit: 10
@@ -278,6 +278,7 @@ function buildMessages(userMessage, ride, history, lang) {
 // 🚀 MAIN CHAT ENDPOINT
 // ============================================
 
+app.get('/chat', (req, res) => res.send('AI Chatbot Service is Running!'));
 app.post('/chat', async (req, res) => {
     try {
         const { user_id, message } = req.body;

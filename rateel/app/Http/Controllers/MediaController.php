@@ -21,13 +21,13 @@ class MediaController extends Controller
         // Sanitize the path to prevent directory traversal
         $path = str_replace(['../', '..\\'], '', $path);
 
-        // Try R2 storage first
-        $disk = Storage::disk('r2');
+        // Try configured disk first (respecting .env/config)
+        $diskName = config('media.disk', 'secure_local');
+        $disk = Storage::disk($diskName);
 
-        // Check if file exists in R2
+        // Check if file exists in configured disk
         if ($disk->exists($path)) {
             try {
-                // Get file from R2
                 $file = $disk->get($path);
                 $mimeType = $disk->mimeType($path);
 
@@ -36,14 +36,14 @@ class MediaController extends Controller
                     'Cache-Control' => 'public, max-age=31536000',
                 ]);
             } catch (\Exception $e) {
-                \Log::error('Error fetching from R2: ' . $e->getMessage());
+                \Log::error("Error fetching from {$diskName}: " . $e->getMessage());
             }
         }
 
-        // Fall back to local filesystem
+        // Fall back to local filesystem if not using secure_local as primary
         $fullPath = '/root/new/' . $path;
 
-        // Check if file exists locally
+        // Check if file exists locally (even if not using secure_local disk)
         if (!file_exists($fullPath) || !is_file($fullPath)) {
             // Try with .webp extension if original extension doesn't exist
             $pathInfo = pathinfo($fullPath);
@@ -52,6 +52,21 @@ class MediaController extends Controller
             if (file_exists($webpPath) && is_file($webpPath)) {
                 $fullPath = $webpPath;
             } else {
+                // If it doesn't exist locally, check R2 as a final fallback if not already checked
+                if ($diskName !== 'r2') {
+                    $r2Disk = Storage::disk('r2');
+                    if ($r2Disk->exists($path)) {
+                        try {
+                            $file = $r2Disk->get($path);
+                            $mimeType = $r2Disk->mimeType($path);
+                            return Response::make($file, 200, [
+                                'Content-Type' => $mimeType,
+                                'Cache-Control' => 'public, max-age=31536000',
+                            ]);
+                        } catch (\Exception $r2e) {}
+                    }
+                }
+
                 // Return default/placeholder image
                 $defaultImage = public_path('assets/admin-module/img/avatar/avatar.png');
                 if (file_exists($defaultImage)) {

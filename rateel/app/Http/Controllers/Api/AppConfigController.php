@@ -33,7 +33,7 @@ class AppConfigController extends Controller
     /**
      * Get authenticated user (converted from closure for route caching)
      */
-    public function user(Request $request): JsonResponse
+    public function currentUser(Request $request): JsonResponse
     {
         return response()->json($request->user());
     }

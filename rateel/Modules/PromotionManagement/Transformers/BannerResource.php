@@ -24,7 +24,7 @@ class BannerResource extends JsonResource
             "banner_group" => $this->banner_group,
             "start_date" => $this->start_date,
             "end_date" => $this->end_date,
-            "image" => $this->image,
+            "image" => getMediaUrl('promotion/banner/' . $this->image),
             "target_audience" => $this->target_audience,
         ];
     }

@@ -3,17 +3,66 @@
 /**
  * Leaflet Map Initialization (OpenStreetMap)
  * Replaces Google Maps with Leaflet + OSM tiles
+ * 
+ * Includes robust JSON parsing and Modal support
  */
+
+window.leafMaps = {}; // Registry for map instances
 
 $(document).ready(function () {
     // Default map settings
     const defaultTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+    // Egypt bounding box for validation
+    const EGYPT_BOUNDS = {
+        minLat: 22, maxLat: 32,
+        minLng: 25, maxLng: 36
+    };
+
+    /**
+     * Decode HTML entities from string
+     */
+    function decodeHTMLEntities(text) {
+        if (!text) return text;
+        if (typeof text !== 'string') return text;
+        const textArea = document.createElement('textarea');
+        textArea.innerHTML = text;
+        return textArea.value;
+    }
+
+    /**
+     * Parse JSON data from data attribute with HTML entity decoding
+     */
+    function parseDataAttribute(element, attributeName) {
+        try {
+            const rawValue = element.getAttribute(attributeName);
+            if (!rawValue) return [];
+
+            // Decode HTML entities (&quot; etc)
+            const decodedValue = decodeHTMLEntities(rawValue);
+
+            // Parse JSON
+            const parsed = JSON.parse(decodedValue);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            console.error(`❌ Failed to parse ${attributeName}:`, error);
+            // Try jQuery fallback
+            const jqData = $(element).data(attributeName.replace('data-', ''));
+            return Array.isArray(jqData) ? jqData : [];
+        }
+    }
 
     function initMap(mapSelector, lat, lng, title, markersData, input, polygonData = []) {
         let bounds = L.latLngBounds();
         let polygons = [];
         let markerCluster = null;
         let searchMarkers = [];
+
+        // Normalize center
+        if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+            lat = 30.0444; // Cairo
+            lng = 31.2357;
+        }
 
         // Initialize Leaflet map
         const map = L.map(mapSelector, {
@@ -22,6 +71,9 @@ $(document).ready(function () {
             zoomControl: true
         });
 
+        // Store instance for later access (e.g. modals)
+        window.leafMaps[mapSelector] = map;
+
         // Add OpenStreetMap tile layer
         L.tileLayer(defaultTileUrl, {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -29,20 +81,29 @@ $(document).ready(function () {
         }).addTo(map);
 
         // Add zone polygons
-        if (polygonData && polygonData.length > 0) {
-            for (let i = 0; i < polygonData.length; i++) {
-                // Convert Google Maps format {lat, lng} to Leaflet format [lat, lng]
-                const coords = polygonData[i].map(point => [point.lat, point.lng]);
-                const polygon = L.polygon(coords, {
-                    color: '#000000',
-                    weight: 2,
-                    opacity: 0.2,
-                    fillColor: '#000000',
-                    fillOpacity: 0.05
-                }).addTo(map);
-                polygons.push(polygon);
-                bounds.extend(polygon.getBounds());
-            }
+        if (polygonData && Array.isArray(polygonData)) {
+            polygonData.forEach((polygonCoords, index) => {
+                try {
+                    // Normalize polygon points
+                    const coords = polygonCoords.map(point => {
+                        if (Array.isArray(point)) return point;
+                        return [point.lat || point.latitude, point.lng || point.longitude];
+                    });
+
+                    const polygon = L.polygon(coords, {
+                        color: '#000000',
+                        weight: 2,
+                        opacity: 0.2,
+                        fillColor: '#000000',
+                        fillOpacity: 0.05
+                    }).addTo(map);
+                    polygons.push(polygon);
+                    bounds.extend(polygon.getBounds());
+                } catch (e) {
+                    console.warn('Invalid polygon data', e);
+                }
+            });
+
             if (bounds.isValid()) {
                 map.fitBounds(bounds, { padding: [20, 20] });
             }
@@ -59,8 +120,15 @@ $(document).ready(function () {
         map.addLayer(markerCluster);
 
         // Add markers
-        if (markersData && markersData.length > 0) {
+        if (markersData && Array.isArray(markersData)) {
             markersData.forEach(function (data) {
+                if (!data.position) return;
+                
+                const mLat = parseFloat(data.position.lat);
+                const mLng = parseFloat(data.position.lng);
+                
+                if (isNaN(mLat) || isNaN(mLng)) return;
+
                 const markerOptions = {};
 
                 if (data.icon) {
@@ -72,12 +140,12 @@ $(document).ready(function () {
                     });
                 }
 
-                const marker = L.marker([data.position.lat, data.position.lng], markerOptions);
+                const marker = L.marker([mLat, mLng], markerOptions);
 
                 marker.on('click', function () {
                     L.popup()
                         .setLatLng(marker.getLatLng())
-                        .setContent(`<div class="map-clusters-custom-window"><h6>${data.title}</h6></div>`)
+                        .setContent(`<div class="map-clusters-custom-window"><h6>${data.title || 'Trip'}</h6></div>`)
                         .openOn(map);
                 });
 
@@ -89,6 +157,13 @@ $(document).ready(function () {
         if (input) {
             setupSearchBox(input, map, searchMarkers);
         }
+        
+        // Force resize calculation after init
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 200);
+        
+        return map;
     }
 
     function setupSearchBox(input, map, searchMarkers) {
@@ -172,13 +247,33 @@ $(document).ready(function () {
     // Initialize maps on page load
     $(".map-container").each(function () {
         const $map = $(this).find(".map");
+        const mapElement = $map[0];
+        
+        if (!mapElement) return;
+
         const input = $(this).find(".map-search-input")[0];
-        const lat = $map.data("lat") || 30.0444;
-        const lng = $map.data("lng") || 31.2357;
+        
+        // Parse coordinates
+        let lat = parseFloat($map.data("lat"));
+        let lng = parseFloat($map.data("lng"));
+
+        // Use parsing helper for complex data
+        const markers = parseDataAttribute(mapElement, 'data-markers');
+        const polygonData = parseDataAttribute(mapElement, 'data-polygon');
         const title = $map.data("title");
-        const markers = $map.data("markers") || [];
-        const polygonData = $map.data("polygon") || [];
 
         initMap($map.attr("id"), lat, lng, title, markers, input, polygonData);
+    });
+    
+    // Fix map rendering in Modals
+    $(document).on('shown.bs.modal', function (e) {
+        const modal = $(e.target);
+        modal.find('.map').each(function() {
+            const mapId = $(this).attr('id');
+            if (window.leafMaps[mapId]) {
+                window.leafMaps[mapId].invalidateSize();
+                console.log('🔄 Map resized for modal:', mapId);
+            }
+        });
     });
 });

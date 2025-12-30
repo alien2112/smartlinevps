@@ -220,7 +220,12 @@
                 },
                 success: function (response) {
                     $('#overviewMap').empty().html(response);
-                    $.getScript('{{ asset('public/assets/admin-module/js/maps/map-init-overview.js') }}');
+                    // Reinitialize the map after AJAX content is loaded
+                    if (typeof window.initializeOverviewMaps === 'function') {
+                        setTimeout(function() {
+                            window.initializeOverviewMaps();
+                        }, 100);
+                    }
                 },
                 complete: function () {
                     $('#resource-loader').hide();

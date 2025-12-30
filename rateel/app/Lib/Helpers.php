@@ -84,13 +84,12 @@ if (!function_exists('removeSpecialCharacters')) {
 if (!function_exists('fileUploader')) {
     function fileUploader(string $dir, string $format, $image = null, $oldImage = null)
     {
-        if ($image == null) {
-            return $oldImage ?? 'def.png';
-        }
-        try {
-            $disk = 'r2'; // Use Cloudflare R2 for file storage
-
-            // Delete old image(s) if exists
+                    if ($image == null) {
+                        return $oldImage ?? 'def.png';
+                    }
+                    try {
+                        $disk = config('media.disk', 'secure_local'); // Use configured disk for file storage
+                    // Delete old image(s) if exists
             if (is_array($oldImage) && !empty($oldImage)) {
                 // Handle the case when $oldImage is an array (multiple images)
                 foreach ($oldImage as $file) {
@@ -958,7 +957,8 @@ if (!function_exists('onErrorImage')) {
 
         if (isset($data) && strlen($data) > 1) {
             // Use getMediaUrl to generate proper URL for the new storage system
-            return getMediaUrl($data);
+            // Pass the path parameter to ensure correct folder structure
+            return getMediaUrl($data, $path);
         }
         return $error_src;
     }

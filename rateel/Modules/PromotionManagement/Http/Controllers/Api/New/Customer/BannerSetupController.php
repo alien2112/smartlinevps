@@ -17,14 +17,18 @@ class BannerSetupController extends Controller
     {
         $this->bannerService = $bannerService;
     }
-    public function list(Request $request):JsonResponse
+    public function list(Request $request): JsonResponse
     {
-
         $today = Carbon::today();
-        $banner = $this->bannerService->list($today,limit:$request['limit'],offset:$request['offset']);
-        $data = BannerResource::collection($banner);
-        return response()->json(responseFormatter(DEFAULT_200, $data,$request['limit'], $request['offset']));
+        $limit = $request->input('limit', 10);
+        $offset = $request->input('offset', 0);
 
+        // Convert offset to page number (Laravel's paginate depends on page number, not direct offset)
+        $page = floor($offset / $limit) + 1;
+
+        $banner = $this->bannerService->list($today, limit: $limit, offset: $page);
+        $data = BannerResource::collection($banner);
+        return response()->json(responseFormatter(DEFAULT_200, $data, $limit, $offset));
     }
 
      public function RedirectionCount(Request $request)

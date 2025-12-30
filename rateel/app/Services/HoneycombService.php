@@ -383,8 +383,223 @@ class HoneycombService
     // ============================================================
 
     /**
+     * Generate all hexagon cells that cover a zone's geographic bounds
+     *
+     * @param string $zoneId
+     * @param int $resolution H3 resolution
+     * @return array Array of h3 indexes covering the zone
+     */
+    public function generateZoneCoverage(string $zoneId, int $resolution = null): array
+    {
+        // Get zone boundaries
+        $zone = \Modules\ZoneManagement\Entities\Zone::find($zoneId);
+
+        if (!$zone || !$zone->coordinates) {
+            return [];
+        }
+
+        $resolution = $resolution ?? $this->defaultResolution;
+
+        // Extract polygon coordinates
+        $coordinates = $zone->coordinates[0] ?? null;
+        if (!$coordinates) {
+            return [];
+        }
+
+        // Get bounding box from coordinates
+        $bounds = $this->getPolygonBounds($coordinates);
+
+        if (!$bounds) {
+            return [];
+        }
+
+        // Generate grid of hexagons covering the bounding box
+        $hexagons = $this->generateHexGrid(
+            $bounds['min_lat'],
+            $bounds['max_lat'],
+            $bounds['min_lng'],
+            $bounds['max_lng'],
+            $resolution
+        );
+
+        // Filter to only hexagons within the zone polygon
+        $zoneCells = [];
+        foreach ($hexagons as $h3Index) {
+            $center = $this->h3ToLatLng($h3Index);
+            if ($this->isPointInPolygon($center['lat'], $center['lng'], $coordinates)) {
+                $zoneCells[] = $h3Index;
+            }
+        }
+
+        return $zoneCells;
+    }
+
+    /**
+     * Generate hexagonal grid covering a bounding box
+     *
+     * @param float $minLat
+     * @param float $maxLat
+     * @param float $minLng
+     * @param float $maxLng
+     * @param int $resolution
+     * @return array
+     */
+    private function generateHexGrid(float $minLat, float $maxLat, float $minLng, float $maxLng, int $resolution): array
+    {
+        $gridSize = match ($resolution) {
+            7 => 0.05,
+            8 => 0.015,
+            9 => 0.005,
+            default => 0.015,
+        };
+
+        $hexagons = [];
+
+        // Generate grid points
+        for ($lat = $minLat; $lat <= $maxLat; $lat += $gridSize) {
+            for ($lng = $minLng; $lng <= $maxLng; $lng += $gridSize) {
+                $h3Index = $this->latLngToH3($lat, $lng, $resolution);
+                if (!in_array($h3Index, $hexagons)) {
+                    $hexagons[] = $h3Index;
+                }
+            }
+        }
+
+        return $hexagons;
+    }
+
+    /**
+     * Get bounding box from polygon coordinates
+     *
+     * @param mixed $coordinates Polygon coordinates
+     * @return array|null
+     */
+    private function getPolygonBounds($coordinates): ?array
+    {
+        $points = [];
+
+        // Extract points from polygon
+        if (is_object($coordinates) && method_exists($coordinates, 'getCoordinates')) {
+            $points = $coordinates->getCoordinates()[0] ?? [];
+        } elseif (is_array($coordinates)) {
+            $points = $coordinates[0] ?? $coordinates;
+        }
+
+        if (empty($points)) {
+            return null;
+        }
+
+        $minLat = PHP_FLOAT_MAX;
+        $maxLat = PHP_FLOAT_MIN;
+        $minLng = PHP_FLOAT_MAX;
+        $maxLng = PHP_FLOAT_MIN;
+
+        foreach ($points as $point) {
+            $lat = null;
+            $lng = null;
+
+            if (is_array($point)) {
+                // Array format [lng, lat] (MySQL standard)
+                $lng = $point[0];
+                $lat = $point[1];
+            } elseif (is_object($point)) {
+                if (isset($point->latitude) && isset($point->longitude)) {
+                    $lat = $point->latitude;
+                    $lng = $point->longitude;
+                } elseif (isset($point->lat) && isset($point->lng)) {
+                    $lat = $point->lat;
+                    $lng = $point->lng;
+                }
+            }
+
+            if ($lat !== null && $lng !== null) {
+                $minLat = min($minLat, $lat);
+                $maxLat = max($maxLat, $lat);
+                $minLng = min($minLng, $lng);
+                $maxLng = max($maxLng, $lng);
+            }
+        }
+
+        return [
+            'min_lat' => $minLat,
+            'max_lat' => $maxLat,
+            'min_lng' => $minLng,
+            'max_lng' => $maxLng,
+        ];
+    }
+
+    /**
+     * Check if a point is inside a polygon using ray-casting algorithm
+     *
+     * @param float $lat
+     * @param float $lng
+     * @param mixed $coordinates
+     * @return bool
+     */
+    private function isPointInPolygon(float $lat, float $lng, $coordinates): bool
+    {
+        $points = [];
+
+        // Extract points from polygon
+        if (is_object($coordinates) && method_exists($coordinates, 'getCoordinates')) {
+            $points = $coordinates->getCoordinates()[0] ?? [];
+        } elseif (is_array($coordinates)) {
+            $points = $coordinates[0] ?? $coordinates;
+        }
+
+        if (count($points) < 3) {
+            return false;
+        }
+
+        $inside = false;
+        $j = count($points) - 1;
+
+        for ($i = 0; $i < count($points); $i++) {
+            $pointI = $this->extractLatLng($points[$i]);
+            $pointJ = $this->extractLatLng($points[$j]);
+
+            if (!$pointI || !$pointJ) {
+                $j = $i;
+                continue;
+            }
+
+            $latI = $pointI['lat'];
+            $lngI = $pointI['lng'];
+            $latJ = $pointJ['lat'];
+            $lngJ = $pointJ['lng'];
+
+            if ((($lngI > $lng) != ($lngJ > $lng)) &&
+                ($lat < ($latJ - $latI) * ($lng - $lngI) / ($lngJ - $lngI) + $latI)) {
+                $inside = !$inside;
+            }
+
+            $j = $i;
+        }
+
+        return $inside;
+    }
+
+    /**
+     * Extract lat/lng from various point formats
+     */
+    private function extractLatLng($point): ?array
+    {
+        if (is_array($point)) {
+            // MySQL spatial format [lng, lat]
+            return ['lat' => $point[1], 'lng' => $point[0]];
+        } elseif (is_object($point)) {
+            if (isset($point->latitude) && isset($point->longitude)) {
+                return ['lat' => $point->latitude, 'lng' => $point->longitude];
+            } elseif (isset($point->lat) && isset($point->lng)) {
+                return ['lat' => $point->lat, 'lng' => $point->lng];
+            }
+        }
+        return null;
+    }
+
+    /**
      * Get heatmap data for a zone
-     * 
+     *
      * @param string $zoneId
      * @param int $windowMinutes Time window to consider
      * @return Collection
@@ -392,41 +607,49 @@ class HoneycombService
     public function getHeatmap(string $zoneId, int $windowMinutes = 5): Collection
     {
         $settings = $this->getSettings($zoneId);
-        
+
         if (!$settings || !$settings['heatmap_enabled']) {
             return collect([]);
         }
-        
-        // Get all supply keys for this zone
-        $supplyPattern = self::CELL_SUPPLY_PREFIX . $zoneId . ':*';
-        $supplyKeys = $this->redis->keys($supplyPattern);
-        
+
+        // Generate all hexagons covering the zone
+        $allCells = $this->generateZoneCoverage($zoneId, $settings['h3_resolution']);
+
+        $windowKey = $this->getTimeWindow();
         $heatmapData = collect();
-        
-        foreach ($supplyKeys as $key) {
-            // Extract h3 from key
-            preg_match('/^' . preg_quote(self::CELL_SUPPLY_PREFIX . $zoneId . ':', '/') . '(.+)$/', $key, $matches);
-            $h3Index = $matches[1] ?? null;
-            
-            if (!$h3Index) continue;
-            
-            $supply = $this->redis->hgetall($key);
+
+        // Process all cells (both active and empty)
+        foreach ($allCells as $h3Index) {
+            $supplyKey = $this->getCellSupplyKey($zoneId, $h3Index);
+            $demandKey = $this->getCellDemandKey($zoneId, $h3Index, $windowKey);
+
+            $supply = $this->redis->hgetall($supplyKey);
+            $demand = $this->redis->hgetall($demandKey);
+
             $supplyTotal = (int)($supply['total'] ?? 0);
-            
-            if ($supplyTotal < $settings['min_drivers_to_color_cell']) {
+            $demandTotal = (int)($demand['total'] ?? 0);
+
+            // Skip completely empty cells unless configured to show all
+            if ($supplyTotal === 0 && $demandTotal === 0 && $settings['min_drivers_to_color_cell'] > 0) {
+                // Still include cell but with minimal data for grid visualization
+                $center = $this->h3ToLatLng($h3Index);
+                $heatmapData->push([
+                    'h3_index' => $h3Index,
+                    'center' => $center,
+                    'supply' => 0,
+                    'demand' => 0,
+                    'imbalance' => 0,
+                    'intensity' => 0,
+                    'surge_multiplier' => 1.0,
+                    'is_empty' => true,
+                ]);
                 continue;
             }
-            
-            // Get demand for current window
-            $windowKey = $this->getTimeWindow();
-            $demandKey = $this->getCellDemandKey($zoneId, $h3Index, $windowKey);
-            $demand = $this->redis->hgetall($demandKey);
-            $demandTotal = (int)($demand['total'] ?? 0);
-            
+
             // Calculate metrics
             $imbalance = $demandTotal / max($supplyTotal, 1);
             $center = $this->h3ToLatLng($h3Index);
-            
+
             $heatmapData->push([
                 'h3_index' => $h3Index,
                 'center' => $center,
@@ -435,6 +658,7 @@ class HoneycombService
                 'imbalance' => round($imbalance, 2),
                 'intensity' => min($imbalance / 5.0, 1.0),
                 'surge_multiplier' => $this->calculateSurge($imbalance, $settings),
+                'is_empty' => false,
                 'supply_breakdown' => [
                     'budget' => (int)($supply['budget'] ?? 0),
                     'pro' => (int)($supply['pro'] ?? 0),
@@ -442,7 +666,7 @@ class HoneycombService
                 ],
             ]);
         }
-        
+
         return $heatmapData->sortByDesc('imbalance');
     }
 

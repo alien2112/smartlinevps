@@ -18,8 +18,8 @@ class ParcelCategoryResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'description' => $this->description,
             'image' => $this->image,
+            'description' => $this->description,
             'is_active' => $this->is_active,
             'weightFares' => ParcelFareWeightResource::collection($this->weightFares),
             'created_at' => $this->created_at,
