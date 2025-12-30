@@ -87,14 +87,14 @@ class TravelApprovalController extends Controller
             if (!$driverDetail) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => translate('Driver not found'),
+                    'message' => __('admin.driver_not_found'),
                 ], 404);
             }
 
             if ($driverDetail->travel_status !== DriverDetail::TRAVEL_STATUS_REQUESTED) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => translate('No pending travel request for this driver'),
+                    'message' => __('admin.no_pending_travel_request'),
                 ], 400);
             }
 
@@ -105,7 +105,7 @@ class TravelApprovalController extends Controller
             if ($categoryLevel < \Modules\VehicleManagement\Entities\VehicleCategory::LEVEL_VIP) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => translate('Driver must be VIP category to receive travel approval'),
+                    'message' => __('admin.driver_must_be_vip'),
                 ], 400);
             }
 
@@ -118,8 +118,8 @@ class TravelApprovalController extends Controller
             if ($driver && $driver->fcm_token) {
                 sendDeviceNotification(
                     fcm_token: $driver->fcm_token,
-                    title: translate('Travel Approved'),
-                    description: translate('Congratulations! Your travel request has been approved. You can now receive travel bookings.'),
+                    title: __('admin.travel_approved'),
+                    description: __('admin.travel_approved_msg'),
                     status: 1,
                     action: 'travel_approved',
                     user_id: $driver->id
@@ -133,7 +133,7 @@ class TravelApprovalController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => translate('Travel request approved successfully'),
+                'message' => __('admin.travel_request_approved'),
             ]);
 
         } catch (\Exception $e) {
@@ -145,7 +145,7 @@ class TravelApprovalController extends Controller
             
             return response()->json([
                 'status' => 'error',
-                'message' => translate('Failed to approve travel request'),
+                'message' => __('admin.failed_approve_travel'),
             ], 500);
         }
     }
@@ -173,19 +173,19 @@ class TravelApprovalController extends Controller
             if (!$driverDetail) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => translate('Driver not found'),
+                    'message' => __('admin.driver_not_found'),
                 ], 404);
             }
 
             if ($driverDetail->travel_status !== DriverDetail::TRAVEL_STATUS_REQUESTED) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => translate('No pending travel request for this driver'),
+                    'message' => __('admin.no_pending_travel_request'),
                 ], 400);
             }
 
             // Reject the request
-            $reason = $request->get('reason', translate('Your travel application was not approved at this time.'));
+            $reason = $request->get('reason', __('admin.your_travel_app_not_approved'));
             $driverDetail->rejectTravelPrivilege(auth()->id(), $reason);
 
             DB::commit();
@@ -195,7 +195,7 @@ class TravelApprovalController extends Controller
             if ($driver && $driver->fcm_token) {
                 sendDeviceNotification(
                     fcm_token: $driver->fcm_token,
-                    title: translate('Travel Request Update'),
+                    title: __('admin.travel_request_update'),
                     description: $reason,
                     status: 1,
                     action: 'travel_rejected',
@@ -211,7 +211,7 @@ class TravelApprovalController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => translate('Travel request rejected'),
+                'message' => __('admin.travel_request_rejected'),
             ]);
 
         } catch (\Exception $e) {
@@ -223,7 +223,7 @@ class TravelApprovalController extends Controller
             
             return response()->json([
                 'status' => 'error',
-                'message' => translate('Failed to reject travel request'),
+                'message' => __('admin.failed_reject_travel'),
             ], 500);
         }
     }
@@ -251,14 +251,14 @@ class TravelApprovalController extends Controller
             if (!$driverDetail) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => translate('Driver not found'),
+                    'message' => __('admin.driver_not_found'),
                 ], 404);
             }
 
             if ($driverDetail->travel_status !== DriverDetail::TRAVEL_STATUS_APPROVED) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => translate('Driver does not have approved travel privilege'),
+                    'message' => __('admin.driver_no_approved_privilege'),
                 ], 400);
             }
 
@@ -273,7 +273,7 @@ class TravelApprovalController extends Controller
             if ($driver && $driver->fcm_token) {
                 sendDeviceNotification(
                     fcm_token: $driver->fcm_token,
-                    title: translate('Travel Privilege Revoked'),
+                    title: __('admin.travel_privilege_revoked'),
                     description: $reason,
                     status: 1,
                     action: 'travel_revoked',
@@ -289,7 +289,7 @@ class TravelApprovalController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => translate('Travel privilege revoked'),
+                'message' => __('admin.travel_privilege_revoked_msg'),
             ]);
 
         } catch (\Exception $e) {
@@ -301,7 +301,7 @@ class TravelApprovalController extends Controller
             
             return response()->json([
                 'status' => 'error',
-                'message' => translate('Failed to revoke travel privilege'),
+                'message' => __('admin.failed_revoke_travel'),
             ], 500);
         }
     }
@@ -341,8 +341,8 @@ class TravelApprovalController extends Controller
                     if ($driver && $driver->fcm_token) {
                         sendDeviceNotification(
                             fcm_token: $driver->fcm_token,
-                            title: translate('Travel Approved'),
-                            description: translate('Congratulations! Your travel request has been approved.'),
+                            title: __('admin.travel_approved'),
+                            description: __('admin.travel_approved_msg'),
                             status: 1,
                             action: 'travel_approved',
                             user_id: $driver->id
@@ -360,7 +360,7 @@ class TravelApprovalController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => translate('Bulk approval completed'),
+            'message' => __('admin.bulk_approval_completed'),
             'approved' => $approved,
             'failed' => $failed,
         ]);

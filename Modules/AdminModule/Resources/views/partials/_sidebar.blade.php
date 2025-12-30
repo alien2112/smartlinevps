@@ -374,7 +374,7 @@
                             <li class="{{Request::is('admin/driver/travel-approval*') ? 'active open' : ''}}">
                                 <a class="text-capitalize" href="{{route('admin.driver.travel-approval.index')}}">
                                     <i class="bi bi-airplane-engines"></i>
-                                    {{translate('Travel_Approval')}}
+                                    {{ __('admin.travel_approval') }}
                                     @php
                                         $pendingTravelCount = \Modules\UserManagement\Entities\DriverDetail::where('travel_status', 'requested')->count();
                                     @endphp

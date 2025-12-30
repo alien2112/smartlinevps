@@ -1,6 +1,6 @@
 @extends('adminmodule::layouts.master')
 
-@section('title', translate('Travel Approval Requests'))
+@section('title', __('admin.travel_approval_requests'))
 
 @push('css')
     <style>
@@ -46,10 +46,10 @@
         <div class="container-fluid">
             <!-- Page Header -->
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-                <h3 class="mb-0">{{ translate('Travel Approval Requests') }}</h3>
+                <h3 class="mb-0">{{ __('admin.travel_approval_requests') }}</h3>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-outline-secondary" id="refreshBtn">
-                        <i class="bi bi-arrow-clockwise"></i> {{ translate('Refresh') }}
+                        <i class="bi bi-arrow-clockwise"></i> {{ __('admin.refresh') }}
                     </button>
                 </div>
             </div>
@@ -62,7 +62,7 @@
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h2 class="mb-0 text-warning">{{ $counts['pending'] }}</h2>
-                                    <span class="text-muted">{{ translate('Pending Requests') }}</span>
+                                    <span class="text-muted">{{ __('admin.pending_requests') }}</span>
                                 </div>
                                 <i class="bi bi-hourglass-split fs-1 text-warning"></i>
                             </div>
@@ -75,7 +75,7 @@
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h2 class="mb-0 text-success">{{ $counts['approved'] }}</h2>
-                                    <span class="text-muted">{{ translate('Approved Drivers') }}</span>
+                                    <span class="text-muted">{{ __('admin.approved_drivers') }}</span>
                                 </div>
                                 <i class="bi bi-check-circle-fill fs-1 text-success"></i>
                             </div>
@@ -88,7 +88,7 @@
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h2 class="mb-0 text-danger">{{ $counts['rejected'] }}</h2>
-                                    <span class="text-muted">{{ translate('Rejected Requests') }}</span>
+                                    <span class="text-muted">{{ __('admin.rejected_requests') }}</span>
                                 </div>
                                 <i class="bi bi-x-circle-fill fs-1 text-danger"></i>
                             </div>
@@ -104,7 +104,7 @@
                         <li class="nav-item">
                             <a class="nav-link {{ $status == 'requested' ? 'active' : '' }}" 
                                href="{{ route('admin.driver.travel-approval.index', ['status' => 'requested']) }}">
-                                {{ translate('Pending') }}
+                                {{ __('admin.pending') }}
                                 @if($counts['pending'] > 0)
                                     <span class="badge bg-warning text-dark ms-1">{{ $counts['pending'] }}</span>
                                 @endif
@@ -113,19 +113,19 @@
                         <li class="nav-item">
                             <a class="nav-link {{ $status == 'approved' ? 'active' : '' }}"
                                href="{{ route('admin.driver.travel-approval.index', ['status' => 'approved']) }}">
-                                {{ translate('Approved') }}
+                                {{ __('admin.approved') }}
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link {{ $status == 'rejected' ? 'active' : '' }}"
                                href="{{ route('admin.driver.travel-approval.index', ['status' => 'rejected']) }}">
-                                {{ translate('Rejected') }}
+                                {{ __('admin.rejected') }}
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link {{ $status == 'all' ? 'active' : '' }}"
                                href="{{ route('admin.driver.travel-approval.index', ['status' => 'all']) }}">
-                                {{ translate('All') }}
+                                {{ __('admin.all') }}
                             </a>
                         </li>
                     </ul>
@@ -139,12 +139,12 @@
                         <table class="table table-hover align-middle">
                             <thead class="table-light">
                                 <tr>
-                                    <th>{{ translate('Driver') }}</th>
-                                    <th>{{ translate('Vehicle') }}</th>
-                                    <th>{{ translate('Category') }}</th>
-                                    <th>{{ translate('Status') }}</th>
-                                    <th>{{ translate('Requested') }}</th>
-                                    <th class="text-center">{{ translate('Actions') }}</th>
+                                    <th>{{ __('admin.driver') }}</th>
+                                    <th>{{ __('admin.vehicle') }}</th>
+                                    <th>{{ __('admin.category') }}</th>
+                                    <th>{{ __('admin.status') }}</th>
+                                    <th>{{ __('admin.requested') }}</th>
+                                    <th class="text-center">{{ __('admin.actions') }}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -176,17 +176,17 @@
                                             @switch($driverDetail->travel_status)
                                                 @case('requested')
                                                     <span class="status-badge status-requested">
-                                                        <i class="bi bi-clock"></i> {{ translate('Pending') }}
+                                                        <i class="bi bi-clock"></i> {{ __('admin.pending') }}
                                                     </span>
                                                     @break
                                                 @case('approved')
                                                     <span class="status-badge status-approved">
-                                                        <i class="bi bi-check-circle"></i> {{ translate('Approved') }}
+                                                        <i class="bi bi-check-circle"></i> {{ __('admin.approved') }}
                                                     </span>
                                                     @break
                                                 @case('rejected')
                                                     <span class="status-badge status-rejected">
-                                                        <i class="bi bi-x-circle"></i> {{ translate('Rejected') }}
+                                                        <i class="bi bi-x-circle"></i> {{ __('admin.rejected') }}
                                                     </span>
                                                     @break
                                             @endswitch
@@ -206,22 +206,22 @@
                                                     <button class="btn btn-success btn-sm action-btn approve-btn"
                                                             data-driver-id="{{ $driver->id }}"
                                                             data-driver-name="{{ $driver->first_name }} {{ $driver->last_name }}">
-                                                        <i class="bi bi-check-lg"></i> {{ translate('Approve') }}
+                                                        <i class="bi bi-check-lg"></i> {{ __('admin.approve') }}
                                                     </button>
                                                     <button class="btn btn-danger btn-sm action-btn reject-btn"
                                                             data-driver-id="{{ $driver->id }}"
                                                             data-driver-name="{{ $driver->first_name }} {{ $driver->last_name }}">
-                                                        <i class="bi bi-x-lg"></i> {{ translate('Reject') }}
+                                                        <i class="bi bi-x-lg"></i> {{ __('admin.reject') }}
                                                     </button>
                                                 </div>
                                             @elseif($driverDetail->travel_status == 'approved')
                                                 <button class="btn btn-outline-danger btn-sm action-btn revoke-btn"
                                                         data-driver-id="{{ $driver->id }}"
                                                         data-driver-name="{{ $driver->first_name }} {{ $driver->last_name }}">
-                                                    <i class="bi bi-shield-x"></i> {{ translate('Revoke') }}
+                                                    <i class="bi bi-shield-x"></i> {{ __('admin.revoke') }}
                                                 </button>
                                             @else
-                                                <span class="text-muted">{{ translate('No actions') }}</span>
+                                                <span class="text-muted">{{ __('admin.no_actions') }}</span>
                                             @endif
                                         </td>
                                     </tr>
@@ -230,7 +230,7 @@
                                         <td colspan="6" class="text-center py-5">
                                             <img src="{{ asset('public/assets/admin-module/img/empty-icons/no-data.svg') }}" 
                                                  alt="" width="100">
-                                            <h5 class="mt-3 text-muted">{{ translate('No travel requests found') }}</h5>
+                                            <h5 class="mt-3 text-muted">{{ __('admin.no_travel_requests_found') }}</h5>
                                         </td>
                                     </tr>
                                 @endforelse
@@ -252,20 +252,20 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">{{ translate('Reject Travel Request') }}</h5>
+                    <h5 class="modal-title">{{ __('admin.reject_travel_request') }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p>{{ translate('Rejecting travel request for:') }} <strong id="rejectDriverName"></strong></p>
+                    <p>{{ __('admin.rejecting_travel_request_for') }} <strong id="rejectDriverName"></strong></p>
                     <div class="mb-3">
-                        <label class="form-label">{{ translate('Reason (optional)') }}</label>
+                        <label class="form-label">{{ __('admin.reason_optional') }}</label>
                         <textarea class="form-control" id="rejectReason" rows="3" 
-                                  placeholder="{{ translate('Enter reason for rejection...') }}"></textarea>
+                                  placeholder="{{ __('admin.enter_reason_for_rejection') }}"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ translate('Cancel') }}</button>
-                    <button type="button" class="btn btn-danger" id="confirmReject">{{ translate('Reject') }}</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ __('admin.cancel') }}</button>
+                    <button type="button" class="btn btn-danger" id="confirmReject">{{ __('admin.reject') }}</button>
                 </div>
             </div>
         </div>
@@ -276,20 +276,20 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">{{ translate('Revoke Travel Privilege') }}</h5>
+                    <h5 class="modal-title">{{ __('admin.revoke_travel_privilege') }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p>{{ translate('Revoking travel privilege for:') }} <strong id="revokeDriverName"></strong></p>
+                    <p>{{ __('admin.revoking_travel_privilege_for') }} <strong id="revokeDriverName"></strong></p>
                     <div class="mb-3">
-                        <label class="form-label">{{ translate('Reason (required)') }}</label>
+                        <label class="form-label">{{ __('admin.reason_required') }}</label>
                         <textarea class="form-control" id="revokeReason" rows="3" required
-                                  placeholder="{{ translate('Enter reason for revocation...') }}"></textarea>
+                                  placeholder="{{ __('admin.enter_reason_for_revocation') }}"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ translate('Cancel') }}</button>
-                    <button type="button" class="btn btn-danger" id="confirmRevoke">{{ translate('Revoke') }}</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ __('admin.cancel') }}</button>
+                    <button type="button" class="btn btn-danger" id="confirmRevoke">{{ __('admin.revoke') }}</button>
                 </div>
             </div>
         </div>
@@ -310,7 +310,7 @@
             const driverId = $(this).data('driver-id');
             const driverName = $(this).data('driver-name');
 
-            if (confirm('{{ translate("Are you sure you want to approve travel privilege for") }} ' + driverName + '?')) {
+            if (confirm('{{ __('admin.are_you_sure_approve') }} ' + driverName + '?')) {
                 approveDriver(driverId);
             }
         });
@@ -340,7 +340,7 @@
         $('#confirmRevoke').on('click', function() {
             const reason = $('#revokeReason').val();
             if (!reason.trim()) {
-                toastr.error('{{ translate("Reason is required for revocation") }}');
+                toastr.error('{{ __('admin.reason_required_revocation') }}');
                 return;
             }
             revokeDriver(currentDriverId, reason);
@@ -360,7 +360,7 @@
                     }
                 },
                 error: function(xhr) {
-                    toastr.error(xhr.responseJSON?.message || '{{ translate("Something went wrong") }}');
+                    toastr.error(xhr.responseJSON?.message || '{{ __('admin.something_went_wrong') }}');
                 }
             });
         }
@@ -380,7 +380,7 @@
                     }
                 },
                 error: function(xhr) {
-                    toastr.error(xhr.responseJSON?.message || '{{ translate("Something went wrong") }}');
+                    toastr.error(xhr.responseJSON?.message || '{{ __('admin.something_went_wrong') }}');
                 }
             });
         }
@@ -400,7 +400,7 @@
                     }
                 },
                 error: function(xhr) {
-                    toastr.error(xhr.responseJSON?.message || '{{ translate("Something went wrong") }}');
+                    toastr.error(xhr.responseJSON?.message || '{{ __('admin.something_went_wrong') }}');
                 }
             });
         }

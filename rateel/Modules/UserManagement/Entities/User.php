@@ -28,6 +28,8 @@ class User extends Authenticatable
         'full_name',
         'first_name',
         'last_name',
+        'first_name_ar',
+        'last_name_ar',
         'email',
         'phone',
         'identification_number',
@@ -59,6 +61,16 @@ class User extends Authenticatable
         'deleted_at',
         'created_at',
         'updated_at',
+        // Onboarding fields
+        'onboarding_step',
+        'otp_verified_at',
+        'password_set_at',
+        'register_completed_at',
+        'vehicle_selected_at',
+        'documents_completed_at',
+        'city_id',
+        'selected_vehicle_type',
+        'travel_enabled',
     ];
 
     protected $casts = [
@@ -75,6 +87,13 @@ class User extends Authenticatable
         'car_front_image' => 'array',
         'car_back_image' => 'array',
         'loyalty_points' => 'double',
+        // Onboarding casts
+        'otp_verified_at' => 'datetime',
+        'password_set_at' => 'datetime',
+        'register_completed_at' => 'datetime',
+        'vehicle_selected_at' => 'datetime',
+        'documents_completed_at' => 'datetime',
+        'travel_enabled' => 'boolean',
     ];
 
     protected static function newFactory()
@@ -229,6 +248,14 @@ class User extends Authenticatable
     public function driverDetails()
     {
         return $this->hasOne(DriverDetail::class, 'user_id');
+    }
+
+    /**
+     * Get driver's uploaded documents (for onboarding)
+     */
+    public function driverDocuments()
+    {
+        return $this->hasMany(DriverDocument::class, 'driver_id');
     }
 
     public function timeLog()

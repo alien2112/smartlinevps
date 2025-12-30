@@ -178,6 +178,20 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
             });
         });
 
+        // Driver Onboarding Approval System (Uber-style)
+        Route::group(['prefix' => 'approvals', 'as' => 'approvals.'], function () {
+            Route::controller(\Modules\UserManagement\Http\Controllers\Web\New\Admin\Driver\DriverApprovalController::class)->group(function () {
+                Route::get('/', 'index')->name('index');                          // List pending applications
+                Route::get('/{id}', 'show')->name('show');                        // View application details
+                Route::post('/approve/{id}', 'approve')->name('approve');         // Approve driver
+                Route::post('/reject/{id}', 'reject')->name('reject');            // Reject driver
+                Route::post('/document/verify/{driverId}/{documentId}', 'verifyDocument')->name('document.verify'); // Verify individual document
+                Route::post('/document/reject/{driverId}/{documentId}', 'rejectDocument')->name('document.reject'); // Reject individual document
+                Route::post('/deactivate/{id}', 'deactivate')->name('deactivate'); // Deactivate driver
+                Route::post('/reactivate/{id}', 'reactivate')->name('reactivate'); // Reactivate driver
+            });
+        });
+
     });
 
     Route::group(['prefix' => 'employee', 'as' => 'employee.'], function () {
