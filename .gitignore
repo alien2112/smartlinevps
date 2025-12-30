@@ -1,6 +1,6 @@
 /node_modules
 /vendor
-# .env
+.env
 .env.backup
 .idea
 .vscode
@@ -55,3 +55,4 @@ debug_*.php
 
 ai-chat-bot/.env
 ai-chat-bot/node_modules/
+smartline-ai/.env
