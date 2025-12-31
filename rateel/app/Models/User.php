@@ -208,7 +208,7 @@ class User extends Authenticatable
 
         static::updated(function ($item) {
             $log = new ActivityLog();
-            $log->edited_by = auth()->user()->id ?? 'user_update';
+            $log->edited_by = auth()->id() ?? 'user_update';
             $log->before = $item->original;
             $log->after = $item;
             $item->logs()->save($log);
@@ -216,7 +216,7 @@ class User extends Authenticatable
 
         static::deleted(function ($item) {
             $log = new ActivityLog();
-            $log->edited_by = auth()->user()->id;
+            $log->edited_by = auth()->id() ?? 'system_delete';
             $log->before = $item->original;
             $item->logs()->save($log);
         });
