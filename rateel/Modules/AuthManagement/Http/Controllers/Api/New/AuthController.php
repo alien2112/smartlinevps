@@ -89,11 +89,6 @@ class AuthController extends Controller
             'identity_images.*' => 'image|mimes:jpeg,jpg,png,gif,webp|max:10000',
             'other_documents' => 'sometimes|array',
             'other_documents.*' => 'file|mimes:jpeg,jpg,png,gif,webp,pdf,doc,docx',
-            // 'driving_license' => 'image|mimes:jpeg,jpg,png,gif,webp',
-            // 'vehicle_license' => 'image|mimes:jpeg,jpg,png,gif,webp',
-            // 'criminal_record' => 'image|mimes:jpeg,jpg,png,gif,webp',
-            // 'car_front_image' => 'image|mimes:jpeg,jpg,png,gif,webp',
-            // 'car_back_image' => 'image|mimes:jpeg,jpg,png,gif,webp',
             'driving_license' => 'sometimes|array',
             'driving_license.*'=> 'image|mimes:jpeg,jpg,png,gif,webp|max:10000',
             'vehicle_license'=> 'sometimes|array',
@@ -118,97 +113,47 @@ class AuthController extends Controller
         }
 
         $route = str_contains($request->route()->getPrefix(), 'customer');
+        $userType = $route ? CUSTOMER : DRIVER;
 
+        // Validate referral code if provided
         if (array_key_exists('referral_code', $request->all()) && $request->referral_code) {
             $referralUser = $route ? $this->customerService->findOneBy(criteria: ['ref_code' => $request->referral_code, 'user_type' => CUSTOMER]) : $this->driverService->findOneBy(criteria: ['ref_code' => $request->referral_code, 'user_type' => DRIVER]);
             if (!$referralUser) {
                 return response()->json(responseFormatter(REFERRAL_CODE_NOT_MATCH_403), 403);
             }
         }
+        
+        // Check driver self registration setting
         if (!$route && !businessConfig('driver_self_registration')?->value) {
             return response()->json(responseFormatter(SELF_REGISTRATION_400), 403);
         }
+        
+        // Check if level exists
         $firstLevel = $route ? $this->customerLevelService->findOneBy(['user_type' => CUSTOMER, 'sequence' => 1]) : $this->driverLevelService->findOneBy(['user_type' => DRIVER, 'sequence' => 1]);
         if (!$firstLevel) {
-
             return response()->json(responseFormatter(LEVEL_403), 403);
         }
 
-        $user = $route ? $this->customerService->create($request->all()) : $this->driverService->create($request->all());
-        if (array_key_exists('referral_code', $request->all()) && $request->referral_code && $referralUser && $user) {
-            if ($route) {
-                if (referralEarningSetting('referral_earning_status', CUSTOMER)?->value) {
-                    $referralCustomerData = [
-                        'customer_id' => $user->id,
-                        'ref_by' => $referralUser->id,
-                        'ref_by_earning_amount' => (double)referralEarningSetting('share_code_earning', CUSTOMER)?->value,
-                    ];
-                    $useCodeEarning = referralEarningSetting('use_code_earning', CUSTOMER)?->value;
-                    if ($useCodeEarning && array_key_exists('first_ride_discount_status', $useCodeEarning) && $useCodeEarning['first_ride_discount_status']) {
-                        $referralCustomerData = array_merge($referralCustomerData, [
-                            'customer_discount_amount' => array_key_exists('discount_amount', $useCodeEarning) && $useCodeEarning['discount_amount'] ? $useCodeEarning['discount_amount'] : 0,
-                            'customer_discount_amount_type' => array_key_exists('discount_amount_type', $useCodeEarning) && $useCodeEarning['discount_amount_type'] ? $useCodeEarning['discount_amount_type'] : null,
-                            'customer_discount_validity' => array_key_exists('discount_validity', $useCodeEarning) && $useCodeEarning['discount_validity'] ? $useCodeEarning['discount_validity'] : 0,
-                            'customer_discount_validity_type' => $useCodeEarning['discount_validity'] && array_key_exists('discount_validity_type', $useCodeEarning) && $useCodeEarning['discount_validity_type'] ? $useCodeEarning['discount_validity_type'] : null,
-                        ]);
-                    }
-                    $this->referralCustomerService->create($referralCustomerData);
-                    $push = getNotification('someone_used_your_code');
-                    sendDeviceNotification(fcm_token: $referralUser?->fcm_token,
-                        title: translate($push['title']),
-                        description: translate(textVariableDataFormat(value: $push['description'])),
-                        status: $push['status'],
-                        ride_request_id: $referralUser?->id,
-                        action: 'referral_code_used',
-                        user_id: $referralUser?->id
-                    );
-                }
-            } else if (referralEarningSetting('referral_earning_status', DRIVER)?->value) {
-                $referralDriverData = [
-                    'driver_id' => $user->id,
-                    'ref_by' => $referralUser->id,
-                    'ref_by_earning_amount' => (double)referralEarningSetting('share_code_earning', DRIVER)?->value,
-                    'driver_earning_amount' => (double)referralEarningSetting('use_code_earning', DRIVER)?->value,
-                    'is_used' => true
-                ];
-                $referralDriver = $this->referralDriverService->create($referralDriverData);
-
-
-                #TODO
-                if ($referralDriver?->ref_by_earning_amount && $referralDriver?->ref_by_earning_amount > 0) {
-                    $this->driverReferralEarningTransaction($referralUser, $referralDriver?->ref_by_earning_amount);
-                    $push = getNotification('referral_reward_received');
-                    sendDeviceNotification(fcm_token: $referralUser?->fcm_token,
-                        title: translate($push['title']),
-                        description: translate(textVariableDataFormat(value: $push['description'], referralRewardAmount: getCurrencyFormat($referralDriver?->ref_by_earning_amount))),
-                        status: $push['status'],
-                        ride_request_id: $referralUser?->id,
-                        action: 'referral_reward_received',
-                        user_id: $referralUser?->id
-                    );
-                }
-                if ($referralDriver?->driver_earning_amount > 0) {
-                    $this->driverReferralEarningTransaction($user, $referralDriver?->driver_earning_amount);
-                    if ($request->fcm_token) {
-                        $push = getNotification('referral_reward_received');
-                        sendDeviceNotification(fcm_token: $request->fcm_token,
-                            title: translate($push['title']),
-                            description: translate(textVariableDataFormat(value: $push['description'], referralRewardAmount: getCurrencyFormat($referralDriver?->driver_earning_amount))),
-                            status: $push['status'],
-                            ride_request_id: $user?->id,
-                            action: 'referral_reward_received',
-                            user_id: $user?->id
-                        );
-                    }
-                }
-            }
-        }
+        // Prepare registration data to store temporarily (exclude files for now, they'll be handled after OTP)
+        $registrationData = $request->except(['profile_image', 'identity_images', 'other_documents', 'driving_license', 'vehicle_license', 'criminal_record', 'car_front_image', 'car_back_image']);
+        
+        // Hash password before storing
+        $registrationData['password'] = bcrypt($request->password);
 
         /**
-         * phone no verification SMS_Body
+         * Store registration data temporarily and send OTP
+         * Account will be created after OTP verification
          */
-        $this->authService->sendOtpToClient($user);
-        return response()->json(responseFormatter(REGISTRATION_200));
+        $this->authService->sendOtpForRegistration(
+            phone: $request->phone,
+            registrationData: $registrationData,
+            userType: $userType
+        );
+
+        return response()->json(responseFormatter(constant: DEFAULT_SENT_OTP_200, content: [
+            'verification_url' => $route ? '/api/customer/auth/otp-verification' : '/api/driver/auth/otp-verification',
+            'message' => translate('Please verify your phone number to complete registration')
+        ]));
     }
 
 
@@ -386,14 +331,13 @@ class AuthController extends Controller
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
 
-        $user = $this->authService->checkClientRoute($request);
-        if (!$user) {
-            return response()->json(responseFormatter(constant: AUTH_LOGIN_404), 403);
-        }
+        // Find OTP record
         $otp = $this->otpVerificationService->findOneBy(criteria: ['phone_or_email' => $request['phone_or_email']]);
         if (!$otp) {
             return response()->json(responseFormatter(DEFAULT_404), 403);
         }
+
+        // Check if blocked due to too many attempts
         $block_time = businessConfig('temporary_block_time')?->value ?? 30;
         $seconds_passed = Carbon::parse($otp->blocked_at)->diffInSeconds();
         if ($otp->is_temp_blocked && $seconds_passed < $block_time) {
@@ -403,6 +347,7 @@ class AuthController extends Controller
             ], 403);
         }
 
+        // Reset block if time has passed
         if ($otp->is_temp_blocked) {
             $otpData = [
                 'is_temp_blocked' => false,
@@ -411,18 +356,59 @@ class AuthController extends Controller
             ];
             $this->otpVerificationService->update(id: $otp->id, data: $otpData);
         }
+
+        // Verify OTP
         if (Carbon::parse($otp->expires_at) > now() && ((int)$otp->otp) === ((int)$request['otp'])) {
-            //If phone is not verified yet
+            
+            // Check if this is a pending registration (has registration_data)
+            if ($otp->registration_data && $otp->user_type) {
+                // This is a new registration - create the user account
+                $registrationData = $otp->registration_data;
+                $isCustomer = $otp->user_type == CUSTOMER;
+                
+                // Create user
+                $user = $isCustomer 
+                    ? $this->customerService->create($registrationData) 
+                    : $this->driverService->create($registrationData);
+                
+                if (!$user) {
+                    return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['message' => translate('Failed to create account')]]), 403);
+                }
+
+                // Mark phone as verified
+                $userData = ['phone_verified_at' => now()];
+                $this->authService->updateLoginUser(id: $user->id, data: $userData);
+
+                // Process referral code if provided
+                if (isset($registrationData['referral_code']) && $registrationData['referral_code']) {
+                    $this->processReferral($user, $registrationData['referral_code'], $isCustomer, $registrationData['fcm_token'] ?? null);
+                }
+
+                // Delete OTP record
+                $this->otpVerificationService->delete(id: $otp->id);
+
+                // Authenticate and return token
+                $access_type = $isCustomer ? CUSTOMER_PANEL_ACCESS : DRIVER_PANEL_ACCESS;
+                return response()->json(responseFormatter(AUTH_LOGIN_200, $this->authenticate($user, $access_type)));
+            }
+
+            // Existing user flow - check if user exists
+            $user = $this->authService->checkClientRoute($request);
+            if (!$user) {
+                return response()->json(responseFormatter(constant: AUTH_LOGIN_404), 403);
+            }
+
+            // Mark phone as verified if not already
             if (!$user->phone_verified_at) {
-                $userData = [
-                    'phone_verified_at' => now()
-                ];
+                $userData = ['phone_verified_at' => now()];
                 $this->authService->updateLoginUser(id: $user->id, data: $userData);
             }
+
             $this->otpVerificationService->delete(id: $otp->id);
             return response()->json(responseFormatter(AUTH_LOGIN_200, self::authenticate($user, $user->user_type == CUSTOMER ? CUSTOMER_PANEL_ACCESS : DRIVER_PANEL_ACCESS)));
         }
 
+        // OTP mismatch - increment failed attempts
         $hit_limit = businessConfig('maximum_otp_hit')?->value ?? 5;
         $otp->increment('failed_attempt');
         if ($hit_limit == $otp->failed_attempt) {
@@ -434,6 +420,85 @@ class AuthController extends Controller
             $this->otpVerificationService->update(id: $otp->id, data: $otpData);
         }
         return response()->json(responseFormatter(OTP_MISMATCH_404), 403);
+    }
+
+    /**
+     * Process referral code after user creation
+     */
+    private function processReferral($user, $referralCode, $isCustomer, $fcmToken = null)
+    {
+        $referralUser = $isCustomer 
+            ? $this->customerService->findOneBy(criteria: ['ref_code' => $referralCode, 'user_type' => CUSTOMER]) 
+            : $this->driverService->findOneBy(criteria: ['ref_code' => $referralCode, 'user_type' => DRIVER]);
+
+        if (!$referralUser) {
+            return;
+        }
+
+        if ($isCustomer) {
+            if (referralEarningSetting('referral_earning_status', CUSTOMER)?->value) {
+                $referralCustomerData = [
+                    'customer_id' => $user->id,
+                    'ref_by' => $referralUser->id,
+                    'ref_by_earning_amount' => (double)referralEarningSetting('share_code_earning', CUSTOMER)?->value,
+                ];
+                $useCodeEarning = referralEarningSetting('use_code_earning', CUSTOMER)?->value;
+                if ($useCodeEarning && array_key_exists('first_ride_discount_status', $useCodeEarning) && $useCodeEarning['first_ride_discount_status']) {
+                    $referralCustomerData = array_merge($referralCustomerData, [
+                        'customer_discount_amount' => array_key_exists('discount_amount', $useCodeEarning) && $useCodeEarning['discount_amount'] ? $useCodeEarning['discount_amount'] : 0,
+                        'customer_discount_amount_type' => array_key_exists('discount_amount_type', $useCodeEarning) && $useCodeEarning['discount_amount_type'] ? $useCodeEarning['discount_amount_type'] : null,
+                        'customer_discount_validity' => array_key_exists('discount_validity', $useCodeEarning) && $useCodeEarning['discount_validity'] ? $useCodeEarning['discount_validity'] : 0,
+                        'customer_discount_validity_type' => $useCodeEarning['discount_validity'] && array_key_exists('discount_validity_type', $useCodeEarning) && $useCodeEarning['discount_validity_type'] ? $useCodeEarning['discount_validity_type'] : null,
+                    ]);
+                }
+                $this->referralCustomerService->create($referralCustomerData);
+                $push = getNotification('someone_used_your_code');
+                sendDeviceNotification(fcm_token: $referralUser?->fcm_token,
+                    title: translate($push['title']),
+                    description: translate(textVariableDataFormat(value: $push['description'])),
+                    status: $push['status'],
+                    ride_request_id: $referralUser?->id,
+                    action: 'referral_code_used',
+                    user_id: $referralUser?->id
+                );
+            }
+        } else if (referralEarningSetting('referral_earning_status', DRIVER)?->value) {
+            $referralDriverData = [
+                'driver_id' => $user->id,
+                'ref_by' => $referralUser->id,
+                'ref_by_earning_amount' => (double)referralEarningSetting('share_code_earning', DRIVER)?->value,
+                'driver_earning_amount' => (double)referralEarningSetting('use_code_earning', DRIVER)?->value,
+                'is_used' => true
+            ];
+            $referralDriver = $this->referralDriverService->create($referralDriverData);
+
+            if ($referralDriver?->ref_by_earning_amount && $referralDriver?->ref_by_earning_amount > 0) {
+                $this->driverReferralEarningTransaction($referralUser, $referralDriver?->ref_by_earning_amount);
+                $push = getNotification('referral_reward_received');
+                sendDeviceNotification(fcm_token: $referralUser?->fcm_token,
+                    title: translate($push['title']),
+                    description: translate(textVariableDataFormat(value: $push['description'], referralRewardAmount: getCurrencyFormat($referralDriver?->ref_by_earning_amount))),
+                    status: $push['status'],
+                    ride_request_id: $referralUser?->id,
+                    action: 'referral_reward_received',
+                    user_id: $referralUser?->id
+                );
+            }
+            if ($referralDriver?->driver_earning_amount > 0) {
+                $this->driverReferralEarningTransaction($user, $referralDriver?->driver_earning_amount);
+                if ($fcmToken) {
+                    $push = getNotification('referral_reward_received');
+                    sendDeviceNotification(fcm_token: $fcmToken,
+                        title: translate($push['title']),
+                        description: translate(textVariableDataFormat(value: $push['description'], referralRewardAmount: getCurrencyFormat($referralDriver?->driver_earning_amount))),
+                        status: $push['status'],
+                        ride_request_id: $user?->id,
+                        action: 'referral_reward_received',
+                        user_id: $user?->id
+                    );
+                }
+            }
+        }
     }
 
     public function firebaseOtpVerification(Request $request)

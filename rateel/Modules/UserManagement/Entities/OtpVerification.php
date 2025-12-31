@@ -12,12 +12,18 @@ class OtpVerification extends Model
     protected $fillable = [
         'phone_or_email',
         'otp',
+        'registration_data',
+        'user_type',
         'is_temp_blocked',
         'expires_at',
         'failed_attempt',
         'blocked_at',
         'created_at',
         'updated_at',
+    ];
+
+    protected $casts = [
+        'registration_data' => 'array',
     ];
 
     protected static function newFactory()
