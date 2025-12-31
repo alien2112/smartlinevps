@@ -13,7 +13,14 @@
                 <div class="footer__wrapper-widget">
                     <div class="cont">
                         <a href="{{ route('index') }}" class="logo">
-                            <img src="{{ $footerLogo ? asset("storage/app/public/business/".$footerLogo) : asset('public/landing-page/assets/img/logo.png') }}" alt="logo">
+                            @if($footerLogo)
+                                <img src="{{ asset("storage/app/public/business/".$footerLogo) }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.onerror=null; this.src='{{ asset('public/landing-page/assets/img/smartline-logo.svg') }}'; this.style.filter='brightness(0) invert(1)';">
+                            @elseif($logo)
+                                <img src="{{ asset("storage/app/public/business/".$logo) }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.onerror=null; this.src='{{ asset('public/landing-page/assets/img/smartline-logo.svg') }}'; this.style.filter='brightness(0) invert(1)';">
+                            @else
+                                <img src="{{ asset('public/landing-page/assets/img/smartline-logo.svg') }}" alt="Smart Line Logo" style="max-height: 50px; filter: brightness(0) invert(1);" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                                <span style="font-size: 24px; font-weight: bold; color: white; display: none;">Smart Line</span>
+                            @endif
                         </a>
                         <p>
                             {{translate('Connect with our social media and other sites to keep up to date')}}

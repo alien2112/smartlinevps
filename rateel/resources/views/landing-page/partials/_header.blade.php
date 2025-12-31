@@ -5,7 +5,12 @@
         <div class="container">
             <div class="navbar-bottom-wrapper">
                 <a href="{{route('index')}}" class="logo">
-                    <img src="{{ $logo ? asset("storage/app/public/business/".$logo) : asset('public/landing-page/assets/img/logo.png') }}" alt="">
+                    @if($logo)
+                        <img src="{{ asset("storage/app/public/business/".$logo) }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.onerror=null; this.src='{{ asset('public/landing-page/assets/img/smartline-logo.svg') }}';">
+                    @else
+                        <img src="{{ asset('public/landing-page/assets/img/smartline-logo.svg') }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                        <span style="font-size: 24px; font-weight: bold; color: #667eea; display: none;">Smart Line</span>
+                    @endif
                 </a>
                 <ul class="menu me-lg-4">
                     <li>
