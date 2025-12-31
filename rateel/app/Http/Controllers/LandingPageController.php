@@ -74,4 +74,31 @@ class LandingPageController extends Controller
         $data = $this->businessSetting->findOneBy(criteria: ['key_name' => 'terms_and_conditions', 'settings_type' => PAGES_SETTINGS]);
         return view('landing-page.terms', compact('data'));
     }
+
+    public function invite($code)
+    {
+        // Set locale to Arabic for this page
+        app()->setLocale('ar');
+        session()->put('locale', 'ar');
+        
+        // Find user by referral code
+        $user = \Modules\UserManagement\Entities\User::where('ref_code', $code)->first();
+        
+        if (!$user) {
+            abort(404, 'Referral code not found');
+        }
+
+        // Get referral settings
+        $referralSettings = \Modules\UserManagement\Entities\ReferralSetting::getSettings();
+        $bonusPoints = $referralSettings->referee_points ?? 50;
+        
+        // Get business name
+        $business_name = $this->businessSetting->findOneBy(criteria: ['key_name' => 'business_name', 'settings_type' => BUSINESS_INFORMATION]);
+        $businessName = $business_name?->value ?? 'Smart line';
+        
+        // Get app download links from CTA settings
+        $cta = $this->businessSetting->findOneBy(criteria: ['key_name' => CTA, 'settings_type' => LANDING_PAGES_SETTINGS]);
+        
+        return view('landing-page.invite', compact('user', 'code', 'bonusPoints', 'businessName', 'cta'));
+    }
 }
