@@ -2,7 +2,7 @@
 
 namespace Modules\UserManagement\Http\Controllers\Web\New\Admin\Driver;
 
-use App\Http\Controllers\BaseController;
+use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -11,11 +11,11 @@ use Modules\UserManagement\Entities\User;
 
 /**
  * DriverApprovalController
- * 
+ *
  * Admin controller for managing driver onboarding applications.
  * Handles approval, rejection, and document verification.
  */
-class DriverApprovalController extends BaseController
+class DriverApprovalController extends Controller
 {
     /**
      * Display pending driver applications

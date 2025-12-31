@@ -252,7 +252,7 @@ class ConfigController extends Controller
         }
 
         // Get zone_id from header or query parameter for filtering
-        $zoneId = $request->header('zoneId') ?? $request->input('zone_id');
+        $zoneId = $request->header('zoneId') ?? $request->input('zoneId') ?? $request->input('zone_id');
 
         // GeoLink Text Search API
         $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/text_search', [

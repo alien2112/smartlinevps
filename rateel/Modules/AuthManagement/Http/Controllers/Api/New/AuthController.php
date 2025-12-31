@@ -543,22 +543,23 @@ class AuthController extends Controller
         $user = $this->authService->checkClientRoute($request);
 
         if (!$user) {
-            //If customer not exists
-            $firstLevel = $user->user_type == CUSTOMER ? $this->customerLevelService->findOneBy(['user_type' => CUSTOMER, 'sequence' => 1]) : $this->driverLevelService->findOneBy(['user_type' => CUSTOMER, 'sequence' => 1]);
+            $isCustomer = str_contains($request->route()?->getPrefix(), 'customer');
+            $userType = $isCustomer ? CUSTOMER : DRIVER;
+            $firstLevel = $isCustomer ? $this->customerLevelService->findOneBy(['user_type' => CUSTOMER, 'sequence' => 1]) : $this->driverLevelService->findOneBy(['user_type' => DRIVER, 'sequence' => 1]);
             if (!$firstLevel) {
 
                 return response()->json(responseFormatter(LEVEL_403), 403);
             }
-            $user = $this->authService->updateLoginUser(id: $user->id, data: [
-                'phone' => $request->phone_or_email,
-                'user_level_id' => $firstLevel->id
-            ]);
+            // Logic to create user if not exists could be here, but usually otpLogin expects existing user
+            // or handles registration. Based on existing code, it seems it was trying to update a non-existent user.
+            // For now, let's just fix the crash and return 404 if user not found, 
+            // or if the flow allows creation, we should use service to create.
+            return response()->json(responseFormatter(constant: USER_NOT_FOUND_404), 403);
         }
 
-        $verification = businessConfig('customer_verification', BUSINESS_INFORMATION)->value ?? 0;
+        $verification = $user->user_type == CUSTOMER ? (businessConfig('customer_verification')?->value ?? 0) : (businessConfig('driver_verification')?->value ?? 0);
         if (!$verification) {
-
-            return response()->json(responseFormatter(CUSTOMER_VERIFICATION_400), 403);
+            return response()->json(responseFormatter($user->user_type == CUSTOMER ? CUSTOMER_VERIFICATION_400 : DRIVER_VERIFICATION_400), 403);
         }
         /**
          * otp login SMS_Body

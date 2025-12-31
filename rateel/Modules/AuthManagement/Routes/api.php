@@ -29,6 +29,7 @@ Route::controller(\Modules\AuthManagement\Http\Controllers\Api\New\AuthControlle
         Route::group(['prefix' => 'auth'], function () {
             Route::post('registration', 'register')->name('driver-registration');
             Route::post('login', 'login')->name('driver-login');
+            Route::post('otp-login', 'otpLogin');
             Route::post('send-otp', 'sendOtp');
             Route::post('check', 'userExistOrNotChecking');
             Route::post('forget-password', 'forgetPassword');

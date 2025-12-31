@@ -292,6 +292,11 @@ const CUSTOMER_VERIFICATION_400 = [
     'message' => 'Please enable customer verification option'
 ];
 
+const DRIVER_VERIFICATION_400 = [
+    'response_code' => 'driver_verification_400',
+    'message' => 'Please enable driver verification option'
+];
+
 const CUSTOMER_404 = [
     'response_code' => 'customer_404',
     'message' => 'Customer does not exists'

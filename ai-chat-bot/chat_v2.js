@@ -23,8 +23,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 const DB_CONFIG = {
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || 'root',
-    database: process.env.DB_NAME || 'smartline_new2',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'merged2',
     waitForConnections: true,
     connectionLimit: 10
 };
@@ -62,6 +62,45 @@ async function initDatabase() {
         console.log('✅ Database connected & initialized');
     } catch (err) {
         console.error('❌ Database initialization failed:', err);
+    }
+}
+
+// ============================================
+// 🎯 SYSTEM PROMPT FROM DATABASE
+// ============================================
+
+let cachedSystemPrompt = null;
+let promptCacheTime = 0;
+const PROMPT_CACHE_TTL = 60000; // Cache for 1 minute
+
+async function getSystemPrompt() {
+    try {
+        // Return cached prompt if still valid
+        if (cachedSystemPrompt && (Date.now() - promptCacheTime) < PROMPT_CACHE_TTL) {
+            return cachedSystemPrompt;
+        }
+
+        const [rows] = await pool.execute(
+            "SELECT value FROM business_settings WHERE key_name = 'ai_chatbot_prompt' AND settings_type = 'ai_config' LIMIT 1"
+        );
+
+        if (rows.length > 0) {
+            // Remove quotes if stored as JSON string
+            let prompt = rows[0].value;
+            if (prompt.startsWith('"') && prompt.endsWith('"')) {
+                prompt = JSON.parse(prompt);
+            }
+            cachedSystemPrompt = prompt;
+            promptCacheTime = Date.now();
+            console.log('📝 System prompt loaded from database');
+            return prompt;
+        }
+
+        // Default fallback prompt
+        return 'You are a helpful customer service assistant for SmartLine ride-hailing app. Help users with booking rides, tracking trips, and resolving issues. Be friendly and concise. Respond in the same language as the user (Arabic or English).';
+    } catch (e) {
+        console.error('Error fetching system prompt:', e);
+        return 'You are a helpful customer service assistant for SmartLine ride-hailing app.';
     }
 }
 
@@ -445,6 +484,34 @@ async function processConversation(userId, message, lang) {
                 ]);
                 response.quick_replies = menuAction.quick_replies;
             }
+            else if (detectedIntent.intent === 'UNKNOWN') {
+                // Use LLM with system prompt from database for unknown queries
+                try {
+                    const systemPrompt = await getSystemPrompt();
+                    const chatHistory = await getChatHistory(userId, 4);
+
+                    const messages = [
+                        { role: 'system', content: systemPrompt },
+                        ...chatHistory.map(h => ({ role: h.role, content: h.content })),
+                        { role: 'user', content: message }
+                    ];
+
+                    const llmResponse = await callLLM(messages);
+                    response.message = llmResponse;
+                    response.quick_replies = lang === 'ar'
+                        ? ['حجز رحلة', 'رحلاتي', 'مساعدة']
+                        : ['Book a ride', 'My trips', 'Help'];
+                    response.confidence = 0.7;
+                    console.log('🤖 LLM response generated for unknown query');
+                } catch (llmError) {
+                    console.error('LLM Error:', llmError);
+                    // Fallback to default menu if LLM fails
+                    response.message = lang === 'ar'
+                        ? 'مرحباً! كيف أساعدك اليوم؟\n1. حجز رحلة\n2. استعلام عن رحلة\n3. شكوى عن رحلة\n4. أسئلة عامة\n5. مساعدة تقنية'
+                        : 'Hello! How can I help you today?\n1. Book a trip\n2. Trip inquiry\n3. File a complaint\n4. General questions\n5. Technical support';
+                    response.quick_replies = ['1', '2', '3', '4', '5'];
+                }
+            }
             else {
                 // Default welcome
                 response.message = lang === 'ar'
@@ -485,8 +552,8 @@ async function processConversation(userId, message, lang) {
         case STATES.AWAITING_DESTINATION:
             if (message.includes('lat:') || message.includes('location:') || message.length > 3) {
                 response.message = lang === 'ar'
-                    ? '✅ ممتاز! اختر نوع الرحلة:\n1. اقتصادي - 25 ريال تقريباً\n2. مميز - 40 ريال تقريباً\n3. عائلي - 55 ريال تقريباً'
-                    : '✅ Great! Choose ride type:\n1. Economy - ~25 SAR\n2. Premium - ~40 SAR\n3. Family - ~55 SAR';
+                    ? '✅ ممتاز! اختر نوع الرحلة:\n1. توفير - 25 جنيه تقريباً\n2. سمارت برو - 40 جنيه تقريباً\n3. في اي بي - 55 جنيه تقريباً'
+                    : '✅ Great! Choose ride type:\n1. Tawfer - ~25 EGP\n2. SmartPro - ~40 EGP\n3. VIP - ~55 EGP';
 
                 const rideOptionsAction = ActionBuilders.showRideOptions(
                     convState.data.pickup,
@@ -513,20 +580,20 @@ async function processConversation(userId, message, lang) {
 
         // ----- AWAITING RIDE TYPE -----
         case STATES.AWAITING_RIDE_TYPE:
-            let rideType = 'economy';
+            let rideType = 'tawfer';
             let estimatedFare = 25;
 
-            if (message.includes('2') || message.includes('مميز') || message.includes('premium')) {
-                rideType = 'premium';
+            if (message.includes('2') || message.includes('سمارت') || message.includes('برو') || message.includes('smartpro') || message.includes('pro')) {
+                rideType = 'smartpro';
                 estimatedFare = 40;
-            } else if (message.includes('3') || message.includes('عائلي') || message.includes('family')) {
-                rideType = 'family';
+            } else if (message.includes('3') || message.includes('في اي بي') || message.includes('vip')) {
+                rideType = 'vip';
                 estimatedFare = 55;
             }
 
             response.message = lang === 'ar'
-                ? `تأكيد الحجز:\n📍 من: ${convState.data.pickup}\n📍 إلى: ${convState.data.destination}\n💰 السعر التقريبي: ${estimatedFare} ريال\n\nهل تريد تأكيد الحجز؟`
-                : `Confirm booking:\n📍 From: ${convState.data.pickup}\n📍 To: ${convState.data.destination}\n💰 Estimated fare: ${estimatedFare} SAR\n\nConfirm booking?`;
+                ? `تأكيد الحجز:\n📍 من: ${convState.data.pickup}\n📍 إلى: ${convState.data.destination}\n💰 السعر التقريبي: ${estimatedFare} جنيه\n\nهل تريد تأكيد الحجز؟`
+                : `Confirm booking:\n📍 From: ${convState.data.pickup}\n📍 To: ${convState.data.destination}\n💰 Estimated fare: ${estimatedFare} EGP\n\nConfirm booking?`;
 
             const fareAction = ActionBuilders.showFareEstimate(
                 convState.data.pickup,
@@ -572,8 +639,8 @@ async function processConversation(userId, message, lang) {
                 await setConversationState(userId, STATES.START, {});
             } else if (message.includes('تغيير') || message.includes('change')) {
                 response.message = lang === 'ar'
-                    ? 'اختر نوع الرحلة:\n1. اقتصادي\n2. مميز\n3. عائلي'
-                    : 'Choose ride type:\n1. Economy\n2. Premium\n3. Family';
+                    ? 'اختر نوع الرحلة:\n1. توفير\n2. سمارت برو\n3. في اي بي'
+                    : 'Choose ride type:\n1. Tawfer\n2. SmartPro\n3. VIP';
 
                 await setConversationState(userId, STATES.AWAITING_RIDE_TYPE, convState.data);
             }

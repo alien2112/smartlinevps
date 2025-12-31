@@ -153,7 +153,7 @@ const ActionBuilders = {
     showRideOptions: (pickup, destination) => buildAction(
         ACTION_TYPES.SHOW_RIDE_OPTIONS,
         { pickup, destination },
-        ['اقتصادي', 'مميز', 'عائلي'],
+        ['توفير', 'سمارت برو', 'في اي بي'],
         null
     ),
 
@@ -164,7 +164,7 @@ const ActionBuilders = {
             destination,
             ride_type: rideType,
             estimated_fare: estimatedFare,
-            currency: 'SAR'
+            currency: 'EGP'
         },
         ['تأكيد الحجز', 'تغيير نوع الرحلة', 'إلغاء'],
         null
@@ -198,7 +198,7 @@ const ActionBuilders = {
         {
             trip_id: tripId,
             cancellation_fee: cancellationFee,
-            currency: 'SAR'
+            currency: 'EGP'
         },
         ['نعم، إلغاء', 'لا، استمر'],
         null

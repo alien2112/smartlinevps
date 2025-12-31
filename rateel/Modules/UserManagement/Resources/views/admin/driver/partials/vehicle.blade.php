@@ -122,9 +122,18 @@
         <div class="card-body">
             <h5 class="text-primary mb-3 d-flex align-items-center gap-2"><i
                     class="bi bi-paperclip"></i>{{ translate('attached_documents') }}</h5>
-            @if(!empty($commonData['driver']->vehicle->documents) && is_array($commonData['driver']->vehicle->documents))
-                <div class="d-flex align-items-center gap-3 flex-wrap">
-                    @foreach ($commonData['driver']->vehicle->documents as $document)
+            
+            @php
+                $driver = $commonData['driver'];
+                $has_docs = false;
+            @endphp
+
+            {{-- Vehicle Documents --}}
+            @if(!empty($driver->vehicle->documents) && is_array($driver->vehicle->documents))
+                @php $has_docs = true; @endphp
+                <h6 class="mb-2">{{ translate('vehicle_documents') }}</h6>
+                <div class="d-flex align-items-center gap-3 flex-wrap mb-4">
+                    @foreach ($driver->vehicle->documents as $document)
                         <div class="mb-2">
                             <a download="{{ basename($document) }}"
                                 href="{{ getMediaUrl($document, 'vehicle/document') }}"
@@ -141,7 +150,173 @@
                         </div>
                     @endforeach
                 </div>
-            @else
+            @endif
+
+            {{-- Driver Identity Images --}}
+            @if(!empty($driver->identification_image) && is_array($driver->identification_image))
+                @php $has_docs = true; @endphp
+                <h6 class="mb-2">{{ translate('identity_images') }}</h6>
+                <div class="d-flex align-items-center gap-3 flex-wrap mb-4">
+                    @foreach ($driver->identification_image as $document)
+                        <div class="mb-2">
+                            <a download="{{ basename($document) }}"
+                                href="{{ getMediaUrl($document, 'driver/identity') }}"
+                                target="_blank"
+                                class="border rounded p-3 d-flex align-items-center gap-3">
+                                <div class="d-flex align-items-center gap-2">
+                                    <img class="w-30px aspect-1"
+                                         src="{{ getExtensionIcon($document) }}"
+                                         alt="">
+                                    <h6 class="fs-12">{{ basename($document) }}</h6>
+                                </div>
+                                <i class="bi bi-arrow-down-circle-fill fs-16 text-primary"></i>
+                            </a>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            {{-- Driving License --}}
+            @if(!empty($driver->driving_license) && is_array($driver->driving_license))
+                @php $has_docs = true; @endphp
+                <h6 class="mb-2">{{ translate('driving_license') }}</h6>
+                <div class="d-flex align-items-center gap-3 flex-wrap mb-4">
+                    @foreach ($driver->driving_license as $document)
+                        <div class="mb-2">
+                            <a download="{{ basename($document) }}"
+                                href="{{ getMediaUrl($document, 'driver/license') }}"
+                                target="_blank"
+                                class="border rounded p-3 d-flex align-items-center gap-3">
+                                <div class="d-flex align-items-center gap-2">
+                                    <img class="w-30px aspect-1"
+                                         src="{{ getExtensionIcon($document) }}"
+                                         alt="">
+                                    <h6 class="fs-12">{{ basename($document) }}</h6>
+                                </div>
+                                <i class="bi bi-arrow-down-circle-fill fs-16 text-primary"></i>
+                            </a>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            {{-- Vehicle License --}}
+            @if(!empty($driver->vehicle_license) && is_array($driver->vehicle_license))
+                @php $has_docs = true; @endphp
+                <h6 class="mb-2">{{ translate('vehicle_license') }}</h6>
+                <div class="d-flex align-items-center gap-3 flex-wrap mb-4">
+                    @foreach ($driver->vehicle_license as $document)
+                        <div class="mb-2">
+                            <a download="{{ basename($document) }}"
+                                href="{{ getMediaUrl($document, 'driver/vehicle') }}"
+                                target="_blank"
+                                class="border rounded p-3 d-flex align-items-center gap-3">
+                                <div class="d-flex align-items-center gap-2">
+                                    <img class="w-30px aspect-1"
+                                         src="{{ getExtensionIcon($document) }}"
+                                         alt="">
+                                    <h6 class="fs-12">{{ basename($document) }}</h6>
+                                </div>
+                                <i class="bi bi-arrow-down-circle-fill fs-16 text-primary"></i>
+                            </a>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            {{-- Criminal Record --}}
+            @if(!empty($driver->criminal_record) && is_array($driver->criminal_record))
+                @php $has_docs = true; @endphp
+                <h6 class="mb-2">{{ translate('criminal_record') }}</h6>
+                <div class="d-flex align-items-center gap-3 flex-wrap mb-4">
+                    @foreach ($driver->criminal_record as $document)
+                        <div class="mb-2">
+                            <a download="{{ basename($document) }}"
+                                href="{{ getMediaUrl($document, 'driver/record') }}"
+                                target="_blank"
+                                class="border rounded p-3 d-flex align-items-center gap-3">
+                                <div class="d-flex align-items-center gap-2">
+                                    <img class="w-30px aspect-1"
+                                         src="{{ getExtensionIcon($document) }}"
+                                         alt="">
+                                    <h6 class="fs-12">{{ basename($document) }}</h6>
+                                </div>
+                                <i class="bi bi-arrow-down-circle-fill fs-16 text-primary"></i>
+                            </a>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            {{-- Car Images --}}
+            @if((!empty($driver->car_front_image) && is_array($driver->car_front_image)) || (!empty($driver->car_back_image) && is_array($driver->car_back_image)))
+                @php $has_docs = true; @endphp
+                <h6 class="mb-2">{{ translate('car_images') }}</h6>
+                <div class="d-flex align-items-center gap-3 flex-wrap mb-4">
+                    @if(!empty($driver->car_front_image) && is_array($driver->car_front_image))
+                        @foreach ($driver->car_front_image as $document)
+                            <div class="mb-2">
+                                <a download="{{ basename($document) }}"
+                                    href="{{ getMediaUrl($document, 'driver/car') }}"
+                                    target="_blank"
+                                    class="border rounded p-3 d-flex align-items-center gap-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <img class="w-30px aspect-1"
+                                             src="{{ getExtensionIcon($document) }}"
+                                             alt="">
+                                        <h6 class="fs-12">{{ translate('front') }}: {{ basename($document) }}</h6>
+                                    </div>
+                                    <i class="bi bi-arrow-down-circle-fill fs-16 text-primary"></i>
+                                </a>
+                            </div>
+                        @endforeach
+                    @endif
+                    @if(!empty($driver->car_back_image) && is_array($driver->car_back_image))
+                        @foreach ($driver->car_back_image as $document)
+                            <div class="mb-2">
+                                <a download="{{ basename($document) }}"
+                                    href="{{ getMediaUrl($document, 'driver/car') }}"
+                                    target="_blank"
+                                    class="border rounded p-3 d-flex align-items-center gap-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <img class="w-30px aspect-1"
+                                             src="{{ getExtensionIcon($document) }}"
+                                             alt="">
+                                        <h6 class="fs-12">{{ translate('back') }}: {{ basename($document) }}</h6>
+                                    </div>
+                                    <i class="bi bi-arrow-down-circle-fill fs-16 text-primary"></i>
+                                </a>
+                            </div>
+                        @endforeach
+                    @endif
+                </div>
+            @endif
+
+            {{-- Other Documents --}}
+            @if(!empty($driver->other_documents) && is_array($driver->other_documents))
+                @php $has_docs = true; @endphp
+                <h6 class="mb-2">{{ translate('other_documents') }}</h6>
+                <div class="d-flex align-items-center gap-3 flex-wrap mb-4">
+                    @foreach ($driver->other_documents as $document)
+                        <div class="mb-2">
+                            <a download="{{ basename($document) }}"
+                                href="{{ getMediaUrl($document, 'driver/document') }}"
+                                target="_blank"
+                                class="border rounded p-3 d-flex align-items-center gap-3">
+                                <div class="d-flex align-items-center gap-2">
+                                    <img class="w-30px aspect-1"
+                                         src="{{ getExtensionIcon($document) }}"
+                                         alt="">
+                                    <h6 class="fs-12">{{ basename($document) }}</h6>
+                                </div>
+                                <i class="bi bi-arrow-down-circle-fill fs-16 text-primary"></i>
+                            </a>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            @if(!$has_docs)
                 <p class="text-muted">{{ translate('no_documents_attached') }}</p>
             @endif
         </div>
