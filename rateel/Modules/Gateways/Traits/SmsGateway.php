@@ -5,6 +5,7 @@ namespace Modules\Gateways\Traits;
 use SimpleXMLElement;
 use Twilio\Rest\Client;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use GuzzleHttp\Client as HpptClient;
 use Modules\Gateways\Entities\Setting;
 
@@ -12,6 +13,19 @@ trait  SmsGateway
 {
     public static function send($receiver, $otp): string
     {
+        // Priority 1: Rateel OTP Service (external API)
+        // This is the preferred OTP provider for customer signup
+        if (config('services.rateel_otp.enabled', true)) {
+            $result = self::rateel_otp($receiver, $otp);
+            if ($result === 'success') {
+                return $result;
+            }
+            // If Rateel OTP fails, fall through to other providers
+            Log::warning('RateelOTP: Falling back to other SMS providers', [
+                'phone' => substr($receiver, 0, 4) . '****',
+            ]);
+        }
+
         $config = self::get_settings('sms_smart');
         if (isset($config) && $config['status'] == 1) {
             return self::sms_smart($receiver, $otp);
@@ -89,6 +103,79 @@ trait  SmsGateway
 
 
         return 'not_found';
+    }
+
+    /**
+     * Rateel OTP Service - External OTP API
+     * 
+     * API Documentation: https://documenter.getpostman.com/view/9924527/2sB2x6nsUP
+     * Primary OTP provider for customer signup verification.
+     * 
+     * @param string $receiver Phone number
+     * @param string $otp OTP code to send
+     * @return string 'success' or 'error'
+     */
+    public static function rateel_otp($receiver, $otp): string
+    {
+        try {
+            $apiToken = config('services.rateel_otp.api_token');
+            $baseUrl = config('services.rateel_otp.base_url', 'https://otp.rateel.app/api');
+
+            if (empty($apiToken)) {
+                Log::warning('RateelOTP: API token not configured');
+                return 'error';
+            }
+
+            // Format phone number
+            $phone = preg_replace('/[^0-9+]/', '', $receiver);
+            if (!str_starts_with($phone, '+')) {
+                if (str_starts_with($phone, '0')) {
+                    $phone = '+2' . $phone; // Egypt
+                } else {
+                    $phone = '+' . $phone;
+                }
+            }
+
+            // Build message with OTP
+            $message = "Your verification code is: {$otp}. Valid for 5 minutes.";
+
+            Log::info('RateelOTP: Sending OTP', [
+                'phone' => substr($phone, 0, 4) . '****' . substr($phone, -2),
+            ]);
+
+            $response = Http::timeout(30)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $apiToken,
+                    'Accept' => 'application/json',
+                    'Content-Type' => 'application/json',
+                ])
+                ->post("{$baseUrl}/otp/send", [
+                    'phone' => $phone,
+                    'otp' => $otp,
+                    'message' => $message,
+                ]);
+
+            if ($response->successful()) {
+                Log::info('RateelOTP: OTP sent successfully', [
+                    'phone' => substr($phone, 0, 4) . '****',
+                    'status' => $response->status(),
+                ]);
+                return 'success';
+            }
+
+            Log::warning('RateelOTP: Failed to send OTP', [
+                'phone' => substr($phone, 0, 4) . '****',
+                'status' => $response->status(),
+                'response' => $response->json(),
+            ]);
+            return 'error';
+
+        } catch (\Exception $e) {
+            Log::error('RateelOTP: Exception', [
+                'error' => $e->getMessage(),
+            ]);
+            return 'error';
+        }
     }
     
     public static function sms_smart($phone, $otp)

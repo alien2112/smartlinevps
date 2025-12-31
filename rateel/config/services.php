@@ -30,4 +30,30 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Rateel OTP Service
+    |--------------------------------------------------------------------------
+    |
+    | External OTP verification service for customer signup.
+    | API Documentation: https://documenter.getpostman.com/view/9924527/2sB2x6nsUP
+    |
+    */
+
+    'rateel_otp' => [
+        'enabled' => env('RATEEL_OTP_ENABLED', true),
+        'base_url' => env('RATEEL_OTP_BASE_URL', 'https://otp.rateel.app/api'),
+        'api_token' => env('RATEEL_OTP_API_TOKEN', 'p9ORLwInOCRgjK6BS8DFw5s8yiITUhtEQxAHmD4HudAv1mcgW7WhIvhtiz1I'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Node.js Realtime Service
+    |--------------------------------------------------------------------------
+    */
+
+    'nodejs_realtime' => [
+        'url' => env('NODEJS_REALTIME_URL', 'http://localhost:3000'),
+    ],
+
 ];

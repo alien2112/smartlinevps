@@ -573,29 +573,77 @@ class AuthController extends Controller
 
     public function resetPassword(Request $request)
     {
-
         $validator = Validator::make($request->all(), [
             'phone_or_email' => 'required|min:8|max:20',
+            'otp' => 'required|min:4|max:6',
             'password' => 'required|min:8',
         ]);
 
         if ($validator->fails()) {
-
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
-        $user = $this->authService->checkClientRoute($request);
 
+        $user = $this->authService->checkClientRoute($request);
         if (!$user) {
             return response()->json(responseFormatter(constant: USER_404), 403);
         }
+
+        // Security Fix: Verify OTP before allowing password reset
+        $otp = $this->otpVerificationService->findOneBy(criteria: ['phone_or_email' => $request['phone_or_email']]);
+        if (!$otp) {
+            return response()->json(responseFormatter(constant: DEFAULT_404, errors: [['error_code' => 404, 'message' => translate('OTP not found. Please request a new one.')]]), 403);
+        }
+
+        // Check if OTP is blocked due to too many attempts
+        $block_time = businessConfig('temporary_block_time')?->value ?? 30;
+        if ($otp->is_temp_blocked) {
+            $seconds_passed = Carbon::parse($otp->blocked_at)->diffInSeconds();
+            if ($seconds_passed < $block_time) {
+                return response()->json([
+                    'response_code' => 'too_many_attempt_405',
+                    'message' => translate('please_try_again_after_') . \Carbon\CarbonInterval::seconds($block_time - $seconds_passed)->forHumans()
+                ], 403);
+            }
+            // Unblock if time has passed
+            $this->otpVerificationService->update(id: $otp->id, data: [
+                'is_temp_blocked' => false,
+                'blocked_at' => null,
+                'failed_attempt' => 0,
+            ]);
+        }
+
+        // Verify OTP is correct and not expired
+        if (Carbon::parse($otp->expires_at) < now()) {
+            $this->otpVerificationService->delete(id: $otp->id);
+            return response()->json(responseFormatter(constant: DEFAULT_404, errors: [['error_code' => 404, 'message' => translate('OTP has expired. Please request a new one.')]]), 403);
+        }
+
+        if (((int)$otp->otp) !== ((int)$request['otp'])) {
+            // Increment failed attempts
+            $hit_limit = businessConfig('maximum_otp_hit')?->value ?? 5;
+            $otp->increment('failed_attempt');
+            
+            if ($hit_limit <= $otp->failed_attempt) {
+                $this->otpVerificationService->update(id: $otp->id, data: [
+                    'is_temp_blocked' => true,
+                    'blocked_at' => now(),
+                ]);
+            }
+            
+            return response()->json(responseFormatter(OTP_MISMATCH_404), 403);
+        }
+
+        // OTP verified successfully - reset password
         $attributes = [
             'password' => bcrypt($request['password'])
         ];
 
         $this->authService->updateLoginUser(id: $user->id, data: $attributes);
+        
+        // Delete OTP after successful password reset
+        $this->otpVerificationService->delete(id: $otp->id);
 
-        return response()->json(responseFormatter(constant: DEFAULT_PASSWORD_RESET_200, errors: errorProcessor($validator)), 200);
-
+        return response()->json(responseFormatter(constant: DEFAULT_PASSWORD_RESET_200), 200);
     }
 
 
