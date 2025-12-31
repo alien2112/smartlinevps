@@ -48,7 +48,8 @@ class Vehicle extends Model
         'documents' => 'array',
         'is_active' => 'boolean',
         'vehicle_request_status' => 'string',
-        'draft' => 'array'
+        'draft' => 'array',
+        'category_id' => 'array'
     ];
 
     protected static function newFactory()

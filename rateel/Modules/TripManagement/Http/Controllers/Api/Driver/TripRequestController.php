@@ -909,19 +909,25 @@ class TripRequestController extends Controller
             ?? Vehicle::query()->where('driver_id', $user->id)->latest('updated_at')->first();
 
         if (is_null($vehicle)) {
-            \Log::warning('pendingRideList: No vehicle registered', ['user_id' => $user->id]);
+            \Log::warning('pendingRideList: No vehicle found in DB for driver', ['user_id' => $user->id]);
             return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404, content: []), 403);
         }
 
-        \Log::info('pendingRideList: Vehicle found', [
+        \Log::info('pendingRideList: Vehicle object check', [
             'vehicle_id' => $vehicle->id,
+            'driver_id' => $vehicle->driver_id,
+            'category_id_raw' => $vehicle->getRawOriginal('category_id'),
+            'category_id_casted' => $vehicle->category_id,
             'is_active' => $vehicle->is_active,
-            'vehicle_request_status' => $vehicle->vehicle_request_status,
-            'category_id' => $vehicle->category_id
+            'vehicle_request_status' => $vehicle->vehicle_request_status
         ]);
 
         if (!$vehicle->is_active && $vehicle->vehicle_request_status !== APPROVED) {
-            \Log::warning('pendingRideList: Vehicle not approved/active', ['vehicle_id' => $vehicle->id]);
+            \Log::warning('pendingRideList: Vehicle not approved/active', [
+                'vehicle_id' => $vehicle->id,
+                'is_active' => $vehicle->is_active,
+                'status' => $vehicle->vehicle_request_status
+            ]);
             return response()->json(responseFormatter(constant: VEHICLE_NOT_APPROVED_OR_ACTIVE_404, content: []), 403);
         }
 
@@ -949,18 +955,21 @@ class TripRequestController extends Controller
         ]);
 
         $vehicleCategoryIds = $vehicle->category_id ?? [];
-        if (is_string($vehicleCategoryIds)) {
-            $vehicleCategoryIds = json_decode($vehicleCategoryIds, true) ?? [];
-        }
-        // Ensure it's always an array
+        \Log::info('pendingRideList: category_id after ?? []', ['vehicleCategoryIds' => $vehicleCategoryIds]);
+
+        // category_id is now casted to array in Vehicle model
         if (!is_array($vehicleCategoryIds)) {
+            \Log::info('pendingRideList: category_id not array, wrapping in array', ['old' => $vehicleCategoryIds]);
             $vehicleCategoryIds = [$vehicleCategoryIds];
         }
 
-        \Log::info('pendingRideList: Vehicle category IDs', ['category_ids' => $vehicleCategoryIds]);
+        \Log::info('pendingRideList: Final Vehicle category IDs', ['category_ids' => $vehicleCategoryIds]);
 
         if (empty($vehicleCategoryIds)) {
-            \Log::warning('pendingRideList: No vehicle categories found', ['vehicle_id' => $vehicle->id]);
+            \Log::warning('pendingRideList: No vehicle categories found after processing', [
+                'vehicle_id' => $vehicle->id,
+                'category_id_raw' => $vehicle->getRawOriginal('category_id')
+            ]);
             return response()->json(responseFormatter(constant: VEHICLE_NOT_REGISTERED_404, content: []), 403);
         }
 

@@ -64,7 +64,7 @@ class AdminDashboardCacheService
     /**
      * Clear transactions cache for a specific user
      */
-    public static function clearTransactions(?int $userId = null): void
+    public static function clearTransactions(?string $userId = null): void
     {
         if ($userId) {
             Cache::forget("admin_dashboard_transactions_{$userId}");
