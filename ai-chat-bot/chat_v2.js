@@ -1017,30 +1017,69 @@ app.post('/submit-location', async (req, res) => {
 
         // Get current state
         const convState = await getConversationState(user_id);
+        const lang = 'ar'; // Default to Arabic
 
-        // Update state with location
+        let response = {
+            success: true,
+            message: '',
+            action: ACTION_TYPES.NONE,
+            data: {},
+            quick_replies: [],
+            ui_hint: null,
+            confidence: 0.9,
+            handoff: false,
+            language: lang
+        };
+
+        // Handle based on location type
         if (type === 'pickup' || convState.state === STATES.AWAITING_PICKUP) {
+            // Save pickup location and advance to destination state
             await setConversationState(user_id, STATES.AWAITING_DESTINATION, {
                 ...convState.data,
                 pickup: location_data,
-                pickup_address: address
+                pickup_address: address || `${lat},${lng}`
             });
+
+            // Return destination request
+            response.message = 'إلى أين تريد الذهاب؟ 📍\nمن فضلك حدد وجهتك على الخريطة';
+            const destAction = ActionBuilders.requestDestination(location_data);
+            response.action = destAction.action;
+            response.data = destAction.data;
+
         } else if (type === 'destination' || convState.state === STATES.AWAITING_DESTINATION) {
+            // Get vehicle categories from database
+            const vehicleCategories = await getVehicleCategories();
+
+            // Save destination and advance to ride type selection
             await setConversationState(user_id, STATES.AWAITING_RIDE_TYPE, {
                 ...convState.data,
                 destination: location_data,
-                destination_address: address
+                destination_address: address || `${lat},${lng}`,
+                vehicle_categories: vehicleCategories
             });
+
+            // Return ride options
+            response.message = formatVehicleCategoriesMessage(vehicleCategories, lang);
+            const rideOptionsAction = ActionBuilders.showRideOptions(
+                convState.data.pickup,
+                location_data,
+                vehicleCategories
+            );
+            response.action = rideOptionsAction.action;
+            response.data = rideOptionsAction.data;
+            response.quick_replies = rideOptionsAction.quick_replies;
+
+        } else {
+            // Unknown state, just acknowledge
+            response.message = 'تم استلام الموقع. كيف أقدر أساعدك؟';
+            response.quick_replies = ['حجز رحلة', 'رحلاتي', 'مساعدة'];
         }
 
-        // Process as a chat message to get the next step
-        const lang = 'ar';
-        const response = await processConversation(user_id, `location:${lat},${lng}`, lang);
+        // Save to chat history
+        await saveChat(user_id, 'user', `📍 ${address || `${lat},${lng}`}`);
+        await saveChat(user_id, 'assistant', response.message, response.action, response.data);
 
-        res.json({
-            success: true,
-            ...response
-        });
+        res.json(response);
 
     } catch (error) {
         console.error('Location submission error:', error);
