@@ -58,4 +58,27 @@ return [
         'url' => env('NODEJS_REALTIME_URL', 'http://localhost:3000'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Firebase Cloud Messaging (FCM)
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for Firebase Cloud Messaging HTTP v1 API.
+    | You can provide either a path to the service account JSON file,
+    | or individual credentials via environment variables.
+    |
+    */
+
+    'firebase' => [
+        // Option 1: Path to service account JSON file
+        'credentials_path' => env('FIREBASE_CREDENTIALS_PATH'),
+
+        // Option 2: Individual credentials (if not using JSON file)
+        'project_id' => env('FIREBASE_PROJECT_ID'),
+        'private_key_id' => env('FIREBASE_PRIVATE_KEY_ID'),
+        'private_key' => env('FIREBASE_PRIVATE_KEY'),
+        'client_email' => env('FIREBASE_CLIENT_EMAIL'),
+        'client_id' => env('FIREBASE_CLIENT_ID'),
+    ],
+
 ];

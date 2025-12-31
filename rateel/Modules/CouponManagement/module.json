@@ -1,0 +1,11 @@
+{
+    "name": "CouponManagement",
+    "alias": "couponmanagement",
+    "description": "Coupon and discount management module for ride-hailing app",
+    "keywords": ["coupon", "discount", "promo"],
+    "priority": 0,
+    "providers": [
+        "Modules\\CouponManagement\\Providers\\CouponManagementServiceProvider"
+    ],
+    "files": []
+}

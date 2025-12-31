@@ -379,7 +379,7 @@ class AuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'phone_or_email' => 'required',
-            'otp' => 'required|min:6|max:6'
+            'otp' => 'required|min:4|max:4'
         ]);
 
         if ($validator->fails()) {
@@ -575,7 +575,7 @@ class AuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'phone_or_email' => 'required|min:8|max:20',
-            'otp' => 'required|min:4|max:6',
+            'otp' => 'required|min:4|max:4',
             'password' => 'required|min:8',
         ]);
 

@@ -3134,7 +3134,6 @@
   'يسعدنا إبلاغك بأن طلب السحب الخاص بك قد تمت الموافقة عليه. سيتم تحويل الأموال إلى حسابك قريبًا.' => 'We are pleased to inform you that your withdrawal request has been approved. The funds will be transferred to your account shortly.',
   'يمكن للعميل والسائق إرسال تنبيه السلامة والتواصل مع رقم الطوارئ.' => 'The customer and the driver can send a safety alert & communicate with the emergency number.',
   'يمكنك تتبع هذا الطرد من هذا الرابط' => 'You can track this parcel from this link',
-  'You\'ve Been Invited!' => 'تمت دعوتك!',
   'has invited you to join' => 'دعاك للانضمام إلى',
   'Bonus Points' => 'نقاط المكافأة',
   'Sign up with code' => 'سجل الآن باستخدام الكود',
@@ -3144,6 +3143,6 @@
   'GET IT ON' => 'احصل عليه من',
   'Google Play' => 'جوجل بلاي',
   'DOWNLOAD ON THE' => 'حمّله من',
-  'App Store' => 'متجر التطبيقات',
   'Join Smart line' => 'انضم إلى Smart line',
+  'You ve Been Invited!' => 'تمت دعوتك!',
 );

@@ -13,6 +13,7 @@ use Modules\UserManagement\Http\Controllers\Api\New\Customer\WalletTransferContr
 use Modules\UserManagement\Http\Controllers\Api\New\Customer\WalletController;
 use Modules\UserManagement\Http\Controllers\Api\New\Driver\WithdrawController;
 use Modules\UserManagement\Http\Controllers\Api\New\Driver\WithdrawMethodInfoController;
+use Modules\UserManagement\Http\Controllers\Api\New\Driver\DriverWalletController;
 use Modules\UserManagement\Http\Controllers\Api\UserController;
 
 Route::group(['prefix' => 'customer'], function () {
@@ -124,6 +125,14 @@ Route::group(['prefix' => 'driver'], function () {
             });
         });
         //new controller
+        Route::group(['prefix' => 'wallet'], function () {
+            Route::controller(DriverWalletController::class)->group(function () {
+                Route::get('balance', 'getBalance');
+                Route::get('earnings', 'earnings');
+                Route::get('summary', 'summary');
+            });
+        });
+        //new controller
         Route::group(['prefix' => 'withdraw'], function () {
             Route::controller(WithdrawController::class)->group(function () {
                 Route::get('methods', 'methods');
@@ -159,4 +168,27 @@ Route::group(['prefix' => 'driver'], function () {
 
 Route::post('/user/store-live-location', [UserController::class, 'storeLastLocation']);
 Route::post('/user/get-live-location', [UserController::class, 'getLastLocation']);
+
+// Admin Wallet Management API Routes
+Route::group(['prefix' => 'admin/wallet', 'middleware' => ['auth:api']], function () {
+    Route::controller(\Modules\UserManagement\Http\Controllers\Api\Admin\WalletAdminController::class)->group(function () {
+        // Dashboard stats
+        Route::get('stats', 'stats');
+
+        // List all users with wallets
+        Route::get('users', 'listUsers');
+
+        // Bulk operations
+        Route::post('bulk-credit', 'bulkCredit');
+
+        // User wallet operations
+        Route::get('{userId}', 'show');
+        Route::post('{userId}/adjust', 'adjust');
+        Route::get('{userId}/reconcile', 'reconcile');
+        Route::post('{userId}/rebuild', 'rebuild');
+        Route::get('{userId}/transactions', 'transactions');
+        Route::post('{userId}/refund', 'refund');
+        Route::get('{userId}/driver-earnings', 'driverEarnings');
+    });
+});
 

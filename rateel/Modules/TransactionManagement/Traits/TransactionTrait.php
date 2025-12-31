@@ -481,26 +481,27 @@ trait TransactionTrait
         $tripBalanceAfterRemoveCommission = $trip->paid_fare - $trip->fee->admin_commission; //70
         $riderEarning = $tripBalanceAfterRemoveCommission;
 
-        //customer account debit with row lock to prevent double-spend
-        $customerAccount = UserAccount::where('user_id', $trip->customer->id)
-            ->lockForUpdate()
-            ->first();
-        if (!$customerAccount || $customerAccount->wallet_balance < $trip->paid_fare) {
-            DB::rollBack();
-            throw new \Exception('Insufficient wallet balance for transaction');
-        }
-        $customerAccount->wallet_balance -= $trip->paid_fare;
-        $customerAccount->save();
+        // Use hardened WalletService for customer debit with idempotency
+        $walletService = app(\Modules\UserManagement\Service\WalletService::class);
+        $idempotencyKey = 'ride_payment_' . $trip->id;
 
-        //customer transaction (debit)
-        $customerTransaction = new Transaction();
-        $customerTransaction->attribute = 'wallet_payment';
-        $customerTransaction->attribute_id = $trip->id;
-        $customerTransaction->debit = $trip->paid_fare;
-        $customerTransaction->balance = $customerAccount->wallet_balance;
-        $customerTransaction->user_id = $trip->customer->id;
-        $customerTransaction->account = 'wallet_balance';
-        $customerTransaction->save();
+        $result = $walletService->debit(
+            userId: $trip->customer->id,
+            amount: (float) $trip->paid_fare,
+            type: 'wallet_payment',
+            idempotencyKey: $idempotencyKey,
+            referenceId: $trip->id,
+            createdBy: 'system',
+            reason: 'Ride payment for trip ' . $trip->ref_id
+        );
+
+        if (!$result['success']) {
+            DB::rollBack();
+            throw new \Exception($result['error'] ?? 'Wallet debit failed');
+        }
+
+        // Get the customer transaction for reference
+        $customerTransaction = Transaction::where('idempotency_key', $idempotencyKey)->first();
 
         //Admin account update (payable and wallet balance +)
         $adminAccount = UserAccount::where('user_id', $adminUserId)->first();
