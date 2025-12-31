@@ -88,9 +88,13 @@ class LandingPageController extends Controller
             abort(404, 'Referral code not found');
         }
 
-        // Get referral settings
-        $referralSettings = \Modules\UserManagement\Entities\ReferralSetting::getSettings();
-        $bonusPoints = $referralSettings->referee_points ?? 50;
+        // Get referral settings with error handling
+        try {
+            $referralSettings = \Modules\UserManagement\Entities\ReferralSetting::getSettings();
+            $bonusPoints = $referralSettings?->referee_points ?? 50;
+        } catch (\Exception $e) {
+            $bonusPoints = 50; // Default fallback
+        }
         
         // Get business name
         $business_name = $this->businessSetting->findOneBy(criteria: ['key_name' => 'business_name', 'settings_type' => BUSINESS_INFORMATION]);
@@ -99,6 +103,17 @@ class LandingPageController extends Controller
         // Get app download links from CTA settings
         $cta = $this->businessSetting->findOneBy(criteria: ['key_name' => CTA, 'settings_type' => LANDING_PAGES_SETTINGS]);
         
-        return view('landing-page.invite', compact('user', 'code', 'bonusPoints', 'businessName', 'cta'));
+        // Ensure all variables are defined
+        $bonusPoints = $bonusPoints ?? 50;
+        $businessName = $businessName ?? 'Smart line';
+        $code = $code ?? '';
+        
+        return view('landing-page.invite', [
+            'user' => $user,
+            'code' => $code,
+            'bonusPoints' => $bonusPoints,
+            'businessName' => $businessName,
+            'cta' => $cta
+        ]);
     }
 }
