@@ -13,15 +13,16 @@ trait  SmsGateway
 {
     public static function send($receiver, $otp): string
     {
-        // Priority 1: Rateel OTP Service (external API)
+        // Priority 1: BeOn OTP Service (external API)
         // This is the preferred OTP provider for customer signup
-        if (config('services.rateel_otp.enabled', true)) {
-            $result = self::rateel_otp($receiver, $otp);
+        // API Docs: https://documenter.getpostman.com/view/9924527/2sB2x6nsUP
+        if (config('services.beon_otp.enabled', true)) {
+            $result = self::beon_otp($receiver, $otp);
             if ($result === 'success') {
                 return $result;
             }
-            // If Rateel OTP fails, fall through to other providers
-            Log::warning('RateelOTP: Falling back to other SMS providers', [
+            // If BeOn OTP fails, fall through to other providers
+            Log::warning('BeOnOTP: Falling back to other SMS providers', [
                 'phone' => substr($receiver, 0, 4) . '****',
             ]);
         }
@@ -106,73 +107,89 @@ trait  SmsGateway
     }
 
     /**
-     * Rateel OTP Service - External OTP API
+     * BeOn OTP Service - External SMS/OTP API
      * 
      * API Documentation: https://documenter.getpostman.com/view/9924527/2sB2x6nsUP
      * Primary OTP provider for customer signup verification.
      * 
-     * @param string $receiver Phone number
+     * Endpoint: POST https://v3.api.beon.chat/api/v3/messages/otp
+     * 
+     * @param string $receiver Phone number (with country code)
      * @param string $otp OTP code to send
      * @return string 'success' or 'error'
      */
-    public static function rateel_otp($receiver, $otp): string
+    public static function beon_otp($receiver, $otp): string
     {
         try {
-            $apiToken = config('services.rateel_otp.api_token');
-            $baseUrl = config('services.rateel_otp.base_url', 'https://otp.rateel.app/api');
+            $apiToken = config('services.beon_otp.api_token');
+            $baseUrl = config('services.beon_otp.base_url', 'https://v3.api.beon.chat/api/v3');
+            $lang = config('services.beon_otp.lang', 'ar');
 
             if (empty($apiToken)) {
-                Log::warning('RateelOTP: API token not configured');
+                Log::warning('BeOnOTP: API token not configured');
                 return 'error';
             }
 
-            // Format phone number
+            // Format phone number - must include country code with +
             $phone = preg_replace('/[^0-9+]/', '', $receiver);
             if (!str_starts_with($phone, '+')) {
                 if (str_starts_with($phone, '0')) {
-                    $phone = '+2' . $phone; // Egypt
+                    $phone = '+2' . $phone; // Egypt: 0xxx -> +20xxx
                 } else {
                     $phone = '+' . $phone;
                 }
             }
 
-            // Build message with OTP
-            $message = "Your verification code is: {$otp}. Valid for 5 minutes.";
-
-            Log::info('RateelOTP: Sending OTP', [
-                'phone' => substr($phone, 0, 4) . '****' . substr($phone, -2),
+            Log::info('BeOnOTP: Sending OTP', [
+                'phone' => substr($phone, 0, 5) . '****' . substr($phone, -2),
+                'otp_length' => strlen($otp),
             ]);
 
-            $response = Http::timeout(30)
-                ->withHeaders([
-                    'Authorization' => 'Bearer ' . $apiToken,
-                    'Accept' => 'application/json',
-                    'Content-Type' => 'application/json',
-                ])
-                ->post("{$baseUrl}/otp/send", [
-                    'phone' => $phone,
-                    'otp' => $otp,
-                    'message' => $message,
-                ]);
+            // BeOn API uses form-data (multipart/form-data)
+            // Using GuzzleHttp\Client for proper multipart support
+            $client = new \GuzzleHttp\Client();
+            
+            $response = $client->post("{$baseUrl}/messages/otp", [
+                'headers' => [
+                    'beon-token' => $apiToken,
+                ],
+                'multipart' => [
+                    ['name' => 'phoneNumber', 'contents' => $phone],
+                    ['name' => 'name', 'contents' => 'SmartLine'],
+                    ['name' => 'type', 'contents' => 'sms'],
+                    ['name' => 'otp_length', 'contents' => (string) strlen($otp)],
+                    ['name' => 'lang', 'contents' => $lang],
+                    ['name' => 'custom_code', 'contents' => $otp], // Send our generated OTP
+                    ['name' => 'reference', 'contents' => 'smartline_' . time()],
+                ],
+                'http_errors' => false,
+                'timeout' => 30,
+            ]);
+            
+            $statusCode = $response->getStatusCode();
+            $body = $response->getBody()->getContents();
 
-            if ($response->successful()) {
-                Log::info('RateelOTP: OTP sent successfully', [
-                    'phone' => substr($phone, 0, 4) . '****',
-                    'status' => $response->status(),
+            if ($statusCode >= 200 && $statusCode < 300) {
+                $responseData = json_decode($body, true);
+                Log::info('BeOnOTP: OTP sent successfully', [
+                    'phone' => substr($phone, 0, 5) . '****',
+                    'status' => $statusCode,
+                    'response' => $responseData,
                 ]);
                 return 'success';
             }
 
-            Log::warning('RateelOTP: Failed to send OTP', [
-                'phone' => substr($phone, 0, 4) . '****',
-                'status' => $response->status(),
-                'response' => $response->json(),
+            Log::warning('BeOnOTP: Failed to send OTP', [
+                'phone' => substr($phone, 0, 5) . '****',
+                'status' => $statusCode,
+                'response' => $body,
             ]);
             return 'error';
 
         } catch (\Exception $e) {
-            Log::error('RateelOTP: Exception', [
+            Log::error('BeOnOTP: Exception', [
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
             return 'error';
         }

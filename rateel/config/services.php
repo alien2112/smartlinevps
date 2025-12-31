@@ -32,18 +32,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Rateel OTP Service
+    | BeOn OTP Service (SMS Gateway)
     |--------------------------------------------------------------------------
     |
-    | External OTP verification service for customer signup.
+    | BeOn V3 API for OTP/SMS messaging.
     | API Documentation: https://documenter.getpostman.com/view/9924527/2sB2x6nsUP
     |
     */
 
-    'rateel_otp' => [
-        'enabled' => env('RATEEL_OTP_ENABLED', true),
-        'base_url' => env('RATEEL_OTP_BASE_URL', 'https://otp.rateel.app/api'),
-        'api_token' => env('RATEEL_OTP_API_TOKEN', 'p9ORLwInOCRgjK6BS8DFw5s8yiITUhtEQxAHmD4HudAv1mcgW7WhIvhtiz1I'),
+    'beon_otp' => [
+        'enabled' => env('BEON_OTP_ENABLED', true),
+        'base_url' => env('BEON_OTP_BASE_URL', 'https://v3.api.beon.chat/api/v3'),
+        'api_token' => env('BEON_OTP_TOKEN', 'p9ORLwInOCRgjK6BS8DFw5s8yiITUhtEQxAHmD4HudAv1mcgW7WhIvhtiz1I'),
+        'otp_length' => env('BEON_OTP_LENGTH', 6),
+        'lang' => env('BEON_OTP_LANG', 'ar'),
     ],
 
     /*
