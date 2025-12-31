@@ -81,4 +81,53 @@ class AuthService extends BaseService implements Interface\AuthServiceInterface
         return $this->generateOtp($user, $otp);
 
     }
+
+    /**
+     * Send OTP for pending registration (before user account is created)
+     * 
+     * @param string $phone Phone number to send OTP to
+     * @param array $registrationData Registration data to store temporarily
+     * @param string $userType 'customer' or 'driver'
+     * @return string The OTP code
+     */
+    public function sendOtpForRegistration(string $phone, array $registrationData, string $userType)
+    {
+        $dataValues = $this->settingRepository->getBy(criteria: ['settings_type' => SMS_CONFIG]);
+        if ($dataValues->where('live_values.status', 1)->isNotEmpty() && env('APP_MODE') == 'live') {
+            $otp = rand(1000, 9999);
+        } else {
+            $otp = '0000';
+        }
+
+        // Delete any existing OTP for this phone
+        $verification = $this->otpVerificationRepository->findOneBy(['phone_or_email' => $phone]);
+        if ($verification) {
+            $verification->delete();
+        }
+
+        $expires_at = env('APP_MODE') == 'live' ? 3 : 1000;
+        
+        // Store OTP with registration data
+        $attributes = [
+            'phone_or_email' => $phone,
+            'otp' => $otp,
+            'registration_data' => $registrationData,
+            'user_type' => $userType,
+            'expires_at' => \Carbon\Carbon::now()->addMinutes($expires_at),
+        ];
+        
+        $this->otpVerificationRepository->create(data: $attributes);
+
+        // Attempt to send SMS
+        if (self::send($phone, $otp) == "not_found") {
+            // Update OTP to 0000 if SMS sending fails
+            $verification = $this->otpVerificationRepository->findOneBy(['phone_or_email' => $phone]);
+            if ($verification) {
+                $verification->update(['otp' => '0000']);
+            }
+            return '0000';
+        }
+
+        return $otp;
+    }
 }
