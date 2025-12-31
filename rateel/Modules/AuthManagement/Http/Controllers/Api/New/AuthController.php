@@ -28,6 +28,7 @@ use Modules\UserManagement\Service\Interface\DriverServiceInterface;
 use Modules\UserManagement\Service\Interface\OtpVerificationServiceInterface;
 use Modules\UserManagement\Service\Interface\ReferralCustomerServiceInterface;
 use Modules\UserManagement\Service\Interface\ReferralDriverServiceInterface;
+use Modules\UserManagement\Service\ReferralService;
 
 class AuthController extends Controller
 {
@@ -44,6 +45,7 @@ class AuthController extends Controller
     protected $referralDriverService;
     protected $customerAccountService;
     protected $driverAccountService;
+    protected $referralService;
 
     public function __construct(
         TripRequestInterfaces            $trip,
@@ -56,7 +58,8 @@ class AuthController extends Controller
         ReferralCustomerServiceInterface $referralCustomerService,
         ReferralDriverServiceInterface   $referralDriverService,
         CustomerAccountServiceInterface  $customerAccountService,
-        DriverAccountServiceInterface    $driverAccountService
+        DriverAccountServiceInterface    $driverAccountService,
+        ReferralService                  $referralService
     )
     {
         $this->trip = $trip;
@@ -70,6 +73,7 @@ class AuthController extends Controller
         $this->referralDriverService = $referralDriverService;
         $this->customerAccountService = $customerAccountService;
         $this->driverAccountService = $driverAccountService;
+        $this->referralService = $referralService;
     }
 
     public function register(Request $request): JsonResponse
@@ -424,6 +428,9 @@ class AuthController extends Controller
 
     /**
      * Process referral code after user creation
+     * 
+     * This method handles BOTH the old referral system (referral_customers/referral_drivers)
+     * AND the new referral system (referral_invites/referral_rewards with points).
      */
     private function processReferral($user, $referralCode, $isCustomer, $fcmToken = null)
     {
@@ -435,6 +442,41 @@ class AuthController extends Controller
             return;
         }
 
+        // ============================================================
+        // NEW REFERRAL SYSTEM: Link signup for points-based rewards
+        // This creates entries in referral_invites and processes rewards
+        // based on ReferralSetting (signup, first_ride, etc.)
+        // ============================================================
+        try {
+            $deviceId = request()->header('X-Device-Id') ?? request()->fingerprint();
+            $ip = request()->ip();
+            
+            $invite = $this->referralService->linkSignup(
+                referee: $user,
+                refCode: $referralCode,
+                deviceId: $deviceId,
+                ip: $ip
+            );
+            
+            if ($invite) {
+                \Illuminate\Support\Facades\Log::info('Referral: New system signup linked', [
+                    'referee_id' => $user->id,
+                    'referrer_id' => $referralUser->id,
+                    'invite_id' => $invite->id,
+                    'is_customer' => $isCustomer,
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning('Referral: New system linkSignup failed', [
+                'referee_id' => $user->id,
+                'ref_code' => $referralCode,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // ============================================================
+        // OLD REFERRAL SYSTEM: Wallet-based rewards (legacy support)
+        // ============================================================
         if ($isCustomer) {
             if (referralEarningSetting('referral_earning_status', CUSTOMER)?->value) {
                 $referralCustomerData = [

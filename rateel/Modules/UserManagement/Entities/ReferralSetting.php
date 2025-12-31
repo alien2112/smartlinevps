@@ -54,16 +54,38 @@ class ReferralSetting extends Model
 
     /**
      * Get settings (cached)
+     * Auto-creates default settings if none exist in database
      */
     public static function getSettings(): self
     {
         return Cache::remember('referral_settings', 3600, function () {
-            return self::first() ?? new self([
-                'referrer_points' => 100,
-                'referee_points' => 50,
-                'reward_trigger' => 'first_ride',
-                'is_active' => true,
-            ]);
+            $settings = self::first();
+            
+            if (!$settings) {
+                // Create default settings in database
+                $settings = self::create([
+                    'referrer_points' => 100,
+                    'referee_points' => 50,
+                    'reward_trigger' => 'first_ride',
+                    'min_ride_fare' => 20.00,
+                    'required_rides' => 1,
+                    'max_referrals_per_day' => 10,
+                    'max_referrals_total' => 100,
+                    'invite_expiry_days' => 30,
+                    'cooldown_minutes' => 5,
+                    'block_same_device' => true,
+                    'block_same_ip' => true,
+                    'require_phone_verified' => true,
+                    'is_active' => true,
+                    'show_leaderboard' => true,
+                ]);
+                
+                \Illuminate\Support\Facades\Log::info('Referral: Default settings created', [
+                    'settings_id' => $settings->id,
+                ]);
+            }
+            
+            return $settings;
         });
     }
 

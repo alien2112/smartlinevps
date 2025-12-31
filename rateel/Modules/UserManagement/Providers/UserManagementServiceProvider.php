@@ -42,6 +42,7 @@ class UserManagementServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 RepairMissingUserAccounts::class,
+                \Modules\UserManagement\Console\SetupReferralSystem::class,
             ]);
         }
     }
