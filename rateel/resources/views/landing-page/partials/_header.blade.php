@@ -6,9 +6,9 @@
             <div class="navbar-bottom-wrapper">
                 <a href="{{route('index')}}" class="logo">
                     @if($logo)
-                        <img src="{{ asset("storage/app/public/business/".$logo) }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.onerror=null; this.src='{{ asset('public/landing-page/assets/img/smartline-logo.svg') }}';">
+                        <img src="{{ asset("storage/app/public/business/".$logo) }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.onerror=null; this.src='{{ asset('public/logo-smart.jfif') }}';">
                     @else
-                        <img src="{{ asset('public/landing-page/assets/img/smartline-logo.svg') }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                        <img src="{{ asset('public/logo-smart.jfif') }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.onerror=null; this.src='{{ asset('public/landing-page/assets/img/smartline-logo.svg') }}'; this.style.display='none'; this.nextElementSibling.style.display='inline';">
                         <span style="font-size: 24px; font-weight: bold; color: #667eea; display: none;">Smart Line</span>
                     @endif
                 </a>

@@ -17,6 +17,21 @@
     <link rel="stylesheet" href="{{ asset('public/landing-page') }}/assets/css/main.css" />
         @include('landing-page.layouts.css')
     <link rel="shortcut icon" href="{{ $favicon ? asset("storage/app/public/business/".$favicon) : asset('public/landing-page/assets/img/favicon.png') }}" type="image/x-icon" />
+    
+    <!-- Hide Laravel Debugbar -->
+    <style>
+        #phpdebugbar, .phpdebugbar, [id*="phpdebugbar"], [class*="phpdebugbar"] {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            height: 0 !important;
+            width: 0 !important;
+            overflow: hidden !important;
+        }
+        body {
+            padding-bottom: 0 !important;
+        }
+    </style>
 </head>
 
 <body>

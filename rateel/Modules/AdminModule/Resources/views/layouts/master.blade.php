@@ -47,6 +47,21 @@
     <link rel="stylesheet" href="{{ asset('public/assets/admin-module/plugins/apex/apexcharts.css') }}"/>
     <link rel="stylesheet" href="{{ asset('public/assets/admin-module/plugins/select2/select2.min.css') }}"/>
     <!-- ======= END BEGIN PAGE LEVEL PLUGINS STYLES ======= -->
+    
+    <!-- Hide Laravel Debugbar -->
+    <style>
+        #phpdebugbar, .phpdebugbar, [id*="phpdebugbar"], [class*="phpdebugbar"] {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            height: 0 !important;
+            width: 0 !important;
+            overflow: hidden !important;
+        }
+        body {
+            padding-bottom: 0 !important;
+        }
+    </style>
 
     <link href="{{ asset('public/assets/admin-module/css/intlTelInput.min.css') }}" rel="stylesheet"/>
 

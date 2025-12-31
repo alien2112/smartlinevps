@@ -377,8 +377,8 @@ class DashboardController extends BaseController
             }
         }
 
-        $centerLat = $zoneCount > 0 ? $latSum / $zoneCount : 0;
-        $centerLng = $zoneCount > 0 ? $lngSum / $zoneCount : 0;
+        $centerLat = $zoneCount > 0 ? $latSum / $zoneCount : 30.0444; // Default to Cairo
+        $centerLng = $zoneCount > 0 ? $lngSum / $zoneCount : 31.2357; // Default to Cairo
 
         return view('adminmodule::heat-map', compact('zones', 'totalRideRequests', 'totalParcelRequests', 'markers', 'polygons', 'centerLat', 'centerLng'));
     }
@@ -455,8 +455,8 @@ class DashboardController extends BaseController
             }
         }
 
-        $centerLat = $zoneCount > 0 ? $latSum / $zoneCount : 0;
-        $centerLng = $zoneCount > 0 ? $lngSum / $zoneCount : 0;
+        $centerLat = $zoneCount > 0 ? $latSum / $zoneCount : 30.0444; // Default to Cairo
+        $centerLng = $zoneCount > 0 ? $lngSum / $zoneCount : 31.2357; // Default to Cairo
 
         return response()
             ->json(view('adminmodule::partials.heat-map._overview-map', compact('polygons', 'markers', 'centerLat', 'centerLng'))

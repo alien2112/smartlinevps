@@ -61,8 +61,8 @@ function initMap(mapSelector, lat, lng, title, markersData, input, polygonData =
     let markerCluster = null;
     let searchMarkers = [];
 
-    // Normalize center
-    if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+    // Normalize center - default to Cairo, Egypt if invalid
+    if (!lat || !lng || isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) {
         lat = 30.0444; // Cairo
         lng = 31.2357;
     }
@@ -70,9 +70,13 @@ function initMap(mapSelector, lat, lng, title, markersData, input, polygonData =
     // Initialize Leaflet map
     const map = L.map(mapSelector, {
         center: [lat, lng],
-        zoom: 13,
-        zoomControl: true
+        zoom: lat === 30.0444 && lng === 31.2357 ? 10 : 13, // Lower zoom if using default
+        zoomControl: true,
+        preferCanvas: false, // Better performance for many markers
+        worldCopyJump: false
     });
+    
+    console.log('🗺️ Map initialized at:', lat, lng);
 
     // Store instance
     window.leafMaps[mapSelector] = map;
@@ -111,6 +115,9 @@ function initMap(mapSelector, lat, lng, title, markersData, input, polygonData =
         }
     }
 
+    // Prepare heatmap data points
+    const heatmapPoints = [];
+    
     // Initialize marker cluster group
     markerCluster = L.markerClusterGroup({
         chunkedLoading: true,
@@ -121,7 +128,7 @@ function initMap(mapSelector, lat, lng, title, markersData, input, polygonData =
     });
     map.addLayer(markerCluster);
 
-    // Add markers
+    // Add markers and collect heatmap points
     if (markersData && Array.isArray(markersData)) {
         markersData.forEach(function (data) {
             if (!data.position) return;
@@ -129,7 +136,10 @@ function initMap(mapSelector, lat, lng, title, markersData, input, polygonData =
             const mLat = parseFloat(data.position.lat);
             const mLng = parseFloat(data.position.lng);
 
-            if (isNaN(mLat) || isNaN(mLng)) return;
+            if (isNaN(mLat) || isNaN(mLng) || mLat === 0 || mLng === 0) return;
+
+            // Add to heatmap points array
+            heatmapPoints.push([mLat, mLng, 1.0]); // [lat, lng, intensity]
 
             const markerOptions = {};
 
@@ -155,14 +165,53 @@ function initMap(mapSelector, lat, lng, title, markersData, input, polygonData =
         });
     }
 
+    // Add heatmap layer if Leaflet.heat is available and we have points
+    if (heatmapPoints.length > 0) {
+        // Check if Leaflet.heat is loaded (it might be L.heatLayer or window.HeatmapOverlay)
+        if (typeof L.heatLayer !== 'undefined') {
+            try {
+                const heatLayer = L.heatLayer(heatmapPoints, {
+                    radius: 25,
+                    blur: 15,
+                    maxZoom: 17,
+                    max: 1.0,
+                    gradient: {
+                        0.0: 'blue',
+                        0.5: 'cyan',
+                        0.7: 'lime',
+                        0.85: 'yellow',
+                        1.0: 'red'
+                    }
+                }).addTo(map);
+                
+                console.log('✅ Heatmap layer added with', heatmapPoints.length, 'points');
+            } catch (error) {
+                console.error('Error adding heatmap layer:', error);
+            }
+        } else {
+            console.warn('⚠️ Leaflet.heat plugin not loaded. Heatmap visualization disabled.');
+            console.info('To enable heatmap, ensure leaflet.heat script is loaded before this script.');
+        }
+    } else {
+        console.info('ℹ️ No trip markers found for heatmap visualization.');
+    }
+
     // Setup search box with Nominatim
     if (input) {
         setupSearchBox(input, map, searchMarkers);
     }
 
-    // Force resize
+    // Force resize and remove loading spinner
     setTimeout(() => {
         map.invalidateSize();
+        // Remove any loading spinners
+        const mapElement = document.querySelector(mapSelector);
+        if (mapElement) {
+            const spinner = mapElement.querySelector('.spinner-border');
+            if (spinner) {
+                spinner.remove();
+            }
+        }
     }, 200);
 
     return map;
@@ -252,25 +301,42 @@ function initializeOverviewMaps() {
         const $map = $(this).find(".map");
         const mapElement = $map[0];
 
-        if (!mapElement) return;
+        if (!mapElement) {
+            console.warn('Map element not found');
+            return;
+        }
 
         const input = $(this).find(".map-search-input")[0];
 
-        let lat = parseFloat($map.data("lat"));
-        let lng = parseFloat($map.data("lng"));
+        let lat = parseFloat($map.data("lat")) || 30.0444;
+        let lng = parseFloat($map.data("lng")) || 31.2357;
 
-        const markers = parseDataAttribute(mapElement, 'data-markers');
-        const polygonData = parseDataAttribute(mapElement, 'data-polygon');
-        const title = $map.data("title");
+        const markers = parseDataAttribute(mapElement, 'data-markers') || [];
+        const polygonData = parseDataAttribute(mapElement, 'data-polygon') || [];
+        const title = $map.data("title") || "Heat Map";
 
-        console.log('Initializing overview map with:', {
+        console.log('🗺️ Initializing overview map with:', {
             id: $map.attr("id"),
             lat, lng,
             markersCount: markers.length,
-            polygonsCount: polygonData.length
+            polygonsCount: polygonData.length,
+            heatPluginLoaded: typeof L !== 'undefined' && typeof L.heatLayer !== 'undefined'
         });
 
-        initMap($map.attr("id"), lat, lng, title, markers, input, polygonData);
+        // Ensure Leaflet is loaded before initializing
+        if (typeof L === 'undefined') {
+            console.error('❌ Leaflet library not loaded!');
+            $(mapElement).html('<div class="alert alert-danger p-4 text-center">Map library failed to load. Please refresh the page.</div>');
+            return;
+        }
+
+        try {
+            initMap($map.attr("id"), lat, lng, title, markers, input, polygonData);
+        } catch (error) {
+            console.error('❌ Error initializing map:', error);
+            // Show error message to user
+            $(mapElement).html('<div class="alert alert-danger p-4 text-center">Error loading map: ' + (error.message || 'Unknown error') + '</div>');
+        }
     });
 }
 

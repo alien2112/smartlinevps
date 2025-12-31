@@ -829,3 +829,20 @@ body[theme="dark"] *::-webkit-scrollbar-thumb {
 .max-i-s-30rem {
     max-inline-size: 30rem;
 }
+
+/* Hide Laravel Debugbar - Remove debug bar from all pages */
+#phpdebugbar, .phpdebugbar, [id*="phpdebugbar"], [class*="phpdebugbar"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+    position: fixed !important;
+    bottom: -9999px !important;
+    left: -9999px !important;
+}
+body {
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+}

@@ -116,25 +116,37 @@
             
             <div class="download-section">
                 <h2 class="download-title">{{ translate('Download the App') }}</h2>
-                <p style="color: #666; margin-bottom: 20px;">
-                    {{ translate('Get started by downloading our app and use referral code:') }} <strong style="color: #667eea;">{{ $code }}</strong>
-                </p>
                 
-                <div class="app-buttons">
-                    @if($cta?->value && isset($cta->value['play_store']['user_download_link']) && $cta->value['play_store']['user_download_link'])
-                        <a href="{{ $cta->value['play_store']['user_download_link'] }}" class="app-button" target="_blank">
+                @php
+                    $ctaValue = [];
+                    if ($cta) {
+                        if (is_object($cta) && isset($cta->value)) {
+                            $ctaValue = is_string($cta->value) ? json_decode($cta->value, true) : $cta->value;
+                        } elseif (is_array($cta)) {
+                            $ctaValue = $cta;
+                        }
+                    }
+                @endphp
+                
+                <div class="app-buttons" style="margin-top: 15px; margin-bottom: 15px;">
+                    @if(isset($ctaValue['play_store']['user_download_link']) && !empty($ctaValue['play_store']['user_download_link']))
+                        <a href="{{ $ctaValue['play_store']['user_download_link'] }}" class="app-button" target="_blank">
                             <img src="{{ asset('public/landing-page/assets/img/play-fav.png') }}" alt="Google Play">
                             <span>{{ translate('GET IT ON') }} {{ translate('Google Play') }}</span>
                         </a>
                     @endif
                     
-                    @if($cta?->value && isset($cta->value['app_store']['user_download_link']) && $cta->value['app_store']['user_download_link'])
-                        <a href="{{ $cta->value['app_store']['user_download_link'] }}" class="app-button" target="_blank">
+                    @if(isset($ctaValue['app_store']['user_download_link']) && !empty($ctaValue['app_store']['user_download_link']))
+                        <a href="{{ $ctaValue['app_store']['user_download_link'] }}" class="app-button" target="_blank">
                             <img src="{{ asset('public/landing-page/assets/img/apple-fav.png') }}" alt="App Store">
                             <span>{{ translate('DOWNLOAD ON THE') }} {{ translate('App Store') }}</span>
                         </a>
                     @endif
                 </div>
+                
+                <p style="color: #666; margin-top: 20px; font-size: 0.95rem;">
+                    {{ translate('Get started by downloading our app and use referral code:') }} <strong style="color: #667eea;">{{ $code }}</strong>
+                </p>
             </div>
         </div>
     </div>

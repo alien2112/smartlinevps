@@ -12,9 +12,45 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    <!-- Geoapify Address Search Plugin -->
-    <script src="https://unpkg.com/@geoapify/leaflet-address-search-plugin@^1/dist/L.Control.GeoapifyAddressSearch.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/@geoapify/leaflet-address-search-plugin@^1/dist/L.Control.GeoapifyAddressSearch.min.css" />
+    <!-- Leaflet Heat Plugin for Heatmap -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script>
+        // Verify Leaflet.heat is loaded
+        window.addEventListener('load', function() {
+            if (typeof L !== 'undefined' && typeof L.heatLayer === 'undefined') {
+                console.warn('Leaflet.heat plugin failed to load. Retrying...');
+                // Retry loading the plugin
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js';
+                script.onload = function() {
+                    console.log('Leaflet.heat plugin loaded successfully');
+                };
+                script.onerror = function() {
+                    console.error('Failed to load Leaflet.heat plugin');
+                };
+                document.head.appendChild(script);
+            }
+        });
+    </script>
+    <style>
+        .heat-map {
+            width: 100%;
+            height: 100%;
+            min-height: 500px;
+        }
+        .map-container {
+            position: relative;
+            height: 100%;
+        }
+        .map-search-input {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            width: 300px;
+            max-width: calc(100% - 20px);
+        }
+    </style>
 @endpush
 
 @section('content')
