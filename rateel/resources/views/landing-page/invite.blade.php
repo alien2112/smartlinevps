@@ -102,22 +102,22 @@
         <div class="invite-card">
             <h1 class="invite-title">{{ translate('You\'ve Been Invited!') }}</h1>
             <p class="invite-subtitle">
-                {{ $user->first_name ?? translate('Someone') }} {{ translate('has invited you to join') }} {{ $businessName ?? 'Smart line' }}
+                {{ $user?->first_name ?? translate('Someone') }} {{ translate('has invited you to join') }} {{ $businessName }}
             </p>
             
             <div class="bonus-box">
-                <div class="bonus-amount">{{ $bonusPoints ?? 50 }}</div>
+                <div class="bonus-amount">{{ $bonusPoints }}</div>
                 <div class="bonus-label">{{ translate('Bonus Points') }}</div>
             </div>
             
             <p style="font-size: 1.1rem; color: #666; margin: 20px 0;">
-                {{ translate('Sign up with code') }} <span class="referral-code">{{ $code ?? '' }}</span> {{ translate('to earn your reward!') }}
+                {{ translate('Sign up with code') }} <span class="referral-code">{{ $code }}</span> {{ translate('to earn your reward!') }}
             </p>
             
             <div class="download-section">
                 <h2 class="download-title">{{ translate('Download the App') }}</h2>
                 <p style="color: #666; margin-bottom: 20px;">
-                    {{ translate('Get started by downloading our app and use referral code:') }} <strong style="color: #667eea;">{{ $code ?? '' }}</strong>
+                    {{ translate('Get started by downloading our app and use referral code:') }} <strong style="color: #667eea;">{{ $code }}</strong>
                 </p>
                 
                 <div class="app-buttons">
@@ -141,4 +141,3 @@
 </section>
 <!-- Invite Section End -->
 @endsection
-

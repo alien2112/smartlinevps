@@ -16,6 +16,7 @@ use Modules\UserManagement\Entities\DriverDocument;
 use Modules\UserManagement\Entities\User;
 use Modules\UserManagement\Service\Interface\DriverServiceInterface;
 use Modules\UserManagement\Service\Interface\OtpVerificationServiceInterface;
+use Modules\Gateways\Traits\SmsGateway;
 
 /**
  * DriverOnboardingController
@@ -30,6 +31,8 @@ use Modules\UserManagement\Service\Interface\OtpVerificationServiceInterface;
  */
 class DriverOnboardingController extends Controller
 {
+    use SmsGateway;
+
     // Onboarding step constants
     public const STEP_PHONE = 'phone';
     public const STEP_OTP = 'otp';
@@ -800,8 +803,9 @@ class DriverOnboardingController extends Controller
     protected function sendOtp(string $phone): bool
     {
         try {
-            // Generate 6-digit OTP
-            $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            // Generate OTP based on configured length
+            $length = config('services.beon_otp.otp_length', 6);
+            $otp = str_pad(random_int(0, pow(10, $length) - 1), $length, '0', STR_PAD_LEFT);
             
             // Store OTP (you may want to use cache or database)
             $this->otpService->storeOtp($phone, $otp);
@@ -812,8 +816,7 @@ class DriverOnboardingController extends Controller
             }
             
             // Send OTP via SMS service
-            // In production, integrate with your SMS provider (Twilio, etc.)
-            // $this->smsService->send($phone, "Your verification code is: {$otp}");
+            self::send($phone, $otp);
             
             return true;
         } catch (\Exception $e) {

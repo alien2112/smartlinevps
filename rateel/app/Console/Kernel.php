@@ -20,6 +20,12 @@ class Kernel extends ConsoleKernel
 
         // Reset daily driver stats (VIP abuse tracking) at midnight
         $schedule->command('driver:reset-daily-stats')->dailyAt('00:00');
+
+        // Wallet reconciliation - run at 3 AM daily
+        $schedule->command('wallet:reconcile')
+            ->dailyAt('03:00')
+            ->withoutOverlapping()
+            ->appendOutputTo(storage_path('logs/wallet-reconcile.log'));
     }
 
     /**

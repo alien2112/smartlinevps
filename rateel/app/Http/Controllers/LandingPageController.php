@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 use Modules\BusinessManagement\Interfaces\BusinessSettingInterface;
 use Modules\BusinessManagement\Interfaces\SocialLinkInterface;
 use Modules\BusinessManagement\Service\Interface\BusinessSettingServiceInterface;
+use Modules\UserManagement\Entities\User;
+use Modules\UserManagement\Entities\ReferralSetting;
 
 class LandingPageController extends Controller
 {
@@ -75,45 +77,32 @@ class LandingPageController extends Controller
         return view('landing-page.terms', compact('data'));
     }
 
-    public function invite($code)
+    public function invite(string $code)
     {
         // Set locale to Arabic for this page
         app()->setLocale('ar');
         session()->put('locale', 'ar');
-        
-        // Find user by referral code
-        $user = \Modules\UserManagement\Entities\User::where('ref_code', $code)->first();
-        
-        if (!$user) {
-            abort(404, 'Referral code not found');
+
+        $referrer = User::where('ref_code', $code)->first();
+        $settings = ReferralSetting::getSettings();
+        $businessNameSetting = $this->businessSetting->findOneBy(criteria: ['key_name' => 'business_name', 'settings_type' => BUSINESS_INFORMATION]);
+        $businessName = $businessNameSetting->value ?? 'Smartline';
+
+        $valid = false;
+        $referrerName = null;
+        $bonusPoints = 0;
+
+        if ($referrer && $settings->is_active) {
+            $valid = true;
+            $referrerName = $referrer->first_name;
+            $bonusPoints = $settings->referee_points;
         }
 
-        // Get referral settings with error handling
-        try {
-            $referralSettings = \Modules\UserManagement\Entities\ReferralSetting::getSettings();
-            $bonusPoints = $referralSettings?->referee_points ?? 50;
-        } catch (\Exception $e) {
-            $bonusPoints = 50; // Default fallback
-        }
-        
-        // Get business name
-        $business_name = $this->businessSetting->findOneBy(criteria: ['key_name' => 'business_name', 'settings_type' => BUSINESS_INFORMATION]);
-        $businessName = $business_name?->value ?? 'Smart line';
-        
         // Get app download links from CTA settings
         $cta = $this->businessSetting->findOneBy(criteria: ['key_name' => CTA, 'settings_type' => LANDING_PAGES_SETTINGS]);
-        
-        // Ensure all variables are defined
-        $bonusPoints = $bonusPoints ?? 50;
-        $businessName = $businessName ?? 'Smart line';
-        $code = $code ?? '';
-        
-        return view('landing-page.invite', [
-            'user' => $user,
-            'code' => $code,
-            'bonusPoints' => $bonusPoints,
-            'businessName' => $businessName,
-            'cta' => $cta
-        ]);
+
+        $user = $referrer;
+
+        return view('landing-page.invite', compact('code', 'valid', 'referrerName', 'bonusPoints', 'user', 'businessName', 'cta'));
     }
 }

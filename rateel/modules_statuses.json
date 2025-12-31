@@ -13,5 +13,6 @@
     "ReviewModule": true,
     "Gateways": true,
     "TransactionManagement": true,
-    "DispatchManagement": true
+    "DispatchManagement": true,
+    "CouponManagement": true
 }

@@ -70,13 +70,13 @@ class AuthService extends BaseService implements Interface\AuthServiceInterface
         }
         $dataValues = $this->settingRepository->getBy(criteria: ['settings_type' => SMS_CONFIG]);
         if ($dataValues->where('live_values.status', 1)->isNotEmpty() && env('APP_MODE') == 'live') {
-            $otp = rand(100000, 999999);
+            $otp = rand(1000, 9999);
         } else {
-            $otp = '000000';
+            $otp = '0000';
         }
 
         if (self::send($user->phone, $otp) == "not_found") {
-            return $this->generateOtp($user, '000000');
+            return $this->generateOtp($user, '0000');
         }
         return $this->generateOtp($user, $otp);
 
