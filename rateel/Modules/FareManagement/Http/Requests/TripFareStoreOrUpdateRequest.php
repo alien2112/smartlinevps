@@ -24,6 +24,7 @@ class TripFareStoreOrUpdateRequest extends FormRequest
             'fee_add_to_next' => 'nullable|gte:0',
              'minimum_distance_threshold' => 'nullable|gte:0',
             'fixed_price_below_threshold' => 'nullable|gte:0',
+            'min_price' => 'nullable|gte:0',
         ];
     }
 

@@ -773,6 +773,13 @@ trait CommonTrait
                         $bike_polyline = $route['encoded_polyline'];
                     }
                 }
+
+                // Apply per-category minimum price if configured
+                $categoryMinPrice = $trip->min_price ?? 0;
+                if ($categoryMinPrice > 0 && $est_fare < $categoryMinPrice) {
+                    $est_fare = $categoryMinPrice;
+                }
+
                 if (!empty($extraFare)) {
                     $extraEstFareAmount = ($est_fare * $extraFare['extraFareFee']) / 100;
                     $extraEstFare = $extraEstFareAmount + $est_fare;
@@ -804,6 +811,7 @@ trait CommonTrait
                     "vehicle_category_id" => $trip->vehicle_category_id,
                     'base_fare' => ($category_min_threshold > 0 && $distance <= $category_min_threshold) ? $category_fixed_price : $trip->base_fare,
                     'base_fare_per_km' => $trip->base_fare_per_km,
+                    'min_price' => $categoryMinPrice,
                     'fare' => $trip->VehicleCategory->type === 'car' ? round((($category_min_threshold > 0 && $distance <= $category_min_threshold) ? 0 : $drive_fare), 2) : round((($category_min_threshold > 0 && $distance <= $category_min_threshold) ? 0 : $bike_fare), 2),
                     'estimated_distance' => $trip->VehicleCategory->type === 'car' ? $drive_est_distance : $bike_est_distance,
                     'estimated_duration' => $trip->VehicleCategory->type === 'car' ? $drive_est_duration : $bike_est_duration,

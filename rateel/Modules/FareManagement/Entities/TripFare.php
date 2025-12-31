@@ -29,6 +29,7 @@ class TripFare extends Model
         'fee_add_to_next',
         'minimum_distance_threshold',
         'fixed_price_below_threshold',
+        'min_price',
         'created_at',
         'updated_at',
     ];
@@ -45,6 +46,7 @@ class TripFare extends Model
         'fee_add_to_next' => 'float',
         'minimum_distance_threshold' => 'float',
         'fixed_price_below_threshold' => 'float',
+        'min_price' => 'float',
     ];
 
     public function zone()

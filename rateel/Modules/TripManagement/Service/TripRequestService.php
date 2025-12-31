@@ -787,6 +787,20 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
             $tripData['type'] = $attributes['type'];
             $tripData['entrance'] = $attributes['entrance'] ?? null;
             $tripData['encoded_polyline'] = $attributes['encoded_polyline'] ?? null;
+
+            // Travel mode fields
+            if (($attributes['trip_type'] ?? 'normal') === 'travel' || ($attributes['is_travel'] ?? false)) {
+                $tripData['is_travel'] = true;
+                $tripData['min_price'] = $attributes['min_price'] ?? null;
+                $tripData['offer_price'] = $attributes['offer_price'] ?? null;
+                $tripData['fixed_price'] = $attributes['fixed_price'] ?? $attributes['offer_price'] ?? null;
+                $tripData['travel_date'] = $attributes['scheduled_at'] ?? $attributes['travel_date'] ?? null;
+                $tripData['travel_passengers'] = $attributes['seats_requested'] ?? $attributes['travel_passengers'] ?? null;
+                $tripData['seats_requested'] = $attributes['seats_requested'] ?? null;
+                $tripData['travel_radius_km'] = $attributes['travel_radius_km'] ?? null;
+                $tripData['travel_status'] = $attributes['travel_status'] ?? 'pending';
+            }
+
             $trip = $this->tripRequestRepository->create($tripData);
 
             $trip->tripStatus()->create([

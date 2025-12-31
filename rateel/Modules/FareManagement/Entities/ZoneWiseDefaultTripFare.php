@@ -26,6 +26,7 @@ class ZoneWiseDefaultTripFare extends Model
         'category_wise_different_fare',
         'minimum_distance_threshold',
         'fixed_price_below_threshold',
+        'min_price',
         'deleted_at',
         'created_at',
         'updated_at',
@@ -43,6 +44,7 @@ class ZoneWiseDefaultTripFare extends Model
         'fee_add_to_next'=>'double',
         'minimum_distance_threshold'=>'double',
         'fixed_price_below_threshold'=>'double',
+        'min_price'=>'double',
         'category_wise_different_fare'=>'integer'
     ];
     public function zone()

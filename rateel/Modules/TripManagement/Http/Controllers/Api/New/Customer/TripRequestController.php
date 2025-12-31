@@ -491,10 +491,58 @@ class TripRequestController extends Controller
     public function driversNearMe(Request $request): JsonResponse
     {
         if (is_null($request->header('zoneId'))) {
-
             return response()->json(responseFormatter(ZONE_404));
         }
 
+        $tripType = $request->input('trip_type', 'normal');
+        $isTravel = $tripType === 'travel';
+
+        if ($isTravel) {
+            // Travel mode: Search for VIP drivers with approved travel status
+            // Uses larger radius (default 50km) and filters for travel-approved VIP drivers only
+            $travelRadius = (float)(get_cache('travel_search_radius') ?? 50);
+            
+            $driverList = $this->travelRideService->getAvailableVipDrivers(
+                lat: (float)$request->latitude,
+                lng: (float)$request->longitude,
+                radiusKm: $travelRadius
+            );
+            
+            // Transform to match LastLocationResource format
+            $lastLocationDriver = $driverList->map(function ($location) {
+                return [
+                    'id' => $location->id,
+                    'user_id' => $location->user_id,
+                    'latitude' => $location->latitude,
+                    'longitude' => $location->longitude,
+                    'distance_km' => $location->distance_km ?? null,
+                    'is_travel_approved' => true,
+                    'user' => $location->user ? [
+                        'id' => $location->user->id,
+                        'first_name' => $location->user->first_name,
+                        'last_name' => $location->user->last_name,
+                        'profile_image' => $location->user->profile_image,
+                        'phone' => $location->user->phone,
+                        'vehicle' => $location->user->vehicle ? [
+                            'id' => $location->user->vehicle->id,
+                            'brand' => $location->user->vehicle->brand?->name ?? null,
+                            'model' => $location->user->vehicle->model?->name ?? null,
+                            'licence_plate_number' => $location->user->vehicle->licence_plate_number,
+                        ] : null,
+                    ] : null,
+                ];
+            });
+
+            return response()->json(responseFormatter(constant: DEFAULT_200, content: [
+                'trip_type' => 'travel',
+                'search_radius_km' => $travelRadius,
+                'drivers_count' => $driverList->count(),
+                'drivers' => $lastLocationDriver,
+                'note' => 'Only showing VIP drivers with approved travel status',
+            ]));
+        }
+
+        // Normal mode: Use standard driver search
         $driverList = $this->tripRequestservice->findNearestDriver(
             latitude: $request->latitude,
             longitude: $request->longitude,

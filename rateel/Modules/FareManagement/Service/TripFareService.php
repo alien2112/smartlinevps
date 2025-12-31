@@ -38,6 +38,7 @@ class TripFareService extends BaseService implements TripFareServiceInterface
             "trip_delay_fee_per_min" => $data['trip_delay_fee'] ?? 0,
             "fixed_price_below_threshold" => $data['fixed_price_below_threshold'] ?? 0,
             "minimum_distance_threshold" => $data['minimum_distance_threshold'] ?? 0,
+            "min_price" => $data['min_price'] ?? 0,
             "penalty_fee_for_cancel" => 0,
             "fee_add_to_next" => 0,
             "category_wise_different_fare" => array_key_exists('category_wise_different_fare', $data) ? 1 : 0,
@@ -74,6 +75,7 @@ class TripFareService extends BaseService implements TripFareServiceInterface
                         "fee_add_to_next" => $data['trip_delay_fee'] ?? 0,
                         "fixed_price_below_threshold" => $data['fixed_price_below_threshold'] ?? 0,
                         "minimum_distance_threshold" => $data['minimum_distance_threshold'] ?? 0,
+                        "min_price" => $data['min_price'] ?? 0,
                     ];
 
                 } else {
@@ -92,6 +94,7 @@ class TripFareService extends BaseService implements TripFareServiceInterface
                         "fee_add_to_next" => $data['fee_add_to_next_' . $vehicleCategories->id] ?? 0,
                         "fixed_price_below_threshold" => $data['fixed_price_below_threshold'. $vehicleCategories->id] ?? 0,
                         "minimum_distance_threshold" => $data['minimum_distance_threshold'. $vehicleCategories->id] ?? 0,
+                        "min_price" => $data['min_price_' . $vehicleCategories->id] ?? 0,
                     ];
                 }
                 $last_query = $this->tripFareRepository->create($tripFareData);
