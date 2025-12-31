@@ -45,8 +45,6 @@
                 <div class="card mb-3">
                     <div class="card-header">
                         <h5 class="fw-medium d-flex align-items-center gap-2 text-capitalize">
-                            <i
-                                class="bi {{ array_key_exists($type, $icons) ? $icons[$type] : 'bi-file-person-fill' }}"></i>
                             <strong>{{ translate($type) }}
                                 {{ translate('page') }}</strong>
                         </h5>
