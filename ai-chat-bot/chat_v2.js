@@ -73,6 +73,88 @@ let cachedSystemPrompt = null;
 let promptCacheTime = 0;
 const PROMPT_CACHE_TTL = 60000; // Cache for 1 minute
 
+// ============================================
+// 🧠 CODEU-STYLE LLAMA-OPTIMIZED SYSTEM PROMPT
+// ============================================
+
+const CODEU_SYSTEM_PROMPT = `You are a Customer Service AI for SmartLine ride-hailing app.
+
+<RULES>
+- NEVER invent solutions or endpoints
+- ONLY use predefined actions from ALLOWED_ACTIONS
+- ALWAYS respond in the user's language (Arabic/English)
+- ALWAYS use structured decision trees
+- If information is missing, ask with options
+</RULES>
+
+<RESPONSE_FORMAT>
+When helping users, structure your response as:
+1. Acknowledge the request briefly
+2. Provide the solution or ask for clarification with numbered options
+3. Keep responses under 3 sentences
+</RESPONSE_FORMAT>
+
+<ALLOWED_ACTIONS>
+BOOKING: request_pickup_location, request_destination, show_ride_options, show_fare_estimate, confirm_booking
+TRACKING: show_trip_tracking, show_driver_info
+TRIP: cancel_trip, confirm_cancel_trip, contact_driver
+HISTORY: show_trip_history, show_trip_details, rate_trip
+PAYMENT: show_payment_methods, show_fare_breakdown
+SAFETY: trigger_emergency, share_live_location
+SUPPORT: connect_support, call_support
+</ALLOWED_ACTIONS>
+
+<DECISION_TREES>
+USER_WANTS_HELP:
+→ Ask: "كيف أقدر أساعدك؟" then offer:
+  1. حجز رحلة (booking)
+  2. رحلاتي السابقة (history)
+  3. مشكلة في رحلة (support)
+  4. طوارئ (safety)
+
+USER_WANTS_BOOKING:
+→ Step 1: request_pickup_location
+→ Step 2: request_destination
+→ Step 3: show_ride_options
+→ Step 4: show_fare_estimate
+→ Step 5: confirm_booking
+NEVER skip steps.
+
+USER_HAS_PROBLEM:
+→ Ask which type:
+  A) السائق متأخر → show_trip_tracking
+  B) مشكلة في السعر → show_fare_breakdown
+  C) الغاء الرحلة → confirm_cancel_trip
+  D) طوارئ → trigger_emergency
+  E) موظف بشري → connect_support
+
+USER_SAYS_CANCEL:
+→ ALWAYS show confirm_cancel_trip first with fees
+→ NEVER auto-cancel without user confirmation
+</DECISION_TREES>
+
+<SAFETY_OVERRIDE>
+If user mentions: خطر، تحرش، حادث، طوارئ، danger, emergency, harassment, accident
+→ IMMEDIATELY respond with safety message
+→ Use trigger_emergency action
+→ Ask "هل أنت بأمان؟" (Are you safe?)
+</SAFETY_OVERRIDE>
+
+<FORBIDDEN>
+- Never calculate prices (backend only)
+- Never match drivers (backend only)  
+- Never invent new actions
+- Never say "I think" or "maybe"
+- Never give vague answers
+</FORBIDDEN>
+
+<STYLE>
+- Be warm but concise (Saudi/Egyptian dialect OK)
+- Use emojis sparingly: 🚗 📍 ✅ ❌ 🎧
+- Max 3 sentences per response
+- Always end with clear next step
+</STYLE>`;
+
 async function getSystemPrompt() {
     try {
         // Return cached prompt if still valid
@@ -96,11 +178,14 @@ async function getSystemPrompt() {
             return prompt;
         }
 
-        // Default fallback prompt
-        return 'You are a helpful customer service assistant for SmartLine ride-hailing app. Help users with booking rides, tracking trips, and resolving issues. Be friendly and concise. Respond in the same language as the user (Arabic or English).';
+        // Use Codeu-style LLaMA-optimized prompt as default
+        cachedSystemPrompt = CODEU_SYSTEM_PROMPT;
+        promptCacheTime = Date.now();
+        console.log('🧠 Using Codeu-style LLaMA-optimized system prompt');
+        return CODEU_SYSTEM_PROMPT;
     } catch (e) {
         console.error('Error fetching system prompt:', e);
-        return 'You are a helpful customer service assistant for SmartLine ride-hailing app.';
+        return CODEU_SYSTEM_PROMPT;
     }
 }
 
@@ -324,7 +409,74 @@ async function saveChat(userId, role, content, actionType = null, actionData = n
 }
 
 // ============================================
-// 🔍 LANGUAGE DETECTION
+// � VEHICLE CATEGORIES FROM DATABASE
+// ============================================
+
+let cachedVehicleCategories = null;
+let vehicleCategoriesCacheTime = 0;
+const VEHICLE_CATEGORIES_CACHE_TTL = 300000; // Cache for 5 minutes
+
+async function getVehicleCategories() {
+    try {
+        // Return cached if still valid
+        if (cachedVehicleCategories && (Date.now() - vehicleCategoriesCacheTime) < VEHICLE_CATEGORIES_CACHE_TTL) {
+            return cachedVehicleCategories;
+        }
+
+        const [rows] = await pool.execute(`
+            SELECT id, name, description, type
+            FROM vehicle_categories
+            WHERE is_active = 1 AND deleted_at IS NULL
+            ORDER BY name ASC
+        `);
+
+        if (rows.length > 0) {
+            cachedVehicleCategories = rows;
+            vehicleCategoriesCacheTime = Date.now();
+            console.log('🚗 Vehicle categories loaded from database:', rows.length);
+            return rows;
+        }
+
+        // Fallback to default categories if none in database
+        const defaultCategories = [
+            { id: '1', name: 'توفير', description: 'Economy ride', type: 'car' },
+            { id: '2', name: 'سمارت برو', description: 'Premium ride', type: 'car' },
+            { id: '3', name: 'في اي بي', description: 'VIP ride', type: 'car' }
+        ];
+        cachedVehicleCategories = defaultCategories;
+        vehicleCategoriesCacheTime = Date.now();
+        return defaultCategories;
+    } catch (e) {
+        console.error('Error fetching vehicle categories:', e);
+        // Return fallback
+        return [
+            { id: '1', name: 'توفير', description: 'Economy ride', type: 'car' },
+            { id: '2', name: 'سمارت برو', description: 'Premium ride', type: 'car' },
+            { id: '3', name: 'في اي بي', description: 'VIP ride', type: 'car' }
+        ];
+    }
+}
+
+/**
+ * Format vehicle categories for display message
+ */
+function formatVehicleCategoriesMessage(categories, lang) {
+    let message = lang === 'ar' ? '✅ تم تحديد الوجهة.\nاختر نوع الرحلة:\n' : '✅ Destination set.\nChoose ride type:\n';
+    categories.forEach((cat, index) => {
+        message += `${index + 1}. ${cat.name}\n`;
+    });
+    return message.trim();
+}
+
+/**
+ * Get quick replies from vehicle categories
+ */
+function getVehicleCategoryQuickReplies(categories) {
+    return categories.map(cat => cat.name);
+}
+
+// ============================================
+// �🔍 LANGUAGE DETECTION
 // ============================================
 
 function isArabic(text) {
@@ -551,26 +703,31 @@ async function processConversation(userId, message, lang) {
         // ----- AWAITING DESTINATION -----
         case STATES.AWAITING_DESTINATION:
             if (message.includes('lat:') || message.includes('location:') || message.length > 3) {
-                response.message = lang === 'ar'
-                    ? '✅ ممتاز! اختر نوع الرحلة:\n1. توفير - 25 جنيه تقريباً\n2. سمارت برو - 40 جنيه تقريباً\n3. في اي بي - 55 جنيه تقريباً'
-                    : '✅ Great! Choose ride type:\n1. Tawfer - ~25 EGP\n2. SmartPro - ~40 EGP\n3. VIP - ~55 EGP';
+                // Get vehicle categories from database
+                const vehicleCategories = await getVehicleCategories();
+
+                // Format message with dynamic categories
+                response.message = formatVehicleCategoriesMessage(vehicleCategories, lang);
 
                 const rideOptionsAction = ActionBuilders.showRideOptions(
                     convState.data.pickup,
-                    message
+                    message,
+                    vehicleCategories // Pass categories to action builder
                 );
                 response.action = rideOptionsAction.action;
-                response.data = rideOptionsAction.data;
+                response.data = rideOptionsAction.data; // Categories already included
                 response.quick_replies = rideOptionsAction.quick_replies;
 
                 await setConversationState(userId, STATES.AWAITING_RIDE_TYPE, {
                     pickup: convState.data.pickup,
-                    destination: message
+                    destination: message,
+                    vehicle_categories: vehicleCategories // Store for next state
                 });
             } else {
+                // Fixed Arabic message for destination prompt
                 response.message = lang === 'ar'
-                    ? 'من فضلك حدد وجهتك على الخريطة 📍'
-                    : 'Please select your destination on the map 📍';
+                    ? 'إلى أين تريد الذهاب؟ 📍\nمن فضلك حدد وجهتك على الخريطة'
+                    : 'Where would you like to go? 📍\nPlease select your destination on the map';
 
                 const destAction = ActionBuilders.requestDestination(convState.data.pickup);
                 response.action = destAction.action;
@@ -580,35 +737,52 @@ async function processConversation(userId, message, lang) {
 
         // ----- AWAITING RIDE TYPE -----
         case STATES.AWAITING_RIDE_TYPE:
-            let rideType = 'tawfer';
-            let estimatedFare = 25;
+            // Get stored categories or fetch fresh
+            const storedCategories = convState.data.vehicle_categories || await getVehicleCategories();
 
-            if (message.includes('2') || message.includes('سمارت') || message.includes('برو') || message.includes('smartpro') || message.includes('pro')) {
-                rideType = 'smartpro';
-                estimatedFare = 40;
-            } else if (message.includes('3') || message.includes('في اي بي') || message.includes('vip')) {
-                rideType = 'vip';
-                estimatedFare = 55;
+            // Find selected category by matching message to category name or index
+            let selectedCategory = storedCategories[0]; // Default to first
+            let selectedIndex = 0;
+
+            for (let i = 0; i < storedCategories.length; i++) {
+                const cat = storedCategories[i];
+                const indexStr = String(i + 1);
+
+                // Match by index number or category name
+                if (message.includes(indexStr) || message.includes(cat.name.toLowerCase()) || message.toLowerCase().includes(cat.name.toLowerCase())) {
+                    selectedCategory = cat;
+                    selectedIndex = i;
+                    break;
+                }
             }
 
+            const rideType = selectedCategory.id;
+            const rideTypeName = selectedCategory.name;
+
             response.message = lang === 'ar'
-                ? `تأكيد الحجز:\n📍 من: ${convState.data.pickup}\n📍 إلى: ${convState.data.destination}\n💰 السعر التقريبي: ${estimatedFare} جنيه\n\nهل تريد تأكيد الحجز؟`
-                : `Confirm booking:\n📍 From: ${convState.data.pickup}\n📍 To: ${convState.data.destination}\n💰 Estimated fare: ${estimatedFare} EGP\n\nConfirm booking?`;
+                ? `تأكيد الحجز:\n📍 من: ${convState.data.pickup}\n📍 إلى: ${convState.data.destination}\n� نوع الرحلة: ${rideTypeName}\n\nهل تريد تأكيد الحجز؟`
+                : `Confirm booking:\n📍 From: ${convState.data.pickup}\n📍 To: ${convState.data.destination}\n� Ride type: ${rideTypeName}\n\nConfirm booking?`;
 
             const fareAction = ActionBuilders.showFareEstimate(
                 convState.data.pickup,
                 convState.data.destination,
                 rideType,
-                estimatedFare
+                null // Price will be calculated by backend
             );
             response.action = fareAction.action;
-            response.data = fareAction.data;
+            response.data = {
+                ...fareAction.data,
+                ride_type_id: rideType,
+                ride_type_name: rideTypeName,
+                vehicle_category: selectedCategory
+            };
             response.quick_replies = fareAction.quick_replies;
 
             await setConversationState(userId, STATES.AWAITING_CONFIRMATION, {
                 ...convState.data,
                 ride_type: rideType,
-                estimated_fare: estimatedFare
+                ride_type_name: rideTypeName,
+                vehicle_category: selectedCategory
             });
             break;
 
@@ -623,7 +797,8 @@ async function processConversation(userId, message, lang) {
                     pickup: convState.data.pickup,
                     destination: convState.data.destination,
                     ride_type: convState.data.ride_type,
-                    estimated_fare: convState.data.estimated_fare
+                    ride_type_name: convState.data.ride_type_name,
+                    vehicle_category: convState.data.vehicle_category
                 });
                 response.action = confirmAction.action;
                 response.data = confirmAction.data;
@@ -638,11 +813,15 @@ async function processConversation(userId, message, lang) {
 
                 await setConversationState(userId, STATES.START, {});
             } else if (message.includes('تغيير') || message.includes('change')) {
-                response.message = lang === 'ar'
-                    ? 'اختر نوع الرحلة:\n1. توفير\n2. سمارت برو\n3. في اي بي'
-                    : 'Choose ride type:\n1. Tawfer\n2. SmartPro\n3. VIP';
+                // Reload categories from database for change flow
+                const freshCategories = await getVehicleCategories();
+                response.message = formatVehicleCategoriesMessage(freshCategories, lang);
+                response.quick_replies = getVehicleCategoryQuickReplies(freshCategories);
 
-                await setConversationState(userId, STATES.AWAITING_RIDE_TYPE, convState.data);
+                await setConversationState(userId, STATES.AWAITING_RIDE_TYPE, {
+                    ...convState.data,
+                    vehicle_categories: freshCategories
+                });
             }
             break;
 

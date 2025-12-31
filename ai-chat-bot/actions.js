@@ -150,10 +150,10 @@ const ActionBuilders = {
         UI_HINTS.TYPING_DELAY
     ),
 
-    showRideOptions: (pickup, destination) => buildAction(
+    showRideOptions: (pickup, destination, categories = null) => buildAction(
         ACTION_TYPES.SHOW_RIDE_OPTIONS,
-        { pickup, destination },
-        ['توفير', 'سمارت برو', 'في اي بي'],
+        { pickup, destination, categories },
+        categories ? categories.map(c => c.name) : ['توفير', 'سمارت برو', 'في اي بي'],
         null
     ),
 
