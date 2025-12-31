@@ -125,6 +125,7 @@
                             </div>
                         </div>
 
+                        {{-- CAPTCHA SECTION COMMENTED OUT
                         <div class="mb-4">
                             <div>
                                 @php($recaptcha = businessConfig('recaptcha')?->value)
@@ -172,6 +173,7 @@
                                 @endif
                             </div>
                         </div>
+                        --}}
                         <button
                             class="btn btn-primary radius-50 text-capitalize fw-semibold w-100 justify-content-center h-45 align-items-center"
                             id="signInBtn"
@@ -210,7 +212,7 @@
 <script src="{{ asset('public/assets/admin-module/js/main.js') }}"></script>
 <script src="{{ asset('public/assets/admin-module/js/toastr.js') }}"></script>
 <script src="{{ asset('public/assets/admin-module/js/login.js') }}"></script>
-<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+{{-- <script src="https://www.google.com/recaptcha/api.js" async defer></script> --}}
 
 <!-- ======= BEGIN GLOBAL MANDATORY SCRIPTS ======= -->
 
@@ -242,6 +244,7 @@
         @endforeach
     </script>
 @endif
+{{-- CAPTCHA JAVASCRIPT COMMENTED OUT
 @if(isset($recaptcha) && $recaptcha['status'] == 1)
     <script src="https://www.google.com/recaptcha/api.js?render={{$recaptcha['site_key']}}"></script>
     <script>
@@ -297,6 +300,7 @@
         document.getElementById('default_recaptcha_id').src = url.replace(':tmp', Math.random());
     });
 </script>
+--}}
 
 </body>
 
