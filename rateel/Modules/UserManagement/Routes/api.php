@@ -7,6 +7,7 @@ use Modules\UserManagement\Http\Controllers\Api\AppNotificationController;
 use Modules\UserManagement\Http\Controllers\Api\Customer\AddressController;
 use Modules\UserManagement\Http\Controllers\Api\Customer\CustomerController;
 use Modules\UserManagement\Http\Controllers\Api\Customer\LoyaltyPointController;
+use Modules\UserManagement\Http\Controllers\Api\Customer\ReferralController;
 use Modules\UserManagement\Http\Controllers\Api\Driver\TimeTrackController;
 use Modules\UserManagement\Http\Controllers\Api\New\Customer\WalletTransferController;
 use Modules\UserManagement\Http\Controllers\Api\New\Customer\WalletController;
@@ -15,6 +16,9 @@ use Modules\UserManagement\Http\Controllers\Api\New\Driver\WithdrawMethodInfoCon
 use Modules\UserManagement\Http\Controllers\Api\UserController;
 
 Route::group(['prefix' => 'customer'], function () {
+    // Public referral routes (no auth required)
+    Route::get('referral/validate-code', [ReferralController::class, 'validateCode']);
+
     Route::group(['middleware' => ['auth:api', 'maintenance_mode']], function () {
         Route::group(['prefix' => 'loyalty-points'], function () {
             Route::get('list', [LoyaltyPointController::class, 'index']);
@@ -58,6 +62,18 @@ Route::group(['prefix' => 'customer'], function () {
             Route::controller(WalletTransferController::class)->group(function () {
                 Route::post('transfer-drivemond-to-mart', 'transferDrivemondToMartWallet');
                 Route::post('transfer-drivemond-from-mart', 'transferDrivemondFromMartWallet')->withoutMiddleware('auth:api');
+            });
+        });
+
+        // Referral System
+        Route::group(['prefix' => 'referral'], function () {
+            Route::controller(ReferralController::class)->group(function () {
+                Route::get('my-code', 'getMyCode');
+                Route::post('generate-invite', 'generateInvite');
+                Route::get('stats', 'getStats');
+                Route::get('history', 'getHistory');
+                Route::get('rewards', 'getRewards');
+                Route::get('leaderboard', 'getLeaderboard');
             });
         });
     });

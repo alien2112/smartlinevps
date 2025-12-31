@@ -14,6 +14,7 @@ use Modules\UserManagement\Http\Controllers\Web\New\Admin\Employee\EmployeeRoleC
 use Modules\UserManagement\Http\Controllers\Web\New\Admin\LevelAccessController;
 use Modules\UserManagement\Http\Controllers\Web\Api\UserSearchController;
 use Modules\UserManagement\Http\Controllers\Web\Admin\HotspotController;
+use Modules\UserManagement\Http\Controllers\Web\Admin\ReferralController;
 
 /*
 |--------------------------------------------------------------------------
@@ -230,6 +231,22 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
     Route::group(['prefix' => 'hotspots', 'as' => 'hotspots.'], function () {
         Route::controller(HotspotController::class)->group(function () {
             Route::get('/', 'index')->name('index');
+        });
+    });
+
+    // Referral Program Management
+    Route::group(['prefix' => 'referral', 'as' => 'referral.'], function () {
+        Route::controller(ReferralController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('settings', 'settings')->name('settings');
+            Route::put('settings', 'updateSettings')->name('settings.update');
+            Route::get('referrals', 'referrals')->name('referrals');
+            Route::get('rewards', 'rewards')->name('rewards');
+            Route::get('leaderboard', 'leaderboard')->name('leaderboard');
+            Route::get('fraud-logs', 'fraudLogs')->name('fraud-logs');
+            Route::get('show/{id}', 'show')->name('show');
+            Route::post('block-user/{userId}', 'blockUser')->name('block-user');
+            Route::get('export', 'export')->name('export');
         });
     });
 

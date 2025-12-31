@@ -310,6 +310,43 @@
                                 </div>
                             </div>
 
+                            {{-- Travel Recommended Multiplier --}}
+                            <div class="col-lg-4 col-sm-6">
+                                <div class="mb-4">
+                                    <label class="mb-4 d-flex align-items-center fw-medium gap-2">
+                                        {{ translate('Recommended Fare Multiplier') }}
+                                        <i class="bi bi-info-circle-fill text-primary cursor-pointer"
+                                           data-bs-toggle="tooltip"
+                                           title="{{ translate('Multiply minimum price to calculate recommended fare. Example: 1.2 = 20% above minimum price') }}">
+                                        </i>
+                                    </label>
+                                    <div class="floating-form-group">
+                                        <label for="travel_recommended_multiplier_value" class="floating-form-label">
+                                            {{ translate('Multiplier (1.0 = same as min)') }}
+                                        </label>
+                                        <div class="input-group_tooltip">
+                                            <input type="number" step="0.01" class="form-control" placeholder="Ex: 1.2"
+                                                   id="travel_recommended_multiplier_value" name="travel_recommended_multiplier"
+                                                   value="{{$settings->firstWhere('key_name', 'travel_recommended_multiplier')?->value['value'] ?? 1.2}}"
+                                                   min="1.0" max="2.0">
+                                            <i class="bi bi-info-circle-fill text-primary tooltip-icon" data-bs-toggle="tooltip"
+                                               data-bs-title="{{translate('Example: min_price=100, multiplier=1.2, recommended=120. Higher offers attract drivers faster.')}}"></i>
+                                        </div>
+                                    </div>
+                                    <div class="form-control gap-2 align-items-center d-flex justify-content-between mt-2">
+                                        <div class="text-capitalize">{{ translate('Enable/Disable') }}</div>
+                                        <label class="switcher">
+                                            <input type="checkbox" name="travel_recommended_multiplier_status"
+                                                   class="switcher_input"
+                                                   {{ $settings->where('key_name', 'travel_recommended_multiplier')->first()->value['status'] ?? 1 == 1 ? 'checked' : '' }}>
+                                            <span class="switcher_control"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row gy-3 pt-3 align-items-end">
                             {{-- Travel Search Radius --}}
                             <div class="col-lg-4 col-sm-6">
                                 <div class="mb-4">

@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use Modules\TripManagement\Entities\TripRequest;
 use App\Services\AdminDashboardCacheService;
+use Modules\UserManagement\Service\ReferralService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Log;
 
@@ -33,6 +34,11 @@ class TripRequestObserver
         if ($tripRequest->isDirty(['current_status', 'paid_fare', 'driver_id', 'payment_status'])) {
             $this->clearDashboardCacheAsync($tripRequest, 'updated');
         }
+
+        // Process referral rewards when trip is completed
+        if ($tripRequest->isDirty('current_status') && $tripRequest->current_status === 'completed') {
+            $this->processReferralReward($tripRequest);
+        }
     }
 
     /**
@@ -57,6 +63,30 @@ class TripRequestObserver
     public function forceDeleted(TripRequest $tripRequest): void
     {
         $this->clearDashboardCacheAsync($tripRequest, 'forceDeleted');
+    }
+
+    /**
+     * Process referral rewards when a trip is completed.
+     * This runs asynchronously to avoid blocking the API response.
+     */
+    private function processReferralReward(TripRequest $tripRequest): void
+    {
+        dispatch(function () use ($tripRequest) {
+            try {
+                $referralService = app(ReferralService::class);
+                $referralService->processRideCompletion($tripRequest);
+
+                Log::debug('Referral reward processing triggered', [
+                    'trip_id' => $tripRequest->id,
+                    'customer_id' => $tripRequest->customer_id,
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('Referral reward processing failed', [
+                    'trip_id' => $tripRequest->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        })->afterResponse();
     }
 
     /**

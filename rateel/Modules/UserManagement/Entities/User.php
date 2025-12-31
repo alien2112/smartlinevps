@@ -71,6 +71,12 @@ class User extends Authenticatable
         'city_id',
         'selected_vehicle_type',
         'travel_enabled',
+        // Referral system fields
+        'device_fingerprint',
+        'referral_count',
+        'successful_referrals',
+        'signup_ip',
+        'referred_by',
     ];
 
     protected $casts = [
@@ -119,6 +125,32 @@ class User extends Authenticatable
     public function referralDriverDetails()
     {
         return $this->hasOne(ReferralDriver::class, 'driver_id', 'id');
+    }
+
+    // Referral System Relationships
+    public function referralInvites()
+    {
+        return $this->hasMany(ReferralInvite::class, 'referrer_id');
+    }
+
+    public function referralInviteAsReferee()
+    {
+        return $this->hasOne(ReferralInvite::class, 'referee_id');
+    }
+
+    public function referralRewardsAsReferrer()
+    {
+        return $this->hasMany(ReferralReward::class, 'referrer_id');
+    }
+
+    public function referralRewardsAsReferee()
+    {
+        return $this->hasMany(ReferralReward::class, 'referee_id');
+    }
+
+    public function referredBy()
+    {
+        return $this->belongsTo(User::class, 'referred_by');
     }
 
     public function role()

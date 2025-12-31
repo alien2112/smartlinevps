@@ -79,6 +79,32 @@ class TripRequestResource extends JsonResource
     }
 
     /**
+     * Convert Point object to Flutter-friendly format with correct lat/lng labels.
+     * Note: Our database stores coordinates with latitude in the 'longitude' field
+     * and longitude in the 'latitude' field (swapped from GeoJSON standard).
+     * This helper outputs them with correct labels for the mobile app.
+     */
+    private function formatCoordinates($point): ?array
+    {
+        if (!$point) {
+            return null;
+        }
+
+        // The Point object's internal latitude/longitude are swapped in our DB
+        // $point->longitude actually contains latitude (e.g., 31.1 for Alexandria)
+        // $point->latitude actually contains longitude (e.g., 29.7 for Alexandria)
+        $actualLat = $point->longitude;  // stored "longitude" is actually latitude
+        $actualLng = $point->latitude;   // stored "latitude" is actually longitude
+
+        return [
+            'type' => 'Point',
+            'coordinates' => [$actualLng, $actualLat], // GeoJSON format: [longitude, latitude]
+            'lat' => $actualLat,
+            'lng' => $actualLng,
+        ];
+    }
+
+    /**
      * Issue #26 FIX: Check if a field should be included
      */
     private function shouldInclude(string $field): bool
@@ -181,6 +207,7 @@ class TripRequestResource extends JsonResource
             'seats_taken' => $this->seats_taken ?? 0,
             'seats_left' => $this->seats_left ?? 0, // Computed attribute
             'min_price' => $this->min_price ? round((double)$this->min_price, 2) : null,
+            'recommended_fare' => $this->recommended_fare ? round((double)$this->recommended_fare, 2) : null,
             'offer_price' => $this->offer_price ? round((double)$this->offer_price, 2) : null,
             // Legacy travel fields (for backward compatibility)
             'fixed_price' => $this->fixed_price ? round((double)$this->fixed_price, 2) : null,
@@ -194,14 +221,14 @@ class TripRequestResource extends JsonResource
         $coordinate = [];
         if ($this->coordinate()->exists()) {
             $coordinate = [
-                'pickup_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->pickup_coordinates),
+                'pickup_coordinates' => $this->whenLoaded('coordinate', $this->formatCoordinates($this->coordinate->pickup_coordinates)),
                 'pickup_address' => $this->whenLoaded('coordinate', utf8Clean($this->coordinate->pickup_address)),
-                'destination_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->destination_coordinates),
+                'destination_coordinates' => $this->whenLoaded('coordinate', $this->formatCoordinates($this->coordinate->destination_coordinates)),
                 'destination_address' => $this->whenLoaded('coordinate', utf8Clean($this->coordinate->destination_address)),
-                'start_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->start_coordinates),
-                'drop_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->drop_coordinates),
-                'driver_accept_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->driver_accept_coordinates),
-                'customer_request_coordinates' => $this->whenLoaded('coordinate', $this->coordinate->customer_request_coordinates),
+                'start_coordinates' => $this->whenLoaded('coordinate', $this->formatCoordinates($this->coordinate->start_coordinates)),
+                'drop_coordinates' => $this->whenLoaded('coordinate', $this->formatCoordinates($this->coordinate->drop_coordinates)),
+                'driver_accept_coordinates' => $this->whenLoaded('coordinate', $this->formatCoordinates($this->coordinate->driver_accept_coordinates)),
+                'customer_request_coordinates' => $this->whenLoaded('coordinate', $this->formatCoordinates($this->coordinate->customer_request_coordinates)),
                 'intermediate_coordinates' => ($this->whenLoaded('coordinate', $this->coordinate->intermediate_coordinates)),
                 'intermediate_addresses' => $this->whenLoaded('coordinate', utf8Clean($this->coordinate->intermediate_addresses)),
                 'is_reached_destination' => (bool)$this->whenLoaded('coordinate', $this->coordinate->is_reached_destination),

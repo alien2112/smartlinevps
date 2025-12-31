@@ -84,6 +84,7 @@ class TripRequest extends Model
         'seats_capacity',
         'seats_taken',
         'min_price',
+        'recommended_fare',
         'offer_price',
         'travel_radius_km',
         'deleted_at',
@@ -129,6 +130,7 @@ class TripRequest extends Model
         'seats_capacity' => 'integer',
         'seats_taken' => 'integer',
         'min_price' => 'float',
+        'recommended_fare' => 'float',
         'offer_price' => 'float',
         'travel_radius_km' => 'float',
     ];

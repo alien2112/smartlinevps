@@ -153,6 +153,10 @@ class TripRequestController extends Controller
                 $minPrice = round($baseFare * $travelMultiplier, 2);
             }
 
+            // Calculate recommended_fare from admin setting
+            $recommendedMultiplier = (float)(get_cache('travel_recommended_multiplier') ?? 1.2);
+            $recommendedFare = round($minPrice * $recommendedMultiplier, 2);
+
             // Validate offer_price >= auto-calculated min_price
             if ($request->offer_price < $minPrice) {
                 return response()->json(responseFormatter(constant: DEFAULT_400, errors: [[
@@ -178,6 +182,7 @@ class TripRequestController extends Controller
             $mergeData['scheduled_at'] = $request->scheduled_at;
             $mergeData['seats_requested'] = $request->input('seats_requested', 1);
             $mergeData['min_price'] = $minPrice;  // Auto-calculated above
+            $mergeData['recommended_fare'] = $recommendedFare;  // Auto-calculated above
             $mergeData['offer_price'] = $request->offer_price;
             $mergeData['travel_radius_km'] = (float)(get_cache('travel_search_radius') ?? 50);
 
@@ -380,7 +385,7 @@ class TripRequestController extends Controller
             'destination_address' => $request->destination_address,
         ]);
 
-        // For travel mode, return min_price and suggested offer range
+        // For travel mode, return min_price and recommended_fare
         if ($isTravelMode) {
             // Extract the base fare from estimated_fare array
             $baseFare = is_array($estimated_fare) ? ($estimated_fare['estimated_fare'] ?? 0) : $estimated_fare;
@@ -397,24 +402,31 @@ class TripRequestController extends Controller
                 $minPrice = round($distanceKm * $perKmRate, 2);
             }
 
-            // Suggest offer price range (min to 1.5x min)
+            // Calculate recommended_fare from admin setting (multiplier on min_price)
+            $recommendedMultiplier = (float)(get_cache('travel_recommended_multiplier') ?? 1.2);
+            $recommendedFare = round($minPrice * $recommendedMultiplier, 2);
+
+            // Suggest offer price range (min to recommended)
             $maxSuggestedOffer = round($minPrice * 1.5, 2);
 
             $travelFare = [
                 'trip_type' => 'travel',
                 'min_price' => $minPrice,  // Auto-calculated from admin settings
+                'recommended_fare' => $recommendedFare,  // Recommended fare (min_price * recommended_multiplier)
                 'suggested_offer_range' => [
                     'min' => $minPrice,
+                    'recommended' => $recommendedFare,
                     'max' => $maxSuggestedOffer,
                 ],
                 'distance_km' => $distanceKm,
                 'duration_min' => is_array($estimated_fare) ? ($estimated_fare['duration'] ?? 0) : 0,
                 'currency' => get_cache('currency_code') ?? 'USD',
-                'note' => 'Minimum price calculated automatically. Set your offer_price (must be >= min_price). Higher offers may attract drivers faster.',
+                'note' => 'Minimum price calculated automatically. Set your offer_price (must be >= min_price). Recommended fare helps attract drivers faster.',
                 'pricing_info' => [
                     'base_fare' => $baseFare,
                     'travel_multiplier' => $travelMultiplier,
                     'per_km_rate' => $perKmRate ?? null,
+                    'recommended_multiplier' => $recommendedMultiplier,
                 ],
             ];
 
