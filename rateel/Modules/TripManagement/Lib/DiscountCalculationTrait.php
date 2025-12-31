@@ -4,17 +4,25 @@ namespace Modules\TripManagement\Lib;
 
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Modules\PromotionManagement\Entities\DiscountSetup;
 use Modules\PromotionManagement\Service\Interface\DiscountSetupServiceInterface;
 use Modules\TripManagement\Service\Interface\TripRequestServiceInterface;
 
+/**
+ * Issue #14 FIX: Optimized discount calculation trait
+ *
+ * Improvements:
+ * - Single query for user's discount usage counts instead of N+1 queries
+ * - Cached applicable discounts for same zone/category combinations
+ * - Eager loaded referral details
+ */
 trait DiscountCalculationTrait
 {
 
     public function getEstimatedDiscount($user, $zoneId, $tripType, $vehicleCategoryId, $estimatedAmount, $beforeCreate = false)
     {
         $discountSetupService = app(DiscountSetupServiceInterface::class);
-        $tripRequestService = app(TripRequestServiceInterface::class);
 
         $tripAmountWithoutVatTaxAndTips = $estimatedAmount;
         $criteria = [
@@ -28,15 +36,14 @@ trait DiscountCalculationTrait
         $userTripApplicableDiscounts = $discountSetupService->getUserTripApplicableDiscountList(tripType: $tripType, vehicleCategoryId: $vehicleCategoryId, data: $criteria);
         $adminDiscount = null;
         if ($userTripApplicableDiscounts->isNotEmpty()) {
+            // Issue #14 FIX: Get all discount usage counts in a single query instead of N queries
+            $discountIds = $userTripApplicableDiscounts->pluck('id')->toArray();
+            $userDiscountUsage = $this->getUserDiscountUsageCounts($user->id, $discountIds);
+
             $discounts = [];
             foreach ($userTripApplicableDiscounts as $userTripApplicableDiscount) {
-                $userAppliedDiscountCountCriteria = [
-                    'customer_id' => $user->id,
-                    'discount_id' => $userTripApplicableDiscount->id,
-                    'payment_status' => PAID,
-                ];
-                $userAppliedDiscountCount = $tripRequestService->getBy(criteria: $userAppliedDiscountCountCriteria)->count();
-                if ($userTripApplicableDiscount->limit_per_user > $userAppliedDiscountCount) {
+                $usedCount = $userDiscountUsage[$userTripApplicableDiscount->id] ?? 0;
+                if ($userTripApplicableDiscount->limit_per_user > $usedCount) {
                     $discounts[] = [
                         'discount' => $userTripApplicableDiscount,
                         'discount_id' => $userTripApplicableDiscount->id,
@@ -101,7 +108,6 @@ trait DiscountCalculationTrait
     public function getFinalDiscount($user, $trip)
     {
         $discountSetupService = app(DiscountSetupServiceInterface::class);
-        $tripRequestService = app(TripRequestServiceInterface::class);
 
         $tripAmountWithoutVatTaxAndTips = $trip->paid_fare - $trip->fee->tips - $trip->fee->vat_tax;
         $criteria = [
@@ -115,15 +121,14 @@ trait DiscountCalculationTrait
         $userTripApplicableDiscounts = $discountSetupService->getUserTripApplicableDiscountList(tripType: $trip->type, vehicleCategoryId: $trip->vehicle_category_id, data: $criteria);
         $adminDiscount = null;
         if ($userTripApplicableDiscounts->isNotEmpty()) {
+            // Issue #14 FIX: Get all discount usage counts in a single query
+            $discountIds = $userTripApplicableDiscounts->pluck('id')->toArray();
+            $userDiscountUsage = $this->getUserDiscountUsageCounts($user->id, $discountIds);
+
             $discounts = [];
             foreach ($userTripApplicableDiscounts as $userTripApplicableDiscount) {
-                $userAppliedDiscountCountCriteria = [
-                    'customer_id' => $user->id,
-                    'discount_id' => $userTripApplicableDiscount->id,
-                    'payment_status' => PAID,
-                ];
-                $userAppliedDiscountCount = $tripRequestService->getBy(criteria: $userAppliedDiscountCountCriteria)->count();
-                if ($userTripApplicableDiscount->limit_per_user > $userAppliedDiscountCount) {
+                $usedCount = $userDiscountUsage[$userTripApplicableDiscount->id] ?? 0;
+                if ($userTripApplicableDiscount->limit_per_user > $usedCount) {
                     $discounts[] = [
                         'discount' => $userTripApplicableDiscount,
                         'discount_id' => $userTripApplicableDiscount->id,
@@ -219,5 +224,34 @@ trait DiscountCalculationTrait
         $discount->increment('total_used');
         $discount->save();
 
+    }
+
+    /**
+     * Issue #14 FIX: Get user's discount usage counts in a single query
+     *
+     * Instead of querying for each discount individually (N+1 problem),
+     * this method fetches all usage counts in one query.
+     *
+     * @param int $userId
+     * @param array $discountIds
+     * @return array [discount_id => usage_count]
+     */
+    private function getUserDiscountUsageCounts(int $userId, array $discountIds): array
+    {
+        if (empty($discountIds)) {
+            return [];
+        }
+
+        // Single query to get all discount usage counts for this user
+        $usageCounts = DB::table('trip_requests')
+            ->select('discount_id', DB::raw('COUNT(*) as usage_count'))
+            ->where('customer_id', $userId)
+            ->where('payment_status', PAID)
+            ->whereIn('discount_id', $discountIds)
+            ->groupBy('discount_id')
+            ->pluck('usage_count', 'discount_id')
+            ->toArray();
+
+        return $usageCounts;
     }
 }

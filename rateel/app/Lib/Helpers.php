@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\BusinessManagement\Entities\ExternalConfiguration;
 use Modules\BusinessManagement\Entities\ReferralEarningSetting;
@@ -81,6 +82,74 @@ if (!function_exists('removeSpecialCharacters')) {
     }
 }
 
+if (!function_exists('convertImageToWebP')) {
+    /**
+     * Convert and compress an image to WebP format
+     *
+     * @param mixed $image Image path string or UploadedFile object
+     * @param int $quality WebP quality (0-100, default 85)
+     * @return string|false Returns WebP image data or false on failure
+     */
+    function convertImageToWebP($image, int $quality = 85)
+    {
+        try {
+            // Get the image path
+            $imagePath = is_string($image) ? $image : $image->getRealPath();
+
+            // Detect mime type
+            $imageInfo = getimagesize($imagePath);
+            if ($imageInfo === false) {
+                throw new \Exception('Invalid image file');
+            }
+
+            $mimeType = $imageInfo['mime'];
+
+            // Create image resource based on mime type
+            switch ($mimeType) {
+                case 'image/jpeg':
+                case 'image/jpg':
+                    $imageResource = imagecreatefromjpeg($imagePath);
+                    break;
+                case 'image/png':
+                    $imageResource = imagecreatefrompng($imagePath);
+                    // Preserve transparency for PNG
+                    imagepalettetotruecolor($imageResource);
+                    imagealphablending($imageResource, true);
+                    imagesavealpha($imageResource, true);
+                    break;
+                case 'image/gif':
+                    $imageResource = imagecreatefromgif($imagePath);
+                    break;
+                case 'image/webp':
+                    // Already WebP, just optimize it
+                    $imageResource = imagecreatefromwebp($imagePath);
+                    break;
+                default:
+                    throw new \Exception('Unsupported image type: ' . $mimeType);
+            }
+
+            if ($imageResource === false) {
+                throw new \Exception('Failed to create image resource');
+            }
+
+            // Convert to WebP
+            ob_start();
+            imagewebp($imageResource, null, $quality);
+            $webpData = ob_get_clean();
+
+            // Free memory
+            imagedestroy($imageResource);
+
+            return $webpData;
+        } catch (\Exception $e) {
+            Log::error('WebP conversion failed', [
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+}
+
 if (!function_exists('fileUploader')) {
     function fileUploader(string $dir, string $format, $image = null, $oldImage = null)
     {
@@ -114,22 +183,35 @@ if (!function_exists('fileUploader')) {
                 }
             }
 
-            $imageName = Carbon::now()->toDateString() . "-" . uniqid() . "." . $format;
+            // Force WebP format for images
+            $isImage = in_array(strtolower($format), ['jpg', 'jpeg', 'png', 'gif', 'webp']);
+            $finalFormat = $isImage ? 'webp' : $format;
+
+            $imageName = Carbon::now()->toDateString() . "-" . uniqid() . "." . $finalFormat;
 
             // Create directory if it doesn't exist (R2 handles this automatically)
             if (!Storage::disk($disk)->exists($dir)) {
                 Storage::disk($disk)->makeDirectory($dir);
             }
 
-            // Get file contents (handles both paths and UploadedFile objects)
-            if (is_string($image)) {
-                $contents = file_get_contents($image);
+            // Get file contents and convert to WebP if it's an image
+            if ($isImage) {
+                $webpData = convertImageToWebP($image, 85);
+                if ($webpData === false) {
+                    throw new \Exception('Failed to convert image to WebP');
+                }
+                $contents = $webpData;
             } else {
-                $contents = file_get_contents($image->getRealPath());
-            }
+                // For non-image files, just get contents
+                if (is_string($image)) {
+                    $contents = file_get_contents($image);
+                } else {
+                    $contents = file_get_contents($image->getRealPath());
+                }
 
-            if ($contents === false) {
-                throw new \Exception('Failed to read file contents');
+                if ($contents === false) {
+                    throw new \Exception('Failed to read file contents');
+                }
             }
 
             // Store the new image in Cloudflare R2
@@ -518,6 +600,60 @@ if (!function_exists('exportData')) {
     }
 }
 
+/**
+ * Issue #28 FIX: Streaming export for large datasets
+ *
+ * Uses generators and chunking to avoid loading all data into memory.
+ * Supports CSV and Excel exports with proper headers.
+ */
+if (!function_exists('exportDataStreamed')) {
+    function exportDataStreamed(callable $queryBuilder, callable $rowMapper, string $format = 'csv', string $filename = null): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $filename = $filename ?? time() . '-export.' . $format;
+
+        if ($format === 'csv') {
+            return new \Symfony\Component\HttpFoundation\StreamedResponse(function () use ($queryBuilder, $rowMapper) {
+                $handle = fopen('php://output', 'w');
+                $headerWritten = false;
+                $chunkSize = 1000;
+
+                $queryBuilder()->chunk($chunkSize, function ($records) use ($handle, $rowMapper, &$headerWritten) {
+                    foreach ($records as $record) {
+                        $row = $rowMapper($record);
+
+                        // Write header on first row
+                        if (!$headerWritten) {
+                            fputcsv($handle, array_keys($row));
+                            $headerWritten = true;
+                        }
+
+                        fputcsv($handle, array_values($row));
+                    }
+                });
+
+                fclose($handle);
+            }, 200, [
+                'Content-Type' => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'Cache-Control' => 'no-cache, must-revalidate',
+            ]);
+        }
+
+        // For Excel, use FastExcel with generator
+        if ($format === 'excel' || $format === 'xlsx') {
+            $generator = function () use ($queryBuilder, $rowMapper) {
+                foreach ($queryBuilder()->cursor() as $record) {
+                    yield $rowMapper($record);
+                }
+            };
+
+            return (new FastExcel($generator()))->download($filename);
+        }
+
+        throw new \InvalidArgumentException("Unsupported streaming format: {$format}");
+    }
+}
+
 
 if (!function_exists('log_viewer')) {
 
@@ -734,14 +870,34 @@ if (!function_exists('getCurrencyFormat')) {
 
 
 if (!function_exists('getNotification')) {
+    /**
+     * Issue #22 FIX: Cache notification settings to avoid repeated DB queries
+     * Notifications rarely change, so we cache all of them for 1 hour
+     */
     function getNotification($key)
     {
-        $notification = FirebasePushNotification::query()->firstWhere('name', $key);
+        // Cache all notifications instead of querying per key
+        $notifications = \Illuminate\Support\Facades\Cache::remember('notifications:all', 3600, function () {
+            return FirebasePushNotification::all()->keyBy('name');
+        });
+
+        $notification = $notifications->get($key);
+
         return [
             'title' => $notification['name'] ?? ' ',
             'description' => $notification['value'] ?? ' ',
-            'status' => (bool)$notification['status'] ?? 0,
+            'status' => (bool)($notification['status'] ?? 0),
         ];
+    }
+}
+
+if (!function_exists('clearNotificationCache')) {
+    /**
+     * Issue #22 FIX: Clear notification cache when settings change
+     */
+    function clearNotificationCache()
+    {
+        \Illuminate\Support\Facades\Cache::forget('notifications:all');
     }
 }
 
@@ -1452,6 +1608,19 @@ if (!function_exists('app_settings_group')) {
             \Log::warning('Failed to get app settings group', ['group' => $group, 'error' => $e->getMessage()]);
             return [];
         }
+    }
+}
+
+if (!function_exists('customer_add_fund_to_wallet')) {
+    /**
+     * Add funds to customer wallet after successful payment (hook wrapper)
+     *
+     * @param object $data Payment data
+     * @return bool
+     */
+    function customer_add_fund_to_wallet($data): bool
+    {
+        return \App\Library\CustomerAddFundToWallet::handle($data);
     }
 }
 

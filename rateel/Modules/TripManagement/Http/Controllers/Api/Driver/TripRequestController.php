@@ -66,6 +66,19 @@ class TripRequestController extends Controller
     {
     }
 
+    /**
+     * Issue #29 FIX: Get authenticated driver with driverDetails eager loaded
+     * Prevents N+1 queries when accessing driverDetails multiple times
+     */
+    private function getAuthenticatedDriver()
+    {
+        $user = auth('api')->user();
+        if ($user && !$user->relationLoaded('driverDetails')) {
+            $user->load('driverDetails');
+        }
+        return $user;
+    }
+
     public function rideResumeStatus()
     {
         $trip = $this->getIncompleteRide();
@@ -84,7 +97,8 @@ class TripRequestController extends Controller
      */
     public function bid(Request $request): JsonResponse
     {
-        $user = auth('api')->user();
+        // Issue #29 FIX: Use helper to ensure driverDetails is eager loaded
+        $user = $this->getAuthenticatedDriver();
         if ($user->driverDetails->availability_status != 'available' || $user->driverDetails->is_online != 1) {
 
             return response()->json(responseFormatter(constant: DRIVER_UNAVAILABLE_403), 403);
@@ -871,7 +885,8 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(ZONE_404));
         }
 
-        $user = auth('api')->user();
+        // Issue #29 FIX: Use helper to ensure driverDetails is eager loaded
+        $user = $this->getAuthenticatedDriver();
         \Log::info('pendingRideList: User authenticated', ['user_id' => $user->id, 'user_type' => $user->user_type ?? 'unknown']);
 
         if (!$user->driverDetails) {

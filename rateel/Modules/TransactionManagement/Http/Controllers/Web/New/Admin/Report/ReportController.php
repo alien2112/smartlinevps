@@ -16,6 +16,8 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\View\View;
 use Modules\TripManagement\Service\Interface\TripRequestServiceInterface;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Modules\TripManagement\Entities\TripRequest;
+use Illuminate\Support\Facades\DB;
 
 class ReportController extends BaseController
 {
@@ -183,5 +185,151 @@ class ReportController extends BaseController
     {
         $data = $this->tripRequestService->getDateZoneWiseExpenseStatistics($request->all());
         return response()->json($data);
+    }
+
+    // =========================================================================
+    // Issue #28 FIX: Streaming exports for large datasets
+    // =========================================================================
+
+    /**
+     * Stream earning report export - handles large datasets without memory issues
+     */
+    public function earningReportExportStreamed(Request $request): StreamedResponse
+    {
+        $this->authorize('transaction_export');
+
+        $search = $request->get('search');
+
+        $queryBuilder = function () use ($search) {
+            $query = TripRequest::query()
+                ->with(['zone', 'fee'])
+                ->where('payment_status', PAID)
+                ->whereHas('fee', function ($q) {
+                    $q->whereNull('cancelled_by')
+                        ->orWhere('cancelled_by', 'CUSTOMER');
+                })
+                ->orderBy('created_at', 'desc');
+
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('ref_id', 'like', "%{$search}%")
+                        ->orWhere('id', $search);
+                });
+            }
+
+            return $query;
+        };
+
+        $rowMapper = function ($item) {
+            return [
+                'id' => $item->id,
+                'Trip ID' => $item->ref_id,
+                'Date' => date('d F Y h:i a', strtotime($item->created_at)),
+                'Zone' => $item->zone?->name ?? 'N/A',
+                'Trip Type' => ucwords($item->type),
+                'Total Trip Cost' => getCurrencyFormat($item->paid_fare),
+                'Admin Commission' => getCurrencyFormat($item->fee ? ($item->fee->admin_commission - $item->fee->vat_tax) : 0),
+                'Tax Collected' => getCurrencyFormat($item->fee?->vat_tax ?? 0),
+                'Earning' => getCurrencyFormat($item->fee?->admin_commission ?? 0),
+            ];
+        };
+
+        $format = $request->get('format', 'csv');
+        return exportDataStreamed($queryBuilder, $rowMapper, $format, 'earning-report.' . $format);
+    }
+
+    /**
+     * Stream expense report export - handles large datasets without memory issues
+     */
+    public function expenseReportExportStreamed(Request $request): StreamedResponse
+    {
+        $this->authorize('transaction_export');
+
+        $search = $request->get('search');
+
+        $queryBuilder = function () use ($search) {
+            $query = TripRequest::query()
+                ->with(['zone', 'fee'])
+                ->where('payment_status', PAID)
+                ->whereHas('fee', function ($q) {
+                    $q->whereNull('cancelled_by')
+                        ->orWhere('cancelled_by', 'CUSTOMER');
+                })
+                ->orderBy('created_at', 'desc');
+
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('ref_id', 'like', "%{$search}%")
+                        ->orWhere('id', $search);
+                });
+            }
+
+            return $query;
+        };
+
+        $rowMapper = function ($item) {
+            return [
+                'id' => $item->id,
+                'Trip ID' => $item->ref_id,
+                'Date' => date('d F Y h:i a', strtotime($item->created_at)),
+                'Zone' => $item->zone?->name ?? 'N/A',
+                'Trip Type' => ucwords($item->type),
+                'Total Trip Cost' => getCurrencyFormat($item->paid_fare),
+                'Coupon Amount' => getCurrencyFormat($item->coupon_amount ?? 0),
+                'Discount Amount' => getCurrencyFormat($item->discount_amount ?? 0),
+                'Total Expense' => getCurrencyFormat(($item->discount_amount ?? 0) + ($item->coupon_amount ?? 0)),
+            ];
+        };
+
+        $format = $request->get('format', 'csv');
+        return exportDataStreamed($queryBuilder, $rowMapper, $format, 'expense-report.' . $format);
+    }
+
+    /**
+     * Stream transaction report export with date range filter
+     */
+    public function transactionReportExportStreamed(Request $request): StreamedResponse
+    {
+        $this->authorize('transaction_export');
+
+        $startDate = $request->get('start_date');
+        $endDate = $request->get('end_date');
+        $type = $request->get('type'); // earning, expense, or all
+
+        $queryBuilder = function () use ($startDate, $endDate, $type) {
+            $query = TripRequest::query()
+                ->with(['zone', 'fee', 'customer:id,first_name,last_name', 'driver:id,first_name,last_name'])
+                ->where('payment_status', PAID)
+                ->orderBy('created_at', 'desc');
+
+            if ($startDate) {
+                $query->whereDate('created_at', '>=', $startDate);
+            }
+            if ($endDate) {
+                $query->whereDate('created_at', '<=', $endDate);
+            }
+
+            return $query;
+        };
+
+        $rowMapper = function ($item) {
+            return [
+                'Trip ID' => $item->ref_id,
+                'Date' => date('Y-m-d H:i:s', strtotime($item->created_at)),
+                'Zone' => $item->zone?->name ?? 'N/A',
+                'Type' => ucwords($item->type),
+                'Customer' => trim(($item->customer?->first_name ?? '') . ' ' . ($item->customer?->last_name ?? '')),
+                'Driver' => trim(($item->driver?->first_name ?? '') . ' ' . ($item->driver?->last_name ?? '')),
+                'Fare' => $item->paid_fare,
+                'Discount' => $item->discount_amount ?? 0,
+                'Coupon' => $item->coupon_amount ?? 0,
+                'Admin Commission' => $item->fee?->admin_commission ?? 0,
+                'Tax' => $item->fee?->vat_tax ?? 0,
+                'Status' => $item->current_status,
+            ];
+        };
+
+        $format = $request->get('format', 'csv');
+        return exportDataStreamed($queryBuilder, $rowMapper, $format, 'transaction-report.' . $format);
     }
 }

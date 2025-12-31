@@ -250,6 +250,39 @@ class User extends Authenticatable
         return $this->hasOne(DriverDetail::class, 'user_id');
     }
 
+    // =========================================================================
+    // Issue #29 FIX: Eager loading scopes to prevent N+1 queries
+    // =========================================================================
+
+    /**
+     * Scope to eager load driver-related data
+     * Use when loading a driver to prevent separate queries for driverDetails
+     */
+    public function scopeWithDriverData($query)
+    {
+        return $query->with(['driverDetails', 'vehicle', 'vehicle.category', 'lastLocations']);
+    }
+
+    /**
+     * Scope for minimal driver data (for lists and summaries)
+     */
+    public function scopeWithDriverBasic($query)
+    {
+        return $query->with('driverDetails');
+    }
+
+    /**
+     * Ensure driver details is loaded (call this when accessing driverDetails)
+     * Issue #29: Prevents N+1 queries in controllers
+     */
+    public function ensureDriverDetailsLoaded(): self
+    {
+        if (!$this->relationLoaded('driverDetails')) {
+            $this->load('driverDetails');
+        }
+        return $this;
+    }
+
     /**
      * Get driver's uploaded documents (for onboarding)
      */

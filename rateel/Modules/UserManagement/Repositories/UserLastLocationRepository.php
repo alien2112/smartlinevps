@@ -56,14 +56,25 @@ class UserLastLocationRepository implements UserLastLocationInterface
 
     public function getNearestDrivers($attributes): mixed
     {
+        // Get max drivers to notify from config, default 50
+        $maxDrivers = (int) ($attributes['limit'] ?? config('business.max_drivers_to_notify', 50));
+
         return $this->last_location
-            ->selectRaw("* ,( 6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude)
-            - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance",
+            ->selectRaw("user_last_locations.id, user_last_locations.user_id, user_last_locations.latitude, user_last_locations.longitude, user_last_locations.zone_id, user_last_locations.type,
+                ( 6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude)
+                - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance",
                 [$attributes['latitude'], $attributes['longitude'], $attributes['latitude']])
             ->where('type', 'driver')
             ->where('zone_id', $attributes['zone_id'])
             ->having('distance', '<', $attributes['radius'])
-            ->with(['user.vehicle.category', 'driverDetails', 'user'])
+            // Eager load ALL relations accessed in TripRequestController loops
+            ->with([
+                'user:id,first_name,last_name,phone,fcm_token,is_active,profile_image',
+                'user.vehicle:id,driver_id,category_id,brand_id,model_id,is_active,licence_plate_number,parcel_weight_capacity',
+                'user.vehicle.category:id,name,type,category_level',
+                'user.vehicle.model:id,name',
+                'driverDetails:id,user_id,is_online,availability_status,service,ride_count,parcel_count'
+            ])
             ->whereHas('user', fn($query) => $query->where('is_active', true))
             ->whereHas('driverDetails', fn($query) => $query->where('is_online', true)
                 ->whereNotIn('availability_status', ['unavailable', 'on_trip'])
@@ -104,6 +115,7 @@ class UserLastLocationRepository implements UserLastLocationInterface
                 )
             )
             ->orderBy('distance')
+            ->limit($maxDrivers)
             ->get();
     }
 }

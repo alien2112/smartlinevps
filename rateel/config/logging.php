@@ -113,6 +113,44 @@ return [
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],
+
+        // Issue #30 FIX: Structured JSON logging for monitoring systems
+        // Enable with LOG_CHANNEL=json or LOG_CHANNEL=structured-stack
+        'json' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/app-json.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 14,
+            'formatter' => \Monolog\Formatter\JsonFormatter::class,
+        ],
+
+        // Issue #30 FIX: Structured logging stack for production
+        // Includes both readable and JSON logs
+        'structured-stack' => [
+            'driver' => 'stack',
+            'channels' => ['daily', 'json'],
+            'ignore_exceptions' => false,
+        ],
+
+        // Issue #30 FIX: Performance logging channel
+        // For slow queries, API response times, etc.
+        'performance' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/performance.log'),
+            'level' => 'debug',
+            'days' => 7,
+            'formatter' => \Monolog\Formatter\JsonFormatter::class,
+        ],
+
+        // Issue #30 FIX: Security and audit logging channel
+        // For authentication, authorization events
+        'security' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/security.log'),
+            'level' => 'info',
+            'days' => 30,
+            'formatter' => \Monolog\Formatter\JsonFormatter::class,
+        ],
     ],
 
 ];

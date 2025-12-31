@@ -48,5 +48,12 @@ Route::get('payment-success', [PaymentRecordController::class, 'success'])->name
 Route::get('payment-fail', [PaymentRecordController::class, 'fail'])->name('payment-fail');
 Route::get('payment-cancel', [PaymentRecordController::class, 'cancel'])->name('payment-cancel');
 Route::get('/update-data-test', [DemoController::class, 'demo'])->name('demo');
+
+// Firebase Configuration Routes
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(function () {
+    Route::get('/firebase-config', [\App\Http\Controllers\Admin\FirebaseConfigController::class, 'index'])->name('firebase-config.index');
+    Route::post('/firebase-config', [\App\Http\Controllers\Admin\FirebaseConfigController::class, 'store'])->name('firebase-config.store');
+    Route::get('/firebase-config/test', [\App\Http\Controllers\Admin\FirebaseConfigController::class, 'test'])->name('firebase-config.test');
+});
 Route::get('sms-test', [DemoController::class, 'smsGatewayTest'])->name('sms-test');
 Route::get('firebase-gen', [DemoController::class, 'firebaseMessageConfigFileGen'])->name('firebase-gen');

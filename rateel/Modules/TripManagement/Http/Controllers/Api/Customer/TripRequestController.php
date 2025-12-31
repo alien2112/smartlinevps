@@ -179,20 +179,22 @@ class TripRequestController extends Controller
                 return response()->json(responseFormatter(NO_ACTIVE_CATEGORY_IN_ZONE_404), 403);
             }
         } else {
-            $parcel_weights = $this->parcel_weight->get(limit: 99999, offset: 1);
-            $parcel_weight_id = null;
-
+            // Issue #13 FIX: Use direct database query with index instead of loading all weights
+            // Old: $parcel_weights = $this->parcel_weight->get(limit: 99999, offset: 1);
+            // This was O(n) iteration when O(1) database lookup is possible
             $parcel_category_id = $request->parcel_category_id;
+            $requestedWeight = (float) $request->parcel_weight;
 
-            foreach ($parcel_weights as $pw) {
-                if ($request->parcel_weight >= $pw->min_weight && $request->parcel_weight <= $pw->max_weight) {
-                    $parcel_weight_id = $pw['id'];
-                }
-            }
-            if (is_null($parcel_weight_id)) {
+            // Single indexed query instead of fetching all and iterating
+            $parcel_weight = \Modules\ParcelManagement\Entities\ParcelWeight::where('min_weight', '<=', $requestedWeight)
+                ->where('max_weight', '>=', $requestedWeight)
+                ->first();
 
+            if (!$parcel_weight) {
                 return response()->json(responseFormatter(PARCEL_WEIGHT_400), 403);
             }
+
+            $parcel_weight_id = $parcel_weight->id;
 
             $trip_fare = $this->parcel_fare->getZoneFare([
                 'column' => 'zone_id',
@@ -636,11 +638,23 @@ class TripRequestController extends Controller
                 dispatch(new SendPushNotificationJob($notification, $find_drivers))->onQueue('high')->afterResponse();
                 $this->temp_notification->store(['data' => $notify]);
             }
-            foreach ($find_drivers as $key => $value) {
-                try {
-                    checkPusherConnection(CustomerTripRequestEvent::broadcast($value->user, $final));
-                } catch (Exception $exception) {
 
+            // Issue #15 FIX: Replace individual Pusher broadcasts with batch Redis publish
+            // Old code looped through each driver causing N*latency delays
+            // New code sends single Redis message, Node.js handles fan-out to sockets
+            $driverIds = $find_drivers->pluck('user.id')->filter()->toArray();
+            if (!empty($driverIds)) {
+                try {
+                    app(\App\Services\RealtimeEventPublisher::class)->publishToDrivers(
+                        $driverIds,
+                        $final,
+                        'new_ride_request'
+                    );
+                } catch (Exception $exception) {
+                    \Illuminate\Support\Facades\Log::warning('Batch driver notification failed', [
+                        'trip_id' => $final->id,
+                        'error' => $exception->getMessage()
+                    ]);
                 }
             }
         }
@@ -750,40 +764,63 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
 
-        $trip = $this->trip->getBy(column: 'id', value: $request['trip_request_id'], attributes: ['relations' => 'coordinate']);
-        $driver = $this->driver->getBy(column: 'id', value: $request['driver_id'], attributes: ['relations' => ['vehicle', 'driverDetails', 'lastLocations']]);
+        // Issue #9 FIX: Use atomic lock to prevent race condition
+        // Multiple drivers trying to accept the same trip simultaneously
+        $tripId = $request['trip_request_id'];
+        $lockKey = "trip:lock:{$tripId}";
+        $lock = Cache::lock($lockKey, 10); // 10 second lock timeout
 
-        if (Cache::get($request['trip_request_id']) == ACCEPTED && $trip->driver_id == $driver->id) {
-
-            return response()->json(responseFormatter(DEFAULT_UPDATE_200));
+        if (!$lock->get()) {
+            // Another driver is already processing this trip
+            return response()->json(responseFormatter(constant: TRIP_ALREADY_PROCESSING_403 ?? DEFAULT_400, content: 'Trip is being processed by another driver'), 403);
         }
 
-        $user_status = $driver->driverDetails->availability_status;
-        if ($user_status != 'on_bidding' && $user_status != 'available') {
+        try {
+            $trip = $this->trip->getBy(column: 'id', value: $request['trip_request_id'], attributes: ['relations' => 'coordinate']);
+            $driver = $this->driver->getBy(column: 'id', value: $request['driver_id'], attributes: ['relations' => ['vehicle', 'driverDetails', 'lastLocations']]);
 
-            return response()->json(responseFormatter(constant: DRIVER_403), 403);
-        }
-        if (!$trip) {
-            return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 403);
-        }
-        if (!$driver->vehicle) {
-
-            return response()->json(responseFormatter(constant: DEFAULT_404), 403);
-        }
-        if (get_cache('bid_on_fare') ?? 0) {
-            $checkBid = $this->bidding->getBy(column: 'trip_request_id', value: $request['trip_request_id'], attributes: [
-                'additionalColumn' => 'driver_id',
-                'additionalValue' => $request['driver_id']
-            ]);
-
-            if (!$checkBid) {
-                return response()->json(responseFormatter(constant: DRIVER_BID_NOT_FOUND_403), 403);
+            if (Cache::get($request['trip_request_id']) == ACCEPTED && $trip->driver_id == $driver->id) {
+                $lock->release();
+                return response()->json(responseFormatter(DEFAULT_UPDATE_200));
             }
 
-        }
+            // Issue #9 FIX: Double-check trip is still available (within lock)
+            if ($trip->current_status !== PENDING || $trip->driver_id !== null) {
+                $lock->release();
+                return response()->json(responseFormatter(constant: TRIP_ALREADY_ACCEPTED_403 ?? DEFAULT_400, content: 'Trip has already been accepted'), 403);
+            }
+
+            $user_status = $driver->driverDetails->availability_status;
+            if ($user_status != 'on_bidding' && $user_status != 'available') {
+                $lock->release();
+                return response()->json(responseFormatter(constant: DRIVER_403), 403);
+            }
+            if (!$trip) {
+                $lock->release();
+                return response()->json(responseFormatter(constant: TRIP_REQUEST_404), 403);
+            }
+            if (!$driver->vehicle) {
+                $lock->release();
+                return response()->json(responseFormatter(constant: DEFAULT_404), 403);
+            }
+            if (get_cache('bid_on_fare') ?? 0) {
+                $checkBid = $this->bidding->getBy(column: 'trip_request_id', value: $request['trip_request_id'], attributes: [
+                    'additionalColumn' => 'driver_id',
+                    'additionalValue' => $request['driver_id']
+                ]);
+
+                if (!$checkBid) {
+                    $lock->release();
+                    return response()->json(responseFormatter(constant: DRIVER_BID_NOT_FOUND_403), 403);
+                }
+
+            }
 
         $env = env('APP_MODE');
-        $smsConfig = Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
+        // Issue #24 FIX: Cache SMS config check instead of querying every time
+        $smsConfig = Cache::remember('sms:config:enabled', 3600, function () {
+            return Setting::where('settings_type', SMS_CONFIG)->where('live_values->status', 1)->exists();
+        });
         $otp = ($env == "live" && $smsConfig) ? random_int(1000, 9999) : '0000';
 
         $assignedVehicleCategoryId = $trip->vehicle_category_id;
@@ -809,6 +846,31 @@ class TripRequestController extends Controller
         ];
 
         if ($request['action'] == ACCEPTED) {
+            // CRITICAL FIX: Calculate driver arrival time BEFORE transaction
+            // External API calls should never hold database locks
+            $driver_arrival_time = null;
+            if ($trip->type == 'ride_request') {
+                $driver_arrival_time = getRoutes(
+                    originCoordinates: [
+                        $trip->coordinate->pickup_coordinates->latitude,
+                        $trip->coordinate->pickup_coordinates->longitude
+                    ],
+                    destinationCoordinates: [
+                        $driver->lastLocations->latitude,
+                        $driver->lastLocations->longitude
+                    ],
+                );
+
+                // Check if getRoutes returned an error
+                if (!is_array($driver_arrival_time)) {
+                    return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, 'Unable to calculate driver arrival time. API returned status: ' . $driver_arrival_time), 404);
+                }
+
+                if ($driver_arrival_time[1]['status'] !== "OK") {
+                    return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, $driver_arrival_time[1]['error_detail'] ?? 'Route not found'), 404);
+                }
+            }
+
             DB::beginTransaction();
             Cache::put($trip->id, ACCEPTED, now()->addHour());
 
@@ -861,26 +923,9 @@ class TripRequestController extends Controller
                 dispatch(new SendPushNotificationJob($notification, $data))->onQueue('high')->afterResponse();
                 $this->temp_notification->delete($trip->id);
             }
-            $driver_arrival_time = getRoutes(
-                originCoordinates: [
-                    $trip->coordinate->pickup_coordinates->latitude,
-                    $trip->coordinate->pickup_coordinates->longitude
-                ],
-                destinationCoordinates: [
-                    $driver->lastLocations->latitude,
-                    $driver->lastLocations->longitude
-                ],
-            );
 
-            // Check if getRoutes returned an error (integer status code) instead of array
-            if (!is_array($driver_arrival_time)) {
-                return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, 'Unable to calculate driver arrival time. API returned status: ' . $driver_arrival_time), 404);
-            }
-
-            if ($driver_arrival_time[1]['status'] !== "OK") {
-                return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, $driver_arrival_time[1]['error_detail'] ?? 'Route not found'), 404);
-            }
-            if ($trip->type == 'ride_request') {
+            // Use driver_arrival_time calculated before transaction started
+            if ($trip->type == 'ride_request' && $driver_arrival_time) {
                 $attributes['driver_arrival_time'] = (double)($driver_arrival_time[0]['duration']) / 60;
             }
 
@@ -958,7 +1003,17 @@ class TripRequestController extends Controller
             }
         }
 
-        return response()->json(responseFormatter(constant: BIDDING_ACTION_200));
+            $lock->release();
+            return response()->json(responseFormatter(constant: BIDDING_ACTION_200));
+        } catch (\Exception $e) {
+            $lock->release();
+            \Illuminate\Support\Facades\Log::error('Bidding action failed', [
+                'trip_id' => $request['trip_request_id'] ?? null,
+                'driver_id' => $request['driver_id'] ?? null,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json(responseFormatter(constant: DEFAULT_400, content: 'An error occurred'), 500);
+        }
     }
 
     public function rideStatusUpdate($trip_request_id, Request $request): JsonResponse

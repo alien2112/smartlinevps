@@ -34,6 +34,11 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
             Route::get('expense', 'expenseReport')->name('expense');
             Route::get('expenseReportExport', 'expenseReportExport')->name('expenseReportExport');
             Route::get('singleExpenseReportExport/{id}', 'singleExpenseReportExport')->name('singleExpenseReportExport');
+
+            // Issue #28 FIX: Streaming exports for large datasets
+            Route::get('earningReportExportStreamed', 'earningReportExportStreamed')->name('earningReportExportStreamed');
+            Route::get('expenseReportExportStreamed', 'expenseReportExportStreamed')->name('expenseReportExportStreamed');
+            Route::get('transactionReportExportStreamed', 'transactionReportExportStreamed')->name('transactionReportExportStreamed');
         });
     });
 });

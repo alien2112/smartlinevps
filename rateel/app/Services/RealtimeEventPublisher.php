@@ -8,12 +8,14 @@ use Illuminate\Support\Facades\Log;
 /**
  * Realtime Event Publisher
  * Publishes events to Redis for Node.js real-time service to consume
- * 
+ *
  * IMPORTANT: Events published here are received by Node.js RedisEventBus
  * and immediately emitted to connected socket clients.
- * 
+ *
  * This is the PRIMARY mechanism for real-time state updates.
  * FCM notifications are SECONDARY (for when socket is disconnected).
+ *
+ * Issue #10 FIX: Implements event batching to reduce Redis pub/sub overhead
  */
 class RealtimeEventPublisher
 {
@@ -24,11 +26,26 @@ class RealtimeEventPublisher
     const CHANNEL_RIDE_STARTED = 'laravel:ride.started';
     const CHANNEL_DRIVER_ASSIGNED = 'laravel:driver.assigned';
     const CHANNEL_PAYMENT_COMPLETED = 'laravel:payment.completed';
-    
+
     // NEW: Critical channels for fixing race conditions
     const CHANNEL_TRIP_ACCEPTED = 'laravel:trip.accepted';  // Driver accepted trip - notify BOTH driver and customer
     const CHANNEL_OTP_VERIFIED = 'laravel:otp.verified';    // OTP verified - trip can start
     const CHANNEL_DRIVER_ARRIVED = 'laravel:driver.arrived'; // Driver arrived at pickup
+
+    // Issue #10 FIX: Batch channel for multi-driver notifications
+    const CHANNEL_BATCH_NOTIFICATION = 'laravel:batch.notification';
+
+    /**
+     * Issue #10 FIX: Pending events for batching
+     * @var array
+     */
+    private array $pendingEvents = [];
+
+    /**
+     * Issue #10 FIX: Whether batching mode is enabled
+     * @var bool
+     */
+    private bool $batchingEnabled = false;
 
     /**
      * Get trace ID from current request context
@@ -291,13 +308,27 @@ class RealtimeEventPublisher
         // Add trace_id for end-to-end tracking
         $data['trace_id'] = $this->getTraceId();
         $data['published_at'] = now()->toIso8601String();
-        
+
+        // Issue #10 FIX: If batching is enabled, queue the event
+        if ($this->batchingEnabled) {
+            $this->pendingEvents[] = ['channel' => $channel, 'data' => $data];
+            return;
+        }
+
+        $this->publishNow($channel, $data);
+    }
+
+    /**
+     * Issue #10 FIX: Publish immediately without batching
+     */
+    protected function publishNow(string $channel, array $data): void
+    {
         try {
             Redis::publish($channel, json_encode($data));
 
             Log::info('Published realtime event', [
                 'channel' => $channel,
-                'trace_id' => $data['trace_id'],
+                'trace_id' => $data['trace_id'] ?? null,
                 'ride_id' => $data['ride_id'] ?? $data['trip_id'] ?? null,
                 'driver_id' => $data['driver_id'] ?? null,
                 'customer_id' => $data['customer_id'] ?? null,
@@ -306,10 +337,138 @@ class RealtimeEventPublisher
             Log::error('Failed to publish realtime event', [
                 'channel' => $channel,
                 'error' => $e->getMessage(),
-                'trace_id' => $data['trace_id'],
+                'trace_id' => $data['trace_id'] ?? null,
                 'ride_id' => $data['ride_id'] ?? $data['trip_id'] ?? null,
             ]);
         }
+    }
+
+    // ========================================================================
+    // Issue #10 FIX: Batching Methods
+    // ========================================================================
+
+    /**
+     * Enable batching mode - events will be queued instead of published immediately
+     * Call flush() at end of request to publish all at once
+     */
+    public function startBatch(): self
+    {
+        $this->batchingEnabled = true;
+        $this->pendingEvents = [];
+        return $this;
+    }
+
+    /**
+     * Queue an event for batched publishing
+     */
+    public function queueEvent(string $channel, array $data): self
+    {
+        $data['trace_id'] = $this->getTraceId();
+        $data['published_at'] = now()->toIso8601String();
+        $this->pendingEvents[] = ['channel' => $channel, 'data' => $data];
+        return $this;
+    }
+
+    /**
+     * Flush all pending events using Redis pipeline
+     * This is much more efficient than individual publishes
+     */
+    public function flush(): void
+    {
+        if (empty($this->pendingEvents)) {
+            $this->batchingEnabled = false;
+            return;
+        }
+
+        try {
+            $pipeline = Redis::pipeline();
+
+            foreach ($this->pendingEvents as $event) {
+                $pipeline->publish($event['channel'], json_encode($event['data']));
+            }
+
+            $pipeline->exec();
+
+            Log::info('Flushed batched realtime events', [
+                'count' => count($this->pendingEvents),
+                'channels' => array_unique(array_column($this->pendingEvents, 'channel')),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to flush batched realtime events', [
+                'error' => $e->getMessage(),
+                'count' => count($this->pendingEvents),
+            ]);
+        }
+
+        $this->pendingEvents = [];
+        $this->batchingEnabled = false;
+    }
+
+    /**
+     * Issue #10 & #15 FIX: Publish notification to multiple drivers in a single Redis call
+     * Instead of looping and publishing individually
+     *
+     * @param array $driverIds Array of driver IDs to notify
+     * @param mixed $trip Trip request object
+     * @param string $eventType Event type (new_ride_request, etc)
+     */
+    public function publishToDrivers(array $driverIds, $trip, string $eventType = 'new_ride_request'): void
+    {
+        if (empty($driverIds)) {
+            return;
+        }
+
+        $eventData = [
+            'driver_ids' => $driverIds,
+            'ride_id' => $trip->id,
+            'trip_id' => $trip->id,
+            'customer_id' => $trip->customer_id,
+            'event_type' => $eventType,
+            'pickup_latitude' => $trip->coordinate?->pickup_coordinates?->latitude ?? null,
+            'pickup_longitude' => $trip->coordinate?->pickup_coordinates?->longitude ?? null,
+            'destination_latitude' => $trip->coordinate?->destination_coordinates?->latitude ?? null,
+            'destination_longitude' => $trip->coordinate?->destination_coordinates?->longitude ?? null,
+            'vehicle_category_id' => $trip->vehicle_category_id,
+            'estimated_fare' => $trip->estimated_fare,
+            'type' => $trip->type,
+            'created_at' => $trip->created_at?->toIso8601String(),
+            'trace_id' => $this->getTraceId(),
+            'published_at' => now()->toIso8601String(),
+        ];
+
+        try {
+            // Single Redis publish - Node.js will fan out to individual sockets
+            Redis::publish(self::CHANNEL_BATCH_NOTIFICATION, json_encode($eventData));
+
+            Log::info('Published batch driver notification', [
+                'driver_count' => count($driverIds),
+                'trip_id' => $trip->id,
+                'event_type' => $eventType,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to publish batch driver notification', [
+                'error' => $e->getMessage(),
+                'driver_count' => count($driverIds),
+                'trip_id' => $trip->id,
+            ]);
+        }
+    }
+
+    /**
+     * Get count of pending events in batch
+     */
+    public function getPendingCount(): int
+    {
+        return count($this->pendingEvents);
+    }
+
+    /**
+     * Check if batching mode is currently enabled
+     */
+    public function isBatching(): bool
+    {
+        return $this->batchingEnabled;
     }
 }
 

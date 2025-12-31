@@ -33,6 +33,18 @@ class DriverController extends Controller
         $this->tripRequestService = $tripRequestService;
     }
 
+    /**
+     * Issue #29 FIX: Get authenticated driver with driverDetails eager loaded
+     */
+    private function getAuthenticatedDriver()
+    {
+        $driver = auth('api')->user() ?? auth()->user();
+        if ($driver && !$driver->relationLoaded('driverDetails')) {
+            $driver->load('driverDetails');
+        }
+        return $driver;
+    }
+
     public function profileInfo(Request $request): JsonResponse
     {
         if ($request->user()->user_type == DRIVER) {
@@ -85,7 +97,11 @@ class DriverController extends Controller
     public function onlineStatus(): JsonResponse
     {
         $driver = auth()->user();
-        $details = $this->driverDetailService->findOneBy(criteria: ['user_id' => $driver->id]);
+        // Issue #29 FIX: Use eager loaded relation instead of separate query
+        if (!$driver->relationLoaded('driverDetails')) {
+            $driver->load('driverDetails');
+        }
+        $details = $driver->driverDetails;
         $attributes = [
             'column' => 'user_id',
             'is_online' => $details['is_online'] == 1 ? 0 : 1,
@@ -214,7 +230,8 @@ class DriverController extends Controller
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
 
-        $driver = auth('api')->user();
+        // Issue #29 FIX: Use helper to ensure driverDetails is eager loaded
+        $driver = $this->getAuthenticatedDriver();
         if (!$driver || $driver->user_type !== DRIVER) {
             return response()->json(responseFormatter(DEFAULT_401), 401);
         }
@@ -310,7 +327,8 @@ class DriverController extends Controller
      */
     public function travelStatus(): JsonResponse
     {
-        $driver = auth('api')->user();
+        // Issue #29 FIX: Use helper to ensure driverDetails is eager loaded
+        $driver = $this->getAuthenticatedDriver();
         if (!$driver || $driver->user_type !== DRIVER) {
             return response()->json(responseFormatter(DEFAULT_401), 401);
         }
@@ -339,7 +357,8 @@ class DriverController extends Controller
      */
     public function requestTravel(): JsonResponse
     {
-        $driver = auth('api')->user();
+        // Issue #29 FIX: Use helper to ensure driverDetails is eager loaded
+        $driver = $this->getAuthenticatedDriver();
         if (!$driver || $driver->user_type !== DRIVER) {
             return response()->json(responseFormatter(DEFAULT_401), 401);
         }
@@ -408,7 +427,8 @@ class DriverController extends Controller
      */
     public function cancelTravelRequest(): JsonResponse
     {
-        $driver = auth('api')->user();
+        // Issue #29 FIX: Use helper to ensure driverDetails is eager loaded
+        $driver = $this->getAuthenticatedDriver();
         if (!$driver || $driver->user_type !== DRIVER) {
             return response()->json(responseFormatter(DEFAULT_401), 401);
         }

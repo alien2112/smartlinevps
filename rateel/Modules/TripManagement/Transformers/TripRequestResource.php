@@ -15,14 +15,100 @@ use Modules\VehicleManagement\Transformers\VehicleCategoryResource;
 use Modules\VehicleManagement\Transformers\VehicleResource;
 use Modules\ZoneManagement\Transformers\ZoneResource;
 
+/**
+ * Issue #26 FIX: Added selective field loading to reduce response payload size
+ *
+ * Usage:
+ *   TripRequestResource::$fieldSet = 'minimal'; // Only essential fields
+ *   TripRequestResource::$fieldSet = 'basic';   // Basic + driver info
+ *   TripRequestResource::$fieldSet = 'full';    // All fields (default)
+ *
+ *   // Or use specific fields:
+ *   TripRequestResource::$fields = ['id', 'status', 'driver', 'fare'];
+ */
 class TripRequestResource extends JsonResource
 {
     public static $key = false;
+
+    /**
+     * Issue #26 FIX: Field set presets
+     * 'minimal' - Just IDs and status
+     * 'basic' - Common fields for lists
+     * 'full' - All fields (default)
+     */
+    public static string $fieldSet = 'full';
+
+    /**
+     * Issue #26 FIX: Custom field selection
+     * When set, only these fields are included
+     */
+    public static array $fields = [];
 
     public static function setData($key)
     {
         self::$key = $key;
         return __CLASS__;
+    }
+
+    /**
+     * Issue #26 FIX: Set field set preset
+     */
+    public static function withFieldSet(string $fieldSet): string
+    {
+        self::$fieldSet = $fieldSet;
+        self::$fields = [];
+        return __CLASS__;
+    }
+
+    /**
+     * Issue #26 FIX: Set custom fields
+     */
+    public static function withFields(array $fields): string
+    {
+        self::$fields = $fields;
+        return __CLASS__;
+    }
+
+    /**
+     * Issue #26 FIX: Reset to defaults
+     */
+    public static function resetFields(): void
+    {
+        self::$fieldSet = 'full';
+        self::$fields = [];
+    }
+
+    /**
+     * Issue #26 FIX: Check if a field should be included
+     */
+    private function shouldInclude(string $field): bool
+    {
+        // If specific fields are set, check against them
+        if (!empty(self::$fields)) {
+            return in_array($field, self::$fields);
+        }
+
+        // Otherwise use field sets
+        $fieldSets = [
+            'minimal' => [
+                'id', 'ref_id', 'current_status', 'type', 'created_at',
+            ],
+            'basic' => [
+                'id', 'ref_id', 'current_status', 'type', 'created_at',
+                'estimated_fare', 'paid_fare', 'driver', 'customer',
+                'pickup_coordinates', 'destination_coordinates',
+                'pickup_address', 'destination_address',
+                'payment_status', 'payment_method', 'otp',
+            ],
+            'full' => [], // Empty means include all
+        ];
+
+        // Full includes everything
+        if (self::$fieldSet === 'full') {
+            return true;
+        }
+
+        return in_array($field, $fieldSets[self::$fieldSet] ?? []);
     }
 
     /**

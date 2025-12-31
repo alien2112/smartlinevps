@@ -32,6 +32,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+        // Issue #32 FIX: Validate critical environment variables on boot
+        $this->validateEnvironmentVariables();
+
         if($this->app->environment('live')) {
             URL::forceScheme('https');
         }
@@ -73,5 +76,74 @@ class AppServiceProvider extends ServiceProvider
         // Note: EloquentSpatial::useDefaultSrid(4326) was removed because
         // this method is not available in the installed version of eloquent-spatial.
         // SRID 4326 is typically the default for geographic coordinates anyway.
+    }
+
+    /**
+     * Issue #32 FIX: Validate critical environment variables
+     *
+     * This prevents runtime failures due to missing configuration.
+     * Only runs in non-testing environments to avoid breaking tests.
+     */
+    private function validateEnvironmentVariables(): void
+    {
+        // Skip validation during testing or console commands like migrate/seed
+        if ($this->app->runningInConsole() && !$this->app->runningUnitTests()) {
+            // Only validate for web requests, not artisan commands
+            return;
+        }
+
+        // Skip during unit tests
+        if ($this->app->runningUnitTests()) {
+            return;
+        }
+
+        $required = [
+            'APP_KEY' => 'Application encryption key is not set',
+            'DB_DATABASE' => 'Database name is not configured',
+            'DB_HOST' => 'Database host is not configured',
+        ];
+
+        $warnings = [
+            'REDIS_HOST' => 'Redis host not set - queue and cache may not work properly',
+            'QUEUE_CONNECTION' => 'Queue connection not set - defaulting to sync (not recommended for production)',
+        ];
+
+        $missing = [];
+
+        foreach ($required as $var => $message) {
+            if (empty(env($var))) {
+                $missing[] = "{$var}: {$message}";
+            }
+        }
+
+        if (!empty($missing)) {
+            Log::critical('Missing required environment variables', [
+                'missing' => $missing,
+            ]);
+
+            // In production, don't throw - just log
+            if (!$this->app->environment('live', 'production')) {
+                throw new \RuntimeException(
+                    "Missing required environment variables:\n" . implode("\n", $missing)
+                );
+            }
+        }
+
+        // Log warnings for non-critical missing vars
+        foreach ($warnings as $var => $message) {
+            if (empty(env($var))) {
+                Log::warning("Environment warning: {$message}", ['var' => $var]);
+            }
+        }
+
+        // Issue #1 FIX: Warn if queue is still sync in production
+        if (in_array($this->app->environment(), ['live', 'production'])) {
+            $queueDriver = env('QUEUE_CONNECTION', env('QUEUE_DRIVER', 'sync'));
+            if ($queueDriver === 'sync') {
+                Log::warning('CRITICAL: Queue driver is set to sync in production. This will block API responses!', [
+                    'recommendation' => 'Set QUEUE_CONNECTION=redis in .env'
+                ]);
+            }
+        }
     }
 }

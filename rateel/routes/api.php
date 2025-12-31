@@ -26,3 +26,7 @@ Route::get('/version', [AppConfigController::class, 'version']);
 // Internal settings API for Node.js realtime service (converted from closure for route caching)
 Route::get('/internal/settings', [AppConfigController::class, 'internalSettings'])
     ->middleware('throttle:60,1');
+
+// Issue #31 FIX: Health check endpoints for load balancer and monitoring
+Route::get('/health', [AppConfigController::class, 'health']);
+Route::get('/health/detailed', [AppConfigController::class, 'healthDetailed']);

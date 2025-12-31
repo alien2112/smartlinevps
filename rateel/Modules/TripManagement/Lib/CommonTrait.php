@@ -738,15 +738,20 @@ trait CommonTrait
                 'extra_fare_reason' => $extraFare ? $extraFare['extraFareReason'] : ""
             ];
         } else {
-            $estimated_fare = $tripFare->map(function ($trip) use ($routes, $tripRequest, $area_id, $beforeCreate, $zone, $minimum_distance_threshold, $fixed_price_below_threshold) {
+            $estimated_fare = $tripFare->map(function ($trip) use ($routes, $tripRequest, $area_id, $beforeCreate, $zone) {
                 $extraFare = $this->checkZoneExtraFare($zone);
                 $points = (int)getSession('currency_decimal_point') ?? 0;
+
+                // Use category-specific thresholds, fallback to zone defaults
+                $category_min_threshold = $trip->minimum_distance_threshold ?? 0;
+                $category_fixed_price = $trip->fixed_price_below_threshold ?? 0;
+
                 foreach ($routes as $route) {
                     if ($route['drive_mode'] === 'DRIVE') {
                         $distance = $route['distance'];
-                        // Apply default fare logic for car
-                        if ($distance <= $minimum_distance_threshold) {
-                            $est_fare = $fixed_price_below_threshold;
+                        // Apply category-specific fare logic for car
+                        if ($category_min_threshold > 0 && $distance <= $category_min_threshold) {
+                            $est_fare = $category_fixed_price;
                         } else {
                             $drive_fare = $trip->base_fare_per_km * $distance;
                             $est_fare = $trip->base_fare + $drive_fare;
@@ -756,9 +761,9 @@ trait CommonTrait
                         $drive_polyline = $route['encoded_polyline'];
                     } elseif ($route['drive_mode'] === 'TWO_WHEELER') {
                         $distance = $route['distance'];
-                        // Apply default fare logic for motorbike
-                        if ($distance <= $minimum_distance_threshold) {
-                            $est_fare = $fixed_price_below_threshold;
+                        // Apply category-specific fare logic for motorbike
+                        if ($category_min_threshold > 0 && $distance <= $category_min_threshold) {
+                            $est_fare = $category_fixed_price;
                         } else {
                             $bike_fare = $trip->base_fare_per_km * $distance;
                             $est_fare = $trip->base_fare + $bike_fare;
@@ -797,9 +802,9 @@ trait CommonTrait
                     "zone_id" => $zone->id,
                     'area_id' => $area_id,
                     "vehicle_category_id" => $trip->vehicle_category_id,
-                    'base_fare' => $distance <= $minimum_distance_threshold ? $fixed_price_below_threshold : $trip->base_fare,
+                    'base_fare' => ($category_min_threshold > 0 && $distance <= $category_min_threshold) ? $category_fixed_price : $trip->base_fare,
                     'base_fare_per_km' => $trip->base_fare_per_km,
-                    'fare' => $trip->VehicleCategory->type === 'car' ? round(($distance <= $minimum_distance_threshold ? 0 : $drive_fare), 2) : round(($distance <= $minimum_distance_threshold ? 0 : $bike_fare), 2),
+                    'fare' => $trip->VehicleCategory->type === 'car' ? round((($category_min_threshold > 0 && $distance <= $category_min_threshold) ? 0 : $drive_fare), 2) : round((($category_min_threshold > 0 && $distance <= $category_min_threshold) ? 0 : $bike_fare), 2),
                     'estimated_distance' => $trip->VehicleCategory->type === 'car' ? $drive_est_distance : $bike_est_distance,
                     'estimated_duration' => $trip->VehicleCategory->type === 'car' ? $drive_est_duration : $bike_est_duration,
                     'vehicle_category_type' => $trip->VehicleCategory->type === 'car' ? 'Car' : 'Motorbike',

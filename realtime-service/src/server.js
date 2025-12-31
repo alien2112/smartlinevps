@@ -15,12 +15,13 @@ const Redis = require('ioredis');
 const logger = require('./utils/logger');
 const config = require('./config/config');
 const redisClient = require('./config/redis');
-const { authenticateSocket } = require('./middleware/auth');
+const { authenticateSocket, setRedisClient: setAuthRedisClient } = require('./middleware/auth');
 const { createRateLimiter } = require('./utils/rateLimiter');
 const LocationService = require('./services/LocationService');
 const DriverMatchingService = require('./services/DriverMatchingService');
 const RedisEventBus = require('./services/RedisEventBus');
 const RideTimeoutService = require('./services/RideTimeoutService');
+const KeyCleanupService = require('./services/KeyCleanupService');
 const SettingsManager = require('./services/SettingsManager');
 
 // OBSERVABILITY: Import deep logging utilities
@@ -146,11 +147,17 @@ if (config.redis.enabled) {
 // Initialize SettingsManager for dynamic settings from Laravel/Redis
 const settingsManager = new SettingsManager(redisClient);
 
+// Issue #25 FIX: Set Redis client for auth session caching
+if (config.redis.enabled) {
+  setAuthRedisClient(redisClient);
+}
+
 // Initialize services (pass settingsManager for dynamic config)
 const locationService = new LocationService(redisClient, io, settingsManager);
 const driverMatchingService = new DriverMatchingService(redisClient, io, locationService, settingsManager);
 const redisEventBus = new RedisEventBus(redisClient, io, locationService, driverMatchingService);
 const rideTimeoutService = new RideTimeoutService(redisClient, io, driverMatchingService);
+const keyCleanupService = new KeyCleanupService(redisClient, locationService);
 
 // Initialize settings (async)
 settingsManager.initialize().then(() => {
@@ -518,6 +525,7 @@ if (workerId === '0') {
   logger.info('Starting Redis Event Bus on worker 0 (single subscriber pattern)');
   redisEventBus.start();
   rideTimeoutService.start();
+  keyCleanupService.start();
 } else {
   logger.info(`Worker ${workerId} - Skipping Redis Event Bus (handled by worker 0 to prevent duplicates)`);
 }
@@ -529,6 +537,7 @@ process.on('SIGTERM', async () => {
   // Only stop Redis services on worker 0 (they only run there)
   if (workerId === '0') {
     rideTimeoutService.stop();
+    keyCleanupService.stop();
   }
 
   io.close(() => {
@@ -548,6 +557,7 @@ process.on('SIGINT', async () => {
   // Only stop Redis services on worker 0 (they only run there)
   if (workerId === '0') {
     rideTimeoutService.stop();
+    keyCleanupService.stop();
   }
 
   io.close(() => {

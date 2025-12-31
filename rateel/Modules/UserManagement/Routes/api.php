@@ -9,6 +9,7 @@ use Modules\UserManagement\Http\Controllers\Api\Customer\CustomerController;
 use Modules\UserManagement\Http\Controllers\Api\Customer\LoyaltyPointController;
 use Modules\UserManagement\Http\Controllers\Api\Driver\TimeTrackController;
 use Modules\UserManagement\Http\Controllers\Api\New\Customer\WalletTransferController;
+use Modules\UserManagement\Http\Controllers\Api\New\Customer\WalletController;
 use Modules\UserManagement\Http\Controllers\Api\New\Driver\WithdrawController;
 use Modules\UserManagement\Http\Controllers\Api\New\Driver\WithdrawMethodInfoController;
 use Modules\UserManagement\Http\Controllers\Api\UserController;
@@ -47,6 +48,13 @@ Route::group(['prefix' => 'customer'], function () {
         });
 
         Route::group(['prefix' => 'wallet'], function () {
+            // Wallet balance and top-up
+            Route::controller(WalletController::class)->group(function () {
+                Route::get('balance', 'getBalance');
+                Route::post('add-fund', 'addFund');
+                Route::get('transactions', 'transactionHistory');
+            });
+            // Wallet transfers
             Route::controller(WalletTransferController::class)->group(function () {
                 Route::post('transfer-drivemond-to-mart', 'transferDrivemondToMartWallet');
                 Route::post('transfer-drivemond-from-mart', 'transferDrivemondFromMartWallet')->withoutMiddleware('auth:api');

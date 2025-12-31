@@ -50,7 +50,7 @@ return [
             'port' => env('DB_PORT', '3306'),
             'database' => env('DB_DATABASE', 'forge'),
             'username' => env('DB_USERNAME', 'forge'),
-            'password' => '',
+            'password' => env('DB_PASSWORD', ''),
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
@@ -60,7 +60,16 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // CRITICAL: Enable persistent connections for connection pooling
+                // This reduces connection overhead by reusing connections across requests
+                PDO::ATTR_PERSISTENT => env('DB_PERSISTENT', true),
+                // Emulate prepared statements for better compatibility with connection pools
+                PDO::ATTR_EMULATE_PREPARES => true,
+                // Set connection timeout to prevent hanging connections
+                PDO::ATTR_TIMEOUT => env('DB_TIMEOUT', 5),
             ]) : [],
+            // Sticky connection for read/write consistency (if using replicas)
+            'sticky' => true,
         ],
 
         'pgsql' => [

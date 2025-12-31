@@ -2829,4 +2829,6 @@
   'zones' => 'Zones',
   '|Ex : Medical' => '|Ex : Medical',
   'طرد كبير' => 'طرد كبير',
+  'New ride request available' => 'New ride request available',
+  'Parcel weight is not acceptable' => 'Parcel weight is not acceptable',
 );
