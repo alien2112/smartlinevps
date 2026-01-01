@@ -292,6 +292,59 @@
                         <!-- End Sub Menu -->
                     </li>
                     <!-- Coupon Setup End-->
+                    
+                    <!-- Advanced Coupon Management (New System) -->
+                    <li class="{{Request::is('admin/coupon-management*')?'active sub-menu-opened':''}} text-capitalize">
+                        <a href="#">
+                            <i class="bi bi-gift-fill"></i>
+                            <span class="link-title text-capitalize">{{ translate('advanced_coupons') }}</span>
+                            <span class="badge bg-success ms-1" style="font-size: 9px;">NEW</span>
+                        </a>
+                        <!-- Sub Menu -->
+                        <ul class="nav flex-column sub-menu text-capitalize">
+                            <li class="{{Request::is('admin/coupon-management') && !Request::is('admin/coupon-management/create')? 'active open' : ''}}">
+                                <a href="{{ route('admin.coupon-management.index') }}">
+                                    <i class="bi bi-dash-lg"></i>
+                                    {{ translate('all_coupons') }}
+                                </a>
+                            </li>
+                            <li class="{{Request::is('admin/coupon-management/create') ? 'active open' : ''}}">
+                                <a href="{{ route('admin.coupon-management.create') }}">
+                                    <i class="bi bi-dash-lg"></i>
+                                    {{ translate('create_coupon') }}
+                                </a>
+                            </li>
+                        </ul>
+                        <!-- End Sub Menu -->
+                    </li>
+                    <!-- Advanced Coupon Management End-->
+                    
+                    <!-- Offer Management (New System) -->
+                    <li class="{{Request::is('admin/offer-management*')?'active sub-menu-opened':''}} text-capitalize">
+                        <a href="#">
+                            <i class="bi bi-percent"></i>
+                            <span class="link-title text-capitalize">{{ translate('offer_management') }}</span>
+                            <span class="badge bg-success ms-1" style="font-size: 9px;">NEW</span>
+                        </a>
+                        <!-- Sub Menu -->
+                        <ul class="nav flex-column sub-menu text-capitalize">
+                            <li class="{{Request::is('admin/offer-management') && !Request::is('admin/offer-management/create')? 'active open' : ''}}">
+                                <a href="{{ route('admin.offer-management.index') }}">
+                                    <i class="bi bi-dash-lg"></i>
+                                    {{ translate('all_offers') }}
+                                </a>
+                            </li>
+                            <li class="{{Request::is('admin/offer-management/create') ? 'active open' : ''}}">
+                                <a href="{{ route('admin.offer-management.create') }}">
+                                    <i class="bi bi-dash-lg"></i>
+                                    {{ translate('create_offer') }}
+                                </a>
+                            </li>
+                        </ul>
+                        <!-- End Sub Menu -->
+                    </li>
+                    <!-- Offer Management End-->
+                    
                     <!-- Discount Setup -->
                     <li class="{{Request::is('admin/promotion/discount-setup*')?'active sub-menu-opened':''}} text-capitalize">
                         <a href="#">

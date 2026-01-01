@@ -17,6 +17,7 @@ class RouteServiceProvider extends ServiceProvider
     public function map(): void
     {
         $this->mapApiRoutes();
+        $this->mapWebRoutes();
     }
 
     protected function mapApiRoutes(): void
@@ -24,5 +25,12 @@ class RouteServiceProvider extends ServiceProvider
         Route::middleware('api')
             ->namespace($this->moduleNamespace)
             ->group(module_path('CouponManagement', '/Routes/api.php'));
+    }
+
+    protected function mapWebRoutes(): void
+    {
+        Route::middleware('web')
+            ->namespace($this->moduleNamespace)
+            ->group(module_path('CouponManagement', '/Routes/web.php'));
     }
 }

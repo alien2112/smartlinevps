@@ -26,6 +26,18 @@ class Kernel extends ConsoleKernel
             ->dailyAt('03:00')
             ->withoutOverlapping()
             ->appendOutputTo(storage_path('logs/wallet-reconcile.log'));
+
+        // Coupon Management: Expire stale coupon reservations every 5 minutes
+        $schedule->command('coupons:expire-reservations')
+            ->everyFiveMinutes()
+            ->withoutOverlapping()
+            ->appendOutputTo(storage_path('logs/coupon-expire.log'));
+
+        // Offer Management: Deactivate expired offers daily at midnight
+        $schedule->command('offers:deactivate-expired')
+            ->daily()
+            ->withoutOverlapping()
+            ->appendOutputTo(storage_path('logs/offers-expire.log'));
     }
 
     /**

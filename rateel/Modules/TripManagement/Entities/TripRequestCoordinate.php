@@ -55,9 +55,10 @@ class TripRequestCoordinate extends Model
 
     public function scopeDistanceSphere($query, $column, $location, $distance)
     {
-        // NOTE: The last_location table stores lat/lng swapped, so we use latitude as longitude
-        // Set SRID 4326 on both geometries for consistency
-        return $query->whereRaw("ST_Distance_Sphere(ST_SRID($column, 4326), ST_SRID(POINT($location->latitude, $location->longitude), 4326)) < $distance");
+        // FIX: MySQL POINT() uses (longitude, latitude) order - NOT (lat, lng)
+        // The previous code had coordinates swapped which caused distance calculations to be wrong
+        // Set SRID 4326 on both geometries for consistency (WGS84)
+        return $query->whereRaw("ST_Distance_Sphere(ST_SRID($column, 4326), ST_SRID(POINT($location->longitude, $location->latitude), 4326)) < $distance");
     }
 
     protected static function newFactory()
