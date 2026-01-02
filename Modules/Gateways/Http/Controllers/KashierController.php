@@ -83,11 +83,12 @@ class KashierController extends Controller
 
             // Get Kashier configuration
             $merchantId = $this->config['merchant_id'] ?? null;
+            $apiKey = $this->config['api_key'] ?? null;
             $secretKey = $this->config['secret_key'] ?? null;
             $currency = $this->config['currency'] ?? 'EGP';
 
-            if (!$merchantId || !$secretKey) {
-                Log::error('Kashier: Missing merchant_id or secret_key in configuration');
+            if (!$merchantId || !$secretKey || !$apiKey) {
+                Log::error('Kashier: Missing merchant_id, api_key or secret_key in configuration');
                 return response()->json(['message' => 'Payment gateway not properly configured'], 500);
             }
 
@@ -100,14 +101,17 @@ class KashierController extends Controller
 
             // Generate hash according to Kashier documentation
             // Format: /?payment={merchantId}.{orderId}.{amount}.{currency}
+            // NOTE: For API calls from payment page, hash must use API key (not secret key)
             $hashPath = "/?payment={$merchantId}.{$orderId}.{$amount}.{$currency}";
-            $hash = hash_hmac('sha256', $hashPath, $secretKey, false);
+            // Use API key for hash generation - required for payment page API calls
+            $hash = hash_hmac('sha256', $hashPath, $apiKey, false);
 
             // Build callback URL
             $callbackUrl = $this->config['callback_url'] ?? route('kashier.callback');
             $webhookUrl = $this->config['webhook_url'] ?? route('kashier.webhook');
 
             // Build Kashier Hosted Payment Page URL
+            // According to Kashier docs: https://developers.kashier.io/payment/payment-ui#i-frame
             $paymentParams = [
                 'merchantId' => $merchantId,
                 'orderId' => $orderId,
@@ -115,6 +119,7 @@ class KashierController extends Controller
                 'currency' => $currency,
                 'hash' => $hash,
                 'mode' => $this->mode,
+                'apiKey' => $apiKey, // Required for live mode!
                 'merchantRedirect' => $callbackUrl,
                 'serverWebhook' => $webhookUrl,
                 'failureRedirect' => 'false',
@@ -133,6 +138,9 @@ class KashierController extends Controller
                 'order_id' => $orderId,
                 'amount' => $amount,
                 'currency' => $currency,
+                'mode' => $this->mode,
+                'merchant_id' => $merchantId,
+                'api_key' => substr($apiKey, 0, 8) . '****', // Masked for security
             ]);
 
             return redirect()->away($paymentUrl);
@@ -324,6 +332,10 @@ class KashierController extends Controller
             return false;
         }
 
+        // Extract the actual secret (part after $) from the full secret key
+        $secretParts = explode('$', $secretKey);
+        $actualSecret = $secretParts[1] ?? $secretKey;
+
         // Build query string excluding signature and mode
         $params = $request->except(['signature', 'mode']);
         ksort($params); // Sort alphabetically as per Kashier docs
@@ -334,8 +346,8 @@ class KashierController extends Controller
         }
         $queryString = implode('&', $queryParts);
 
-        // Generate signature
-        $generatedSignature = hash_hmac('sha256', $queryString, $secretKey, false);
+        // Generate signature using the actual secret (part after $)
+        $generatedSignature = hash_hmac('sha256', $queryString, $actualSecret, false);
 
         $isValid = hash_equals($generatedSignature, $receivedSignature);
 

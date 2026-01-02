@@ -326,7 +326,67 @@ class BusinessSettingService extends BaseService implements BusinessSettingServi
                 $data['trip_push_notification'] = 0;
             }
         }
+
+        // Pricing fields that have value+status pairs
+        $pricingFields = [
+            'normal_price_per_km',
+            'normal_min_price',
+            'travel_price_per_km',
+            'travel_price_multiplier',
+            'travel_recommended_multiplier',
+        ];
+
+        // Process pricing fields with value+status pairs
+        $processedKeys = [];
+        foreach ($pricingFields as $field) {
+            if (isset($data[$field]) || isset($data[$field . '_status'])) {
+                $valueData = [
+                    'value' => $data[$field] ?? 0,
+                    'status' => isset($data[$field . '_status']) ? 1 : 0,
+                ];
+
+                $setting = $this->businessSettingRepository
+                    ->findOneBy(criteria: ['key_name' => $field, 'settings_type' => TRIP_SETTINGS]);
+
+                if ($setting) {
+                    $this->businessSettingRepository
+                        ->update(id: $setting->id, data: ['key_name' => $field, 'settings_type' => TRIP_SETTINGS, 'value' => $valueData]);
+                } else {
+                    $this->businessSettingRepository
+                        ->create(data: ['key_name' => $field, 'settings_type' => TRIP_SETTINGS, 'value' => $valueData]);
+                }
+                Cache::put($field, $valueData);
+
+                // Mark these keys as processed so they don't get saved again
+                $processedKeys[] = $field;
+                $processedKeys[] = $field . '_status';
+            }
+        }
+
+        // Process remaining fields (excluding processed pricing fields)
         foreach ($data as $key => $value) {
+            // Skip pricing fields and their status fields
+            if (in_array($key, $processedKeys)) {
+                continue;
+            }
+
+            // Special handling for travel_search_radius (has value but no status)
+            if ($key === 'travel_search_radius') {
+                $valueData = ['value' => $value];
+                $setting = $this->businessSettingRepository
+                    ->findOneBy(criteria: ['key_name' => $key, 'settings_type' => TRIP_SETTINGS]);
+
+                if ($setting) {
+                    $this->businessSettingRepository
+                        ->update(id: $setting->id, data: ['key_name' => $key, 'settings_type' => TRIP_SETTINGS, 'value' => $valueData]);
+                } else {
+                    $this->businessSettingRepository
+                        ->create(data: ['key_name' => $key, 'settings_type' => TRIP_SETTINGS, 'value' => $valueData]);
+                }
+                Cache::put($key, $valueData);
+                continue;
+            }
+
             $driverSetting = $this->businessSettingRepository
                 ->findOneBy(criteria: ['key_name' => $key, 'settings_type' => TRIP_SETTINGS]);
             if ($driverSetting) {
@@ -338,6 +398,7 @@ class BusinessSettingService extends BaseService implements BusinessSettingServi
             }
             Cache::put($key, $value);
         }
+
         $absent_keys = ['driver_otp_confirmation_for_trip'];
         foreach ($absent_keys as $absent) {
             if (!array_key_exists($absent, $data)) {

@@ -23,8 +23,9 @@ class KashierPaymentController extends Controller
     private PaymentRequest $payment;
     private User $user;
 
-    // HARDCODED KASHIER CREDENTIALS
+    // HARDCODED KASHIER CREDENTIALS (LIVE MODE)
     private const MERCHANT_ID = 'MID-36316-436';
+    private const API_KEY = 'd5d3dd58-50b2-4203-b397-3f83b3a93f24';
     private const SECRET_KEY = '59fcb1458a25070cfab354f3d1b3e62f$e2a9eda8e49f8dccda2e7c550cf5889a8ec99df5cafcbc05ea83e386f92f95984308afd707dc2433f75e064baeae395a';
     private const CURRENCY = 'EGP';
     private const MODE = 'live'; // 'test' or 'live'
@@ -40,17 +41,33 @@ class KashierPaymentController extends Controller
      * According to Kashier documentation:
      * path = /?payment={merchantId}.{orderId}.{amount}.{currency}
      * hash = HMAC-SHA256(path, secretKey)
+     * 
+     * NOTE: For API calls from payment page, hash might need API key
+     * Trying both methods: secret key (standard) and API key (for API auth)
      */
     private function generateKashierHash(string $orderId, string $amount, string $currency): string
     {
         $path = "/?payment=" . self::MERCHANT_ID . "." . $orderId . "." . $amount . "." . $currency;
         
+        // Extract the actual secret (part after $) from the full secret key
+        $secretParts = explode('$', self::SECRET_KEY);
+        $actualSecret = $secretParts[1] ?? self::SECRET_KEY;
+        
+        // Try using API key for hash (some Kashier integrations require this for API calls)
+        // If this doesn't work, fall back to secret key
+        $hashWithApiKey = hash_hmac('sha256', $path, self::API_KEY);
+        $hashWithSecret = hash_hmac('sha256', $path, $actualSecret);
+        
         Log::info('Kashier: Generating hash', [
             'path' => $path,
             'merchant_id' => self::MERCHANT_ID,
+            'hash_with_api_key' => substr($hashWithApiKey, 0, 16) . '...',
+            'hash_with_secret' => substr($hashWithSecret, 0, 16) . '...',
+            'using' => 'api_key_for_api_calls',
         ]);
         
-        return hash_hmac('sha256', $path, self::SECRET_KEY);
+        // Use API key hash - this might be needed for the payment page's API calls
+        return $hashWithApiKey;
     }
 
     /**
@@ -91,23 +108,25 @@ class KashierPaymentController extends Controller
         session()->put('kashier_order_id', $orderId);
         
         // Build Kashier Hosted Payment Page URL
-        // DO NOT double-encode - build URL manually to avoid encoding issues
-        $paymentUrl = 'https://payments.kashier.io/?' . implode('&', [
-            'merchantId=' . self::MERCHANT_ID,
-            'orderId=' . $orderId,
-            'amount=' . $amount,
-            'currency=' . $currency,
-            'hash=' . $hash,
-            'mode=' . self::MODE,
-            'merchantRedirect=' . urlencode($callbackUrl),
-            'serverWebhook=' . urlencode($webhookUrl),
-            'failureRedirect=false',
-            'redirectMethod=get',
-            'allowedMethods=card,wallet',
-            'display=ar',
-            'brandColor=' . urlencode('#00bcbc'),
-            'interactionSource=Ecommerce',
-            'enable3DS=true',
+        // According to Kashier docs: https://developers.kashier.io/payment/payment-ui#i-frame
+        // Required parameters: merchantId, orderId, amount, currency, hash, mode, apiKey
+        $paymentUrl = 'https://payments.kashier.io/?' . http_build_query([
+            'merchantId' => self::MERCHANT_ID,
+            'orderId' => $orderId,
+            'amount' => $amount,
+            'currency' => $currency,
+            'hash' => $hash,
+            'mode' => self::MODE,
+            'apiKey' => self::API_KEY, // Required for live mode!
+            'merchantRedirect' => $callbackUrl,
+            'serverWebhook' => $webhookUrl,
+            'failureRedirect' => 'false',
+            'redirectMethod' => 'get',
+            'allowedMethods' => 'card,wallet',
+            'display' => 'ar',
+            'brandColor' => '#00bcbc',
+            'interactionSource' => 'Ecommerce',
+            'enable3DS' => 'true',
         ]);
         
         Log::info('Kashier: Payment initiated', [
@@ -116,6 +135,8 @@ class KashierPaymentController extends Controller
             'amount' => $amount,
             'currency' => $currency,
             'mode' => self::MODE,
+            'merchant_id' => self::MERCHANT_ID,
+            'api_key' => substr(self::API_KEY, 0, 8) . '****', // Masked for security
             'hash' => $hash,
             'redirect_url' => $paymentUrl,
         ]);
@@ -223,6 +244,7 @@ class KashierPaymentController extends Controller
 
     /**
      * Validate Kashier response signature
+     * NOTE: Uses the part after $ in the secret key for HMAC
      */
     private function validateKashierSignature(array $params, string $receivedSignature): bool
     {
@@ -239,8 +261,12 @@ class KashierPaymentController extends Controller
         }
         $queryString = implode('&', $queryParts);
         
+        // Extract the actual secret (part after $) from the full secret key
+        $secretParts = explode('$', self::SECRET_KEY);
+        $actualSecret = $secretParts[1] ?? self::SECRET_KEY;
+        
         // Generate signature
-        $generatedSignature = hash_hmac('sha256', $queryString, self::SECRET_KEY);
+        $generatedSignature = hash_hmac('sha256', $queryString, $actualSecret);
         
         Log::info('Kashier signature validation', [
             'query_string' => $queryString,

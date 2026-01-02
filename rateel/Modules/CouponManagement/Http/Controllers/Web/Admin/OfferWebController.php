@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Brian2694\Toastr\Facades\Toastr;
 use Modules\CouponManagement\Entities\Offer;
 use Modules\CouponManagement\Entities\OfferUsage;
 use Modules\CouponManagement\Service\OfferService;
@@ -167,12 +168,12 @@ class OfferWebController extends Controller
                 'created_by' => auth()->id(),
             ]);
 
-            flash()->success(translate('Offer created successfully'));
+            Toastr::success(translate('Offer created successfully'));
             return redirect()->route('admin.offer-management.index');
 
         } catch (\Exception $e) {
             Log::error('Failed to create offer', ['error' => $e->getMessage()]);
-            flash()->error(translate('Failed to create offer: ') . $e->getMessage());
+            Toastr::error(translate('Failed to create offer: ') . $e->getMessage());
             return back()->withInput();
         }
     }
@@ -264,7 +265,7 @@ class OfferWebController extends Controller
             'show_in_app' => $request->boolean('show_in_app'),
         ]);
 
-        flash()->success(translate('Offer updated successfully'));
+        Toastr::success(translate('Offer updated successfully'));
         return redirect()->route('admin.offer-management.show', $id);
     }
 
@@ -278,7 +279,7 @@ class OfferWebController extends Controller
         $offer = Offer::findOrFail($id);
         $offer->delete();
 
-        flash()->success(translate('Offer deleted successfully'));
+        Toastr::success(translate('Offer deleted successfully'));
         return redirect()->route('admin.offer-management.index');
     }
 
@@ -293,7 +294,7 @@ class OfferWebController extends Controller
         $offer->update(['is_active' => !$offer->is_active]);
 
         $status = $offer->is_active ? 'activated' : 'deactivated';
-        flash()->success(translate("Offer {$status} successfully"));
+        Toastr::success(translate("Offer {$status} successfully"));
 
         return back();
     }

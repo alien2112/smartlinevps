@@ -56,3 +56,6 @@ debug_*.php
 ai-chat-bot/.env
 ai-chat-bot/node_modules/
 smartline-ai/.env
+smartline-ai/venv/
+__pycache__/
+*.pyc

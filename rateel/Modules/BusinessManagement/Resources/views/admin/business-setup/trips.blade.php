@@ -133,7 +133,7 @@
 
             {{-- Normal Trip Pricing Settings --}}
             <div class="card mb-3 text-capitalize">
-                <form action="{{route('admin.business.setup.trip-fare.store')."?type=".TRIP_SETTINGS}}" method="POST">
+                <form action="{{route('admin.business.setup.trip-fare.store')."?type=".TRIP_SETTINGS}}" id="normal_pricing_form" method="POST">
                     @csrf
                     <div class="card-header">
                         <h5 class="d-flex align-items-center gap-2">
@@ -231,7 +231,7 @@
 
             {{-- Travel Mode Settings --}}
             <div class="card mb-3 text-capitalize">
-                <form action="{{route('admin.business.setup.trip-fare.store')."?type=".TRIP_SETTINGS}}" method="POST">
+                <form action="{{route('admin.business.setup.trip-fare.store')."?type=".TRIP_SETTINGS}}" id="travel_mode_form" method="POST">
                     @csrf
                     <div class="card-header">
                         <h5 class="d-flex align-items-center gap-2">
@@ -567,7 +567,7 @@
             permission = true;
         @endcan
 
-        $('#trips_form').on('submit', function (e) {
+        $('#trips_form, #normal_pricing_form, #travel_mode_form').on('submit', function (e) {
             if (!permission) {
                 toastr.error('{{ translate('you_do_not_have_enough_permission_to_update_this_settings') }}');
                 e.preventDefault();

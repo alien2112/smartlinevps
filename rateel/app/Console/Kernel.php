@@ -38,6 +38,13 @@ class Kernel extends ConsoleKernel
             ->daily()
             ->withoutOverlapping()
             ->appendOutputTo(storage_path('logs/offers-expire.log'));
+
+        // Payment Reconciliation: Check pending payments every minute
+        $schedule->command('payments:reconcile')
+            ->everyMinute()
+            ->withoutOverlapping(10) // 10-minute lock timeout
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/payment-reconcile.log'));
     }
 
     /**

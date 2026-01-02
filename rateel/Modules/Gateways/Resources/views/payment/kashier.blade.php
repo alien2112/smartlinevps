@@ -82,6 +82,7 @@
     data-currency="{{ $currency }}"
     data-orderId="{{ $orderId }}"
     data-merchantId="{{ $merchantId }}"
+    data-apiKey="{{ $apiKey }}"
     data-mode="{{ $mode }}"
     data-merchantRedirect="{{ urlencode($callbackUrl) }}"
     data-serverWebhook="{{ urlencode($webhookUrl) }}"
@@ -90,5 +91,6 @@
     data-type="external"
     data-display="{{ $display }}"
     data-allowedMethods="card,wallet"
+    data-enable3DS="true"
 ></script>
 @endsection

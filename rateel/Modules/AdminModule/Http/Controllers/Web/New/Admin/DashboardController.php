@@ -308,31 +308,33 @@ class DashboardController extends BaseController
         }
 
         $zones = $this->zoneService->index(criteria: $request?->all(), withCountQuery: $withCountQuery);
-        $totalRideRequests = $zones->sum('ride_request');
-        $totalParcelRequests = $zones->sum('parcel_request');
-        $tripWhereInCriteria = [
-            'zone_id' => $zones->pluck('id')->toArray(),
-        ];
+        $totalRideRequests = $zones->sum('ride_request') ?? 0;
+        $totalParcelRequests = $zones->sum('parcel_request') ?? 0;
+        $zoneIds = $zones->pluck('id')->toArray();
         
         // PERFORMANCE FIX: Add max limit to prevent loading excessive data
         // For heat maps, we don't need all trips - a representative sample is sufficient
         $maxHeatMapPoints = config('app.max_heatmap_points', 5000);
         
         // Use raw query for efficiency - only fetch needed columns
-        $trips = \DB::table('trip_requests')
-            ->join('trip_request_coordinates', 'trip_requests.id', '=', 'trip_request_coordinates.trip_request_id')
-            ->whereIn('trip_requests.zone_id', $tripWhereInCriteria['zone_id'])
-            ->when(!empty($whereBetweenCriteria), function ($query) use ($whereBetweenCriteria) {
-                foreach ($whereBetweenCriteria as $column => $range) {
-                    $query->whereBetween('trip_requests.' . $column, $range);
-                }
-            })
-            ->select(
-                'trip_requests.ref_id',
-                \DB::raw('ST_AsText(trip_request_coordinates.pickup_coordinates) as pickup_coordinates')
-            )
-            ->limit($maxHeatMapPoints)
-            ->get();
+        // Handle empty zone array to prevent SQL errors
+        $trips = collect([]);
+        if (!empty($zoneIds)) {
+            $trips = \DB::table('trip_requests')
+                ->join('trip_request_coordinates', 'trip_requests.id', '=', 'trip_request_coordinates.trip_request_id')
+                ->whereIn('trip_requests.zone_id', $zoneIds)
+                ->when(!empty($whereBetweenCriteria), function ($query) use ($whereBetweenCriteria) {
+                    foreach ($whereBetweenCriteria as $column => $range) {
+                        $query->whereBetween('trip_requests.' . $column, $range);
+                    }
+                })
+                ->select(
+                    'trip_requests.ref_id',
+                    \DB::raw('ST_AsText(trip_request_coordinates.pickup_coordinates) as pickup_coordinates')
+                )
+                ->limit($maxHeatMapPoints)
+                ->get();
+        }
         
         $markers = $trips->map(function ($trip) {
             // Handle spatial data - pickup_coordinates might be stored as WKB or JSON
@@ -401,20 +403,24 @@ class DashboardController extends BaseController
         // PERFORMANCE FIX: Use raw query with limit instead of loading all trips via Eloquent
         $maxHeatMapPoints = config('app.max_heatmap_points', 5000);
         
-        $trips = \DB::table('trip_requests')
-            ->join('trip_request_coordinates', 'trip_requests.id', '=', 'trip_request_coordinates.trip_request_id')
-            ->whereIn('trip_requests.zone_id', $zoneIds)
-            ->when(!empty($whereBetweenCriteria), function ($query) use ($whereBetweenCriteria) {
-                foreach ($whereBetweenCriteria as $column => $range) {
-                    $query->whereBetween('trip_requests.' . $column, $range);
-                }
-            })
-            ->select(
-                'trip_requests.ref_id',
-                \DB::raw('ST_AsText(trip_request_coordinates.pickup_coordinates) as pickup_coordinates')
-            )
-            ->limit($maxHeatMapPoints)
-            ->get();
+        // Handle empty zone array to prevent SQL errors
+        $trips = collect([]);
+        if (!empty($zoneIds)) {
+            $trips = \DB::table('trip_requests')
+                ->join('trip_request_coordinates', 'trip_requests.id', '=', 'trip_request_coordinates.trip_request_id')
+                ->whereIn('trip_requests.zone_id', $zoneIds)
+                ->when(!empty($whereBetweenCriteria), function ($query) use ($whereBetweenCriteria) {
+                    foreach ($whereBetweenCriteria as $column => $range) {
+                        $query->whereBetween('trip_requests.' . $column, $range);
+                    }
+                })
+                ->select(
+                    'trip_requests.ref_id',
+                    \DB::raw('ST_AsText(trip_request_coordinates.pickup_coordinates) as pickup_coordinates')
+                )
+                ->limit($maxHeatMapPoints)
+                ->get();
+        }
         
         $markers = $trips->map(function ($trip) {
             $lat = 0;

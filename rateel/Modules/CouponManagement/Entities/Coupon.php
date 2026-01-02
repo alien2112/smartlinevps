@@ -142,6 +142,26 @@ class Coupon extends Model
     }
 
     /**
+     * Normalize service type to handle variations
+     */
+    private function normalizeServiceType(?string $serviceType): ?string
+    {
+        if ($serviceType === null) {
+            return null;
+        }
+
+        $serviceType = strtolower(trim($serviceType));
+
+        // Map common variations to canonical forms
+        $mappings = [
+            'ride' => 'ride_request',
+            'ride-request' => 'ride_request',
+        ];
+
+        return $mappings[$serviceType] ?? $serviceType;
+    }
+
+    /**
      * Check if service type is allowed
      */
     public function isServiceTypeAllowed(?string $serviceType): bool
@@ -149,7 +169,17 @@ class Coupon extends Model
         if (empty($this->allowed_service_types)) {
             return true; // All service types allowed
         }
-        return in_array($serviceType, $this->allowed_service_types, true);
+
+        $normalizedInput = $this->normalizeServiceType($serviceType);
+
+        // Normalize all allowed service types and check
+        foreach ($this->allowed_service_types as $allowedType) {
+            if ($this->normalizeServiceType($allowedType) === $normalizedInput) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

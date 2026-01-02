@@ -30,3 +30,6 @@ Route::get('/internal/settings', [AppConfigController::class, 'internalSettings'
 // Issue #31 FIX: Health check endpoints for load balancer and monitoring
 Route::get('/health', [AppConfigController::class, 'health']);
 Route::get('/health/detailed', [AppConfigController::class, 'healthDetailed']);
+
+// Driver App New Features (2026) - Notifications, Support, Account Management, etc.
+require __DIR__.'/api_driver_new_features.php';

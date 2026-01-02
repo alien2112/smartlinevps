@@ -49,8 +49,33 @@ class Vehicle extends Model
         'is_active' => 'boolean',
         'vehicle_request_status' => 'string',
         'draft' => 'array',
-        'category_id' => 'array'
     ];
+
+    /**
+     * Get categories as array (handles both JSON array and single UUID string)
+     * Note: Use 'categories' attribute, not 'category_id' to avoid interfering with relationships
+     */
+    public function getCategoriesAttribute()
+    {
+        $value = $this->getAttributeFromArray('category_id');
+
+        if (is_null($value)) {
+            return [];
+        }
+
+        // Try to decode as JSON first
+        $decoded = json_decode($value, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return $decoded;
+        }
+
+        // If it's a single UUID string, wrap it in an array
+        if (is_string($value) && !empty($value)) {
+            return [$value];
+        }
+
+        return [];
+    }
 
     protected static function newFactory()
     {

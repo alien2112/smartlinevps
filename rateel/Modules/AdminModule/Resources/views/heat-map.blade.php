@@ -3,35 +3,12 @@
 @extends('adminmodule::layouts.master')
 
 @push('css_or_js')
-    @php($map_key = businessConfig(GOOGLE_MAP_API)?->value['map_api_key'] ?? null)
     <link rel="stylesheet" href="{{asset('public/assets/admin-module/plugins/daterangepicker/daterangepicker.css')}}">
-    <!-- Leaflet CSS and JS -->
+    <!-- OpenStreetMap - Leaflet CSS (NO Google Maps) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Leaflet MarkerCluster -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
-    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    <!-- Leaflet Heat Plugin for Heatmap -->
-    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
-    <script>
-        // Verify Leaflet.heat is loaded
-        window.addEventListener('load', function() {
-            if (typeof L !== 'undefined' && typeof L.heatLayer === 'undefined') {
-                console.warn('Leaflet.heat plugin failed to load. Retrying...');
-                // Retry loading the plugin
-                const script = document.createElement('script');
-                script.src = 'https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js';
-                script.onload = function() {
-                    console.log('Leaflet.heat plugin loaded successfully');
-                };
-                script.onerror = function() {
-                    console.error('Failed to load Leaflet.heat plugin');
-                };
-                document.head.appendChild(script);
-            }
-        });
-    </script>
+    
     <style>
         .heat-map {
             width: 100%;
@@ -41,14 +18,6 @@
         .map-container {
             position: relative;
             height: 100%;
-        }
-        .map-search-input {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 1000;
-            width: 300px;
-            max-width: calc(100% - 20px);
         }
     </style>
 @endpush
@@ -153,7 +122,6 @@
                                         <div
                                             class="text-capitalize d-flex justify-content-center">{{translate("no_result_found")}}</div>
                                     </div>
-
                                 @endforelse
                             </ul>
                         </div>
@@ -168,62 +136,49 @@
 @endsection
 
 @push('script')
-
-    <script type="text/javascript"
-            src="{{asset('public/assets/admin-module/plugins/daterangepicker/moment.min.js')}}"></script>
+    <script src="{{asset('public/assets/admin-module/plugins/daterangepicker/moment.min.js')}}"></script>
     <script src="{{asset('public/assets/admin-module/plugins/daterangepicker/daterangepicker.min.js')}}"></script>
     <script src="{{asset('public/assets/admin-module/js/date-range-picker.js')}}"></script>
-    <script src="{{asset('public/assets/admin-module/js/maps/coordinate-validator.js')}}"></script>
-    <script src="{{asset('public/assets/admin-module/js/maps/map-init-overview.js')}}"></script>
+    
+    <!-- Load OpenStreetMap libraries in order (NO Google Maps) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script src="{{asset('public/assets/admin-module/js/maps/map-init-overview.js')}}?v={{ time() }}"></script>
 
     <script>
-
         $(function () {
             $('#dateRange').on('apply.daterangepicker', function (ev, picker) {
                 $('#dateRangeForm').submit();
             });
-
             $('#dateRange').on('cancel.daterangepicker', function (ev, picker) {
                 $('#dateRangeForm').submit();
             });
         });
-    </script>
 
-    //selection zone
-    <script>
         const selectAllZones = document.getElementById('selectAllZones');
-
         if (selectAllZones) {
             selectAllZones.addEventListener('change', function () {
                 const checkboxes = document.querySelectorAll('.zone-checkbox');
                 checkboxes.forEach(function (checkbox) {
                     checkbox.checked = this.checked;
                 }, this);
-
-                updateSelectAllZone(); // Update the "Select All" checkbox status
+                updateSelectAllZone();
             });
         }
 
-        // document.getElementById('selectAllZones').addEventListener('change', function () {
-        //     var checkboxes = document.querySelectorAll('.zone-checkbox');
-        //     checkboxes.forEach(function (checkbox) {
-        //         checkbox.checked = this.checked;
-        //     }, this);
-        //     updateSelectAllZone(); // Update the "Select All" checkbox status
-        // });
-
         document.querySelectorAll('.zone-checkbox').forEach(function (checkbox) {
             checkbox.addEventListener('change', function () {
-                updateSelectAllZone(); // Update the "Select All" checkbox status
+                updateSelectAllZone();
             });
         });
 
         function updateSelectAllZone() {
             var checkboxes = document.querySelectorAll('.zone-checkbox');
             var selectAllCheckbox = document.getElementById('selectAllZones');
-
             var allChecked = true;
             var anyChecked = false;
+            
             checkboxes.forEach(function (checkbox) {
                 if (!checkbox.checked) {
                     allChecked = false;
@@ -231,12 +186,9 @@
                     anyChecked = true;
                 }
             });
+            
             if (selectAllCheckbox) {
-                if (anyChecked) {
-                    selectAllCheckbox.checked = allChecked;
-                } else {
-                    selectAllCheckbox.checked = false;
-                }
+                selectAllCheckbox.checked = allChecked && anyChecked;
             }
 
             const selectedValues = $('.zone-checkbox:checked').map(function () {
@@ -250,31 +202,27 @@
             $.get({
                 url: '{{route('admin.heat-map-overview-data')}}',
                 dataType: 'json',
-                data: {date_range: dateRange, zone_ids: zoneIds},
+                data: {date_range: dateRange, zone_ids: zoneIds || []},
                 beforeSend: function () {
                     $('#resource-loader').show();
                 },
                 success: function (response) {
                     $('#overviewMap').empty().html(response);
-                    // Reinitialize the map after AJAX content is loaded
-                    if (typeof window.initializeOverviewMaps === 'function') {
-                        setTimeout(function() {
+                    setTimeout(function() {
+                        if (typeof window.initializeOverviewMaps === 'function') {
                             window.initializeOverviewMaps();
-                        }, 100);
-                    }
+                        }
+                    }, 500);
                 },
                 complete: function () {
                     $('#resource-loader').hide();
                 },
                 error: function (xhr, status, error) {
-                    let err = eval("(" + xhr.responseText + ")");
-                    // alert(err.Message);
+                    console.error('Error:', error);
                     $('#resource-loader').hide();
-                    toastr.error('{{translate('failed_to_load_data')}}')
+                    toastr.error('{{translate('failed_to_load_data')}}');
                 },
             });
-
         }
     </script>
-
 @endpush

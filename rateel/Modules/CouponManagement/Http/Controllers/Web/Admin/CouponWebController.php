@@ -10,6 +10,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Brian2694\Toastr\Facades\Toastr;
 use Modules\CouponManagement\Entities\Coupon;
 use Modules\CouponManagement\Entities\CouponRedemption;
 use Modules\CouponManagement\Entities\CouponTargetUser;
@@ -72,7 +73,7 @@ class CouponWebController extends Controller
         $this->authorize('promotion_add');
 
         $zones = Zone::where('is_active', true)->get(['id', 'name']);
-        $serviceTypes = ['ride', 'parcel'];
+        $serviceTypes = ['ride_request', 'parcel'];
         $types = [
             Coupon::TYPE_PERCENT => 'Percentage (%)',
             Coupon::TYPE_FIXED => 'Fixed Amount',
@@ -156,13 +157,13 @@ class CouponWebController extends Controller
 
             DB::commit();
 
-            flash()->success(translate('Coupon created successfully'));
+            Toastr::success(translate('Coupon created successfully'));
             return redirect()->route('admin.coupon-management.index');
 
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to create coupon', ['error' => $e->getMessage()]);
-            flash()->error(translate('Failed to create coupon: ') . $e->getMessage());
+            Toastr::error(translate('Failed to create coupon: ') . $e->getMessage());
             return back()->withInput();
         }
     }
@@ -204,7 +205,7 @@ class CouponWebController extends Controller
 
         $coupon = Coupon::with('targetUsers')->findOrFail($id);
         $zones = Zone::where('is_active', true)->get(['id', 'name']);
-        $serviceTypes = ['ride', 'parcel'];
+        $serviceTypes = ['ride_request', 'parcel'];
         $types = [
             Coupon::TYPE_PERCENT => 'Percentage (%)',
             Coupon::TYPE_FIXED => 'Fixed Amount',
@@ -257,7 +258,7 @@ class CouponWebController extends Controller
             'is_active' => $request->boolean('is_active'),
         ]);
 
-        flash()->success(translate('Coupon updated successfully'));
+        Toastr::success(translate('Coupon updated successfully'));
         return redirect()->route('admin.coupon-management.show', $id);
     }
 
@@ -273,7 +274,7 @@ class CouponWebController extends Controller
         // Soft delete
         $coupon->delete();
 
-        flash()->success(translate('Coupon deleted successfully'));
+        Toastr::success(translate('Coupon deleted successfully'));
         return redirect()->route('admin.coupon-management.index');
     }
 
@@ -288,7 +289,7 @@ class CouponWebController extends Controller
         $coupon->update(['is_active' => !$coupon->is_active]);
 
         $status = $coupon->is_active ? 'activated' : 'deactivated';
-        flash()->success(translate("Coupon {$status} successfully"));
+        Toastr::success(translate("Coupon {$status} successfully"));
 
         return back();
     }
@@ -316,7 +317,7 @@ class CouponWebController extends Controller
         // Dispatch job to send notifications
         dispatch(new SendCouponBulkJob($coupon, $notification));
 
-        flash()->success(translate('Coupon notification is being sent to eligible users'));
+        Toastr::success(translate('Coupon notification is being sent to eligible users'));
         return back();
     }
 
@@ -412,7 +413,7 @@ class CouponWebController extends Controller
             CouponTargetUser::insert($targetUsers->toArray());
         }
 
-        flash()->success(translate('Users added successfully'));
+        Toastr::success(translate('Users added successfully'));
         return back();
     }
 
@@ -427,7 +428,7 @@ class CouponWebController extends Controller
             ->where('user_id', $userId)
             ->delete();
 
-        flash()->success(translate('User removed successfully'));
+        Toastr::success(translate('User removed successfully'));
         return back();
     }
 }
