@@ -73,5 +73,7 @@ class Kernel extends HttpKernel
         'maintenance_mode' => MaintenanceModeMiddleware::class,
         'idempotency' => \App\Http\Middleware\EnsureIdempotency::class,
         'rate_limit' => \App\Http\Middleware\ApiRateLimiter::class,
+        'onboarding' => \App\Http\Middleware\OnboardingAuth::class,
+        'deprecated' => \App\Http\Middleware\DeprecationWarning::class,
     ];
 }

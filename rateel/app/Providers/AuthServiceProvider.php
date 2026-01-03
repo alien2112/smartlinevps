@@ -29,6 +29,15 @@ class AuthServiceProvider extends ServiceProvider
         $this->registerPolicies();
        // Passport::routes();
 
+        // Define Passport scopes for driver onboarding
+        Passport::tokensCan([
+            'onboarding' => 'Access driver onboarding endpoints',
+            'driver' => 'Full driver access (approved drivers only)',
+        ]);
+
+        // Set default scope (optional - can be removed if you want explicit scope selection)
+        // Passport::setDefaultScope(['onboarding']);
+
         Gate::define('super-admin', fn () => auth()->user()->user_type == 'super-admin');
 
         Gate::define('dashboard', fn () => $this->checkAccess('dashboard', 'view'));
