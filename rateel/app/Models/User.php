@@ -94,14 +94,47 @@ class User extends Authenticatable
         return $this->morphMany(ActivityLog::class, 'logable');
     }
 
-    public function vehicle()
+    /**
+     * Get all vehicles for this driver
+     */
+    public function vehicles()
     {
-        return $this->hasOne(Vehicle::class, 'driver_id');
+        return $this->hasMany(Vehicle::class, 'driver_id');
     }
 
+    /**
+     * Get the primary vehicle for this driver
+     * @deprecated Use primaryVehicle() instead. Kept for backward compatibility.
+     */
+    public function vehicle()
+    {
+        return $this->hasOne(Vehicle::class, 'driver_id')->where('is_primary', true);
+    }
+
+    /**
+     * Get the primary vehicle for this driver
+     */
+    public function primaryVehicle()
+    {
+        return $this->hasOne(Vehicle::class, 'driver_id')->where('is_primary', true);
+    }
+
+    /**
+     * Get active vehicles for this driver
+     */
+    public function activeVehicles()
+    {
+        return $this->hasMany(Vehicle::class, 'driver_id')->where('is_active', true);
+    }
+
+    /**
+     * Get the active primary vehicle (for backward compatibility)
+     */
     public function vehicleCategory()
     {
-        return $this->hasOne(Vehicle::class, 'driver_id')->with('category');
+        return $this->hasOne(Vehicle::class, 'driver_id')
+            ->where('is_primary', true)
+            ->with('category');
     }
 
     public function givenReviews()

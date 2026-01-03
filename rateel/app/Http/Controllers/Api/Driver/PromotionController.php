@@ -44,7 +44,10 @@ class PromotionController extends Controller
             });
 
         if ($status === 'active') {
-            $query->where('expires_at', '>', now())
+            $query->where(function($q) {
+                      $q->whereNull('expires_at')
+                        ->orWhere('expires_at', '>', now());
+                  })
                   ->where(function($q) {
                       $q->whereNull('starts_at')
                         ->orWhere('starts_at', '<=', now());
@@ -151,103 +154,126 @@ class PromotionController extends Controller
     /**
      * Claim a promotion
      * POST /api/driver/auth/promotions/{id}/claim
+     *
+     * Uses database transaction with row locking to prevent race conditions
+     * where multiple requests could bypass max_claims or create duplicate claims.
      */
     public function claim(string $id): JsonResponse
     {
         $driver = auth('api')->user();
 
-        $promotion = DB::table('driver_promotions')
-            ->where('id', $id)
-            ->where('is_active', true)
-            ->where(function($q) use ($driver) {
-                $q->whereNull('target_driver_id')
-                  ->orWhere('target_driver_id', $driver->id);
-            })
-            ->first();
+        try {
+            return DB::transaction(function () use ($id, $driver) {
+                // Lock the promotion row to prevent concurrent modifications
+                $promotion = DB::table('driver_promotions')
+                    ->where('id', $id)
+                    ->where('is_active', true)
+                    ->where(function($q) use ($driver) {
+                        $q->whereNull('target_driver_id')
+                          ->orWhere('target_driver_id', $driver->id);
+                    })
+                    ->lockForUpdate()
+                    ->first();
 
-        if (!$promotion) {
+                if (!$promotion) {
+                    return response()->json(responseFormatter([
+                        'response_code' => 'promotion_not_found_404',
+                        'message' => translate('Promotion not found or not available'),
+                    ]), 404);
+                }
+
+                // Check if expired
+                if ($promotion->expires_at && $promotion->expires_at < now()) {
+                    return response()->json(responseFormatter([
+                        'response_code' => 'promotion_expired_400',
+                        'message' => translate('This promotion has expired'),
+                    ]), 400);
+                }
+
+                // Check if not started
+                if ($promotion->starts_at && $promotion->starts_at > now()) {
+                    return response()->json(responseFormatter([
+                        'response_code' => 'promotion_not_started_400',
+                        'message' => translate('This promotion has not started yet'),
+                    ]), 400);
+                }
+
+                // Check if already claimed (with lock to prevent race condition)
+                $existingClaim = DB::table('promotion_claims')
+                    ->where('promotion_id', $promotion->id)
+                    ->where('driver_id', $driver->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existingClaim) {
+                    return response()->json(responseFormatter([
+                        'response_code' => 'already_claimed_400',
+                        'message' => translate('You have already claimed this promotion'),
+                        'data' => [
+                            'claimed_at' => $existingClaim->claimed_at,
+                            'status' => $existingClaim->status,
+                        ],
+                    ]), 400);
+                }
+
+                // Check max claims (now safe due to row lock)
+                if ($promotion->max_claims && $promotion->current_claims >= $promotion->max_claims) {
+                    return response()->json(responseFormatter([
+                        'response_code' => 'max_claims_reached_400',
+                        'message' => translate('This promotion has reached maximum claims'),
+                    ]), 400);
+                }
+
+                // Create claim
+                $claimId = \Illuminate\Support\Str::uuid();
+                DB::table('promotion_claims')->insert([
+                    'id' => $claimId,
+                    'promotion_id' => $promotion->id,
+                    'driver_id' => $driver->id,
+                    'status' => 'claimed',
+                    'claimed_at' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                // Increment current claims atomically
+                DB::table('driver_promotions')
+                    ->where('id', $promotion->id)
+                    ->increment('current_claims');
+
+                // Send notification (outside transaction would be better, but acceptable here)
+                DriverNotification::notify(
+                    $driver->id,
+                    'promotion',
+                    translate('Promotion Claimed'),
+                    translate('You have successfully claimed: :title', ['title' => $promotion->title]),
+                    ['promotion_id' => $promotion->id],
+                    'normal',
+                    'promotions'
+                );
+
+                return response()->json(responseFormatter([
+                    'response_code' => 'promotion_claimed_200',
+                    'message' => translate('Promotion claimed successfully'),
+                    'data' => [
+                        'claim_id' => $claimId,
+                        'promotion_title' => $promotion->title,
+                        'claimed_at' => now()->toIso8601String(),
+                    ],
+                ]));
+            });
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Handle deadlock or lock timeout gracefully
+            \Log::warning('Promotion claim transaction failed', [
+                'promotion_id' => $id,
+                'driver_id' => $driver->id,
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json(responseFormatter([
-                'response_code' => 'promotion_not_found_404',
-                'message' => translate('Promotion not found or not available'),
-            ]), 404);
+                'response_code' => 'claim_failed_500',
+                'message' => translate('Unable to process claim. Please try again.'),
+            ]), 500);
         }
-
-        // Check if expired
-        if ($promotion->expires_at && $promotion->expires_at < now()) {
-            return response()->json(responseFormatter([
-                'response_code' => 'promotion_expired_400',
-                'message' => translate('This promotion has expired'),
-            ]), 400);
-        }
-
-        // Check if not started
-        if ($promotion->starts_at && $promotion->starts_at > now()) {
-            return response()->json(responseFormatter([
-                'response_code' => 'promotion_not_started_400',
-                'message' => translate('This promotion has not started yet'),
-            ]), 400);
-        }
-
-        // Check if already claimed
-        $existingClaim = DB::table('promotion_claims')
-            ->where('promotion_id', $promotion->id)
-            ->where('driver_id', $driver->id)
-            ->first();
-
-        if ($existingClaim) {
-            return response()->json(responseFormatter([
-                'response_code' => 'already_claimed_400',
-                'message' => translate('You have already claimed this promotion'),
-                'data' => [
-                    'claimed_at' => $existingClaim->claimed_at,
-                    'status' => $existingClaim->status,
-                ],
-            ]), 400);
-        }
-
-        // Check max claims
-        if ($promotion->max_claims && $promotion->current_claims >= $promotion->max_claims) {
-            return response()->json(responseFormatter([
-                'response_code' => 'max_claims_reached_400',
-                'message' => translate('This promotion has reached maximum claims'),
-            ]), 400);
-        }
-
-        // Create claim
-        $claimId = DB::table('promotion_claims')->insertGetId([
-            'id' => \Illuminate\Support\Str::uuid(),
-            'promotion_id' => $promotion->id,
-            'driver_id' => $driver->id,
-            'status' => 'claimed',
-            'claimed_at' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        // Increment current claims
-        DB::table('driver_promotions')
-            ->where('id', $promotion->id)
-            ->increment('current_claims');
-
-        // Send notification
-        DriverNotification::notify(
-            $driver->id,
-            'promotion',
-            translate('Promotion Claimed'),
-            translate('You have successfully claimed: :title', ['title' => $promotion->title]),
-            ['promotion_id' => $promotion->id],
-            'normal',
-            'promotions'
-        );
-
-        return response()->json(responseFormatter([
-            'response_code' => 'promotion_claimed_200',
-            'message' => translate('Promotion claimed successfully'),
-            'data' => [
-                'claim_id' => $claimId,
-                'promotion_title' => $promotion->title,
-                'claimed_at' => now()->toIso8601String(),
-            ],
-        ]));
     }
 }

@@ -80,11 +80,27 @@ class AuthController extends Controller
     {
         $driverRoute = str_contains($request->route()->getPrefix(), 'driver');
         $validator = Validator::make($request->all(), [
-            'first_name' => 'required',
-            'last_name' => 'required',
+            'first_name' => [
+                'required',
+                'string',
+                'max:50',
+                'regex:/^[\p{L}\s]+$/u', // Only letters (including Arabic) and spaces, no numbers or emojis
+            ],
+            'last_name' => [
+                'required',
+                'string',
+                'max:50',
+                'regex:/^[\p{L}\s]+$/u', // Only letters (including Arabic) and spaces, no numbers or emojis
+            ],
             'email' => 'email|unique:users',
             'phone' => 'required|regex:/^([0-9\s\-\+\(\)]*)$/|min:8|max:17|unique:users',
-            'password' => 'required|min:8',
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'max:128',
+                'regex:/^[a-zA-Z0-9]+$/', // Only letters and digits, no special characters
+            ],
             'gender' => 'required|in:male,female',
             'profile_image' => 'image|mimes:jpeg,jpg,png,gif,webp|max:10000',
             'identification_type' => 'in:nid,passport,driving_license',
@@ -110,6 +126,14 @@ class AuthController extends Controller
                     return $driverRoute;
                 })
             ]
+        ], [
+            'first_name.regex' => translate('First name must contain only letters and spaces. No numbers or special characters allowed.'),
+            'first_name.max' => translate('First name must not exceed 50 characters.'),
+            'last_name.regex' => translate('Last name must contain only letters and spaces. No numbers or special characters allowed.'),
+            'last_name.max' => translate('Last name must not exceed 50 characters.'),
+            'password.regex' => translate('Password can only contain letters and numbers. No special characters allowed.'),
+            'password.min' => translate('Password must be at least 8 characters long.'),
+            'password.required' => translate('Password is required.'),
         ]);
         if ($validator->fails()) {
 
@@ -141,8 +165,8 @@ class AuthController extends Controller
         // Prepare registration data to store temporarily (exclude files for now, they'll be handled after OTP)
         $registrationData = $request->except(['profile_image', 'identity_images', 'other_documents', 'driving_license', 'vehicle_license', 'criminal_record', 'car_front_image', 'car_back_image']);
         
-        // Hash password before storing
-        $registrationData['password'] = bcrypt($request->password);
+        // Hash password with SHA256 before storing
+        $registrationData['password'] = hash('sha256', $request->password);
 
         /**
          * Store registration data temporarily and send OTP
@@ -188,7 +212,35 @@ class AuthController extends Controller
             $user->blocked_at = null;
             $user->save();
         }
-        if (!Hash::check($request['password'], $user['password'])) {
+        // Verify password - support both SHA256 (new) and bcrypt (legacy)
+        $passwordValid = false;
+        $storedPassword = $user->password ?? $user['password'] ?? null;
+        
+        if (!$storedPassword) {
+            Log::warning('Login attempt with user that has no password', [
+                'user_id' => $user->id,
+                'phone' => $user->phone,
+            ]);
+            $user->failed_attempt += 1;
+            if ($user->failed_attempt >= (int)$hit_limit) {
+                $user->is_temp_blocked = 1;
+                $user->blocked_at = now();
+            }
+            $user->save();
+            return response()->json(responseFormatter(AUTH_LOGIN_401), 403);
+        }
+        
+        // Detect hash format: bcrypt starts with $2y$, SHA256 is 64 hex characters
+        if (str_starts_with($storedPassword, '$2y$') || str_starts_with($storedPassword, '$2a$') || str_starts_with($storedPassword, '$2b$')) {
+            // Bcrypt password (legacy)
+            $passwordValid = Hash::check($request['password'], $storedPassword);
+        } else {
+            // SHA256 password (new format - 64 hex characters)
+            $passwordHash = hash('sha256', $request['password']);
+            $passwordValid = hash_equals($storedPassword, $passwordHash);
+        }
+        
+        if (!$passwordValid) {
             $user->failed_attempt += 1;
             if ($user->failed_attempt >= (int)$hit_limit) {
                 $user->is_temp_blocked = 1;
@@ -198,7 +250,7 @@ class AuthController extends Controller
             return response()->json(responseFormatter(AUTH_LOGIN_401), 403);
         }
 
-        if (Hash::check($request['password'], $user['password'])) {
+        if ($passwordValid) {
             if ($user->is_active) {
                 $verification = $user->user_type == CUSTOMER ? (businessConfig('customer_verification')?->value ?? 0) : (businessConfig('driver_verification')?->value ?? 0);
                 if ($verification && !$user->phone_verified_at) {
@@ -302,7 +354,8 @@ class AuthController extends Controller
             return response()->json(responseFormatter(constant: USER_NOT_FOUND_404), 403);
         }
 
-        $resend_after = businessConfig('otp_resend_time')?->value ?? 60;
+        // OTP resend cooldown: 5 minutes (300 seconds) instead of 1 hour
+        $resend_after = businessConfig('otp_resend_time')?->value ?? 300;
         $data = $this->otpVerificationService->findOneBy(criteria: ['phone_or_email' => $request->phone_or_email]);
 
         if ($data && Carbon::parse($data->updated_at)->diffInSeconds() < $resend_after) {
@@ -628,7 +681,7 @@ class AuthController extends Controller
                     'last_name' => end($name),
                     'email' => $data['email'],
                     'profile_image' => 'def.png',
-                    'password' => bcrypt(rand(1000000, 9999999))
+                    'password' => hash('sha256', (string)rand(1000000, 9999999))
                 ];
                 $user = $this->customer->store($attributes);
             }
@@ -742,7 +795,7 @@ class AuthController extends Controller
 
         // OTP verified successfully - reset password
         $attributes = [
-            'password' => bcrypt($request['password'])
+            'password' => hash('sha256', $request['password'])
         ];
 
         $this->authService->updateLoginUser(id: $user->id, data: $attributes);
@@ -793,9 +846,27 @@ class AuthController extends Controller
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
         $user = $request->user('api');
-        if (Hash::check($request->password, $user->password)) {
+        // Verify password - support both SHA256 (new) and bcrypt (legacy)
+        $passwordValid = false;
+        $storedPassword = $user->password;
+        
+        if (!$storedPassword) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['message' => translate('Password not set')]]), 403);
+        }
+        
+        // Detect hash format: bcrypt starts with $2y$, SHA256 is 64 hex characters
+        if (str_starts_with($storedPassword, '$2y$') || str_starts_with($storedPassword, '$2a$') || str_starts_with($storedPassword, '$2b$')) {
+            // Bcrypt password (legacy)
+            $passwordValid = Hash::check($request->password, $storedPassword);
+        } else {
+            // SHA256 password (new format - 64 hex characters)
+            $passwordHash = hash('sha256', $request->password);
+            $passwordValid = hash_equals($storedPassword, $passwordHash);
+        }
+        
+        if ($passwordValid) {
             $attributes = [
-                'password' => bcrypt($request['new_password'])
+                'password' => hash('sha256', $request['new_password'])
             ];
             $this->authService->updateLoginUser(id: $user->id, data: $attributes);
             //Mart profile update

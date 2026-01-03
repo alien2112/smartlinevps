@@ -19,7 +19,7 @@ return [
         'ttl_minutes' => env('DRIVER_OTP_TTL_MINUTES', 5),
 
         // OTP length
-        'length' => env('DRIVER_OTP_LENGTH', 6),
+        'length' => env('DRIVER_OTP_LENGTH', 4),
 
         // Maximum verification attempts before lockout
         'max_verify_attempts' => env('DRIVER_OTP_MAX_ATTEMPTS', 5),
@@ -27,8 +27,8 @@ return [
         // Lockout duration after max attempts (minutes)
         'verify_lockout_minutes' => env('DRIVER_OTP_LOCKOUT_MINUTES', 30),
 
-        // Cooldown between resends (seconds)
-        'resend_cooldown_seconds' => env('DRIVER_OTP_RESEND_COOLDOWN', 60),
+        // Cooldown between resends (seconds) - 5 minutes = 300 seconds
+        'resend_cooldown_seconds' => env('DRIVER_OTP_RESEND_COOLDOWN', 300),
 
         // Maximum resends per session
         'max_resends_per_session' => env('DRIVER_OTP_MAX_RESENDS', 3),

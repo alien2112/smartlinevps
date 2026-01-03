@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use Modules\TripManagement\Entities\TripRequest;
 use App\Services\AdminDashboardCacheService;
+use App\Services\AchievementService;
 use Modules\UserManagement\Service\ReferralService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Log;
@@ -38,6 +39,7 @@ class TripRequestObserver
         // Process referral rewards when trip is completed
         if ($tripRequest->isDirty('current_status') && $tripRequest->current_status === 'completed') {
             $this->processReferralReward($tripRequest);
+            $this->processAchievements($tripRequest);
         }
     }
 
@@ -83,6 +85,56 @@ class TripRequestObserver
             } catch (\Exception $e) {
                 Log::warning('Referral reward processing failed', [
                     'trip_id' => $tripRequest->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        })->afterResponse();
+    }
+
+    /**
+     * Process achievements when a trip is completed.
+     * Checks and unlocks any achievements the driver has earned.
+     */
+    private function processAchievements(TripRequest $tripRequest): void
+    {
+        if (!$tripRequest->driver_id) {
+            return;
+        }
+
+        dispatch(function () use ($tripRequest) {
+            try {
+                $achievementService = app(AchievementService::class);
+
+                // Update streak for this driver
+                $achievementService->updateStreak($tripRequest->driver_id);
+
+                // Check and unlock achievements (focused on trip-related achievements)
+                $unlocked = $achievementService->checkAndUnlockAchievements($tripRequest->driver_id, 'trips');
+
+                // Also check earnings achievements if this was a paid trip
+                if ($tripRequest->payment_status === PAID) {
+                    $earningsUnlocked = $achievementService->checkAndUnlockAchievements($tripRequest->driver_id, 'earnings');
+                    $unlocked = array_merge($unlocked, $earningsUnlocked);
+                }
+
+                // Check milestone achievements
+                $milestonesUnlocked = $achievementService->checkAndUnlockAchievements($tripRequest->driver_id, 'milestones');
+                $unlocked = array_merge($unlocked, $milestonesUnlocked);
+
+                // Check and award badges
+                $achievementService->checkAndAwardBadges($tripRequest->driver_id);
+
+                if (count($unlocked) > 0) {
+                    Log::info('Driver achievements unlocked', [
+                        'driver_id' => $tripRequest->driver_id,
+                        'trip_id' => $tripRequest->id,
+                        'achievements' => array_column($unlocked, 'key'),
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Achievement processing failed', [
+                    'trip_id' => $tripRequest->id,
+                    'driver_id' => $tripRequest->driver_id,
                     'error' => $e->getMessage(),
                 ]);
             }

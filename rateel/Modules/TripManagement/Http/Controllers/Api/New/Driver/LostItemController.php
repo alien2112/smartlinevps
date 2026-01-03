@@ -65,6 +65,30 @@ class LostItemController extends Controller
     }
 
     /**
+     * Get unread lost items from the last 24 hours
+     * Unread = items where driver hasn't responded (driver_response is null)
+     * GET /api/driver/lost-items/unread
+     */
+    public function unread(Request $request): JsonResponse
+    {
+        $limit = $request->get('limit', 10);
+        $offset = $request->get('offset', 1);
+
+        $lostItems = $this->lostItemService->getUnreadByDriver(
+            driverId: auth('api')->id(),
+            limit: $limit,
+            offset: $offset
+        );
+
+        return response()->json(responseFormatter(
+            constant: DEFAULT_200,
+            content: LostItemResource::collection($lostItems),
+            limit: $limit,
+            offset: $offset
+        ));
+    }
+
+    /**
      * Get single lost item details
      * GET /api/driver/lost-items/{id}
      */

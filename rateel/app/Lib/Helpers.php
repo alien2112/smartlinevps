@@ -502,8 +502,18 @@ if (!function_exists('utf8Clean')) {
 if (!function_exists('responseFormatter')) {
     function responseFormatter($constant, $content = null, $limit = null, $offset = null, $errors = []): array
     {
+        // Handle paginator objects
+        $totalSize = null;
+        if (isset($limit) && $content !== null) {
+            if (is_object($content) && method_exists($content, 'total')) {
+                $totalSize = $content->total();
+            } elseif (is_array($content) && isset($content['total'])) {
+                $totalSize = $content['total'];
+            }
+        }
+
         $data = [
-            'total_size' => isset($limit) ? $content->total() : null,
+            'total_size' => $totalSize,
             'limit' => $limit,
             'offset' => $offset,
             'data' => $content,

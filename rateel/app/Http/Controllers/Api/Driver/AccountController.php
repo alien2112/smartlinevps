@@ -29,8 +29,9 @@ class AccountController extends Controller
 
         if (!$settings) {
             // Create default settings
-            $settings = DB::table('driver_privacy_settings')->insertGetId([
-                'id' => \Illuminate\Support\Str::uuid(),
+            $settingsId = \Illuminate\Support\Str::uuid();
+            DB::table('driver_privacy_settings')->insert([
+                'id' => $settingsId,
                 'driver_id' => $driver->id,
                 'show_profile_photo' => true,
                 'show_phone_number' => false,
@@ -148,8 +149,9 @@ class AccountController extends Controller
                 ->update(['is_primary' => false]);
         }
 
-        $contactId = DB::table('emergency_contacts')->insertGetId([
-            'id' => \Illuminate\Support\Str::uuid(),
+        $contactId = \Illuminate\Support\Str::uuid();
+        DB::table('emergency_contacts')->insert([
+            'id' => $contactId,
             'driver_id' => $driver->id,
             'name' => $request->name,
             'relationship' => $request->relationship,
@@ -348,13 +350,15 @@ class AccountController extends Controller
         // Generate OTP
         $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
-        // Create phone change request
-        $requestId = DB::table('phone_change_requests')->insertGetId([
-            'id' => \Illuminate\Support\Str::uuid(),
+        // Create phone change request with HASHED OTP for security
+        $requestId = \Illuminate\Support\Str::uuid();
+        DB::table('phone_change_requests')->insert([
+            'id' => $requestId,
             'driver_id' => $driver->id,
             'old_phone' => $driver->phone,
             'new_phone' => $request->new_phone,
-            'otp_code' => $otp,
+            'otp_hash' => Hash::make($otp), // Store hash, not plain text
+            'otp_attempts' => 0, // Track failed attempts
             'old_phone_verified' => false,
             'new_phone_verified' => false,
             'status' => 'pending',
@@ -416,29 +420,43 @@ class AccountController extends Controller
             ]), 404);
         }
 
-        if ($changeRequest->otp_code !== $request->otp) {
+        // Check max OTP attempts (prevent brute force)
+        if (($changeRequest->otp_attempts ?? 0) >= 5) {
+            // Invalidate the request after too many attempts
+            DB::table('phone_change_requests')
+                ->where('id', $changeRequest->id)
+                ->update(['status' => 'failed', 'updated_at' => now()]);
+
+            return response()->json(responseFormatter([
+                'response_code' => 'max_attempts_exceeded_400',
+                'message' => translate('Too many failed attempts. Please request a new OTP.'),
+            ]), 400);
+        }
+
+        // Verify OTP using hash comparison
+        if (!Hash::check($request->otp, $changeRequest->otp_hash)) {
+            // Increment failed attempts
+            DB::table('phone_change_requests')
+                ->where('id', $changeRequest->id)
+                ->increment('otp_attempts');
+
             return response()->json(responseFormatter([
                 'response_code' => 'invalid_otp_400',
                 'message' => translate('Invalid OTP'),
             ]), 400);
         }
 
-        // Mark old phone as verified
+        // Generate new OTP for new phone
+        $newOtp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        // Mark old phone as verified and set new OTP hash
         DB::table('phone_change_requests')
             ->where('id', $changeRequest->id)
             ->update([
                 'old_phone_verified' => true,
                 'old_phone_verified_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-        // Generate new OTP for new phone
-        $newOtp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-
-        DB::table('phone_change_requests')
-            ->where('id', $changeRequest->id)
-            ->update([
-                'otp_code' => $newOtp,
+                'otp_hash' => Hash::make($newOtp), // New OTP for new phone
+                'otp_attempts' => 0, // Reset attempts for new OTP
                 'updated_at' => now(),
             ]);
 
@@ -492,7 +510,24 @@ class AccountController extends Controller
             ]), 404);
         }
 
-        if ($changeRequest->otp_code !== $request->otp) {
+        // Check max OTP attempts (prevent brute force)
+        if (($changeRequest->otp_attempts ?? 0) >= 5) {
+            DB::table('phone_change_requests')
+                ->where('id', $changeRequest->id)
+                ->update(['status' => 'failed', 'updated_at' => now()]);
+
+            return response()->json(responseFormatter([
+                'response_code' => 'max_attempts_exceeded_400',
+                'message' => translate('Too many failed attempts. Please request a new OTP.'),
+            ]), 400);
+        }
+
+        // Verify OTP using hash comparison
+        if (!Hash::check($request->otp, $changeRequest->otp_hash)) {
+            DB::table('phone_change_requests')
+                ->where('id', $changeRequest->id)
+                ->increment('otp_attempts');
+
             return response()->json(responseFormatter([
                 'response_code' => 'invalid_otp_400',
                 'message' => translate('Invalid OTP'),
@@ -702,5 +737,231 @@ class AccountController extends Controller
             'days_remaining' => now()->diffInDays($request->scheduled_deletion_at),
             'reason' => $request->reason,
         ]));
+    }
+
+    /**
+     * Get account verification status
+     * GET /api/driver/auth/account/verification
+     * 
+     * Returns comprehensive account verification information for the verification screen
+     */
+    public function verificationStatus(): JsonResponse
+    {
+        $driver = auth('api')->user();
+        
+        // Load necessary relations
+        $driver->load(['driverDetails', 'primaryVehicle']);
+
+        // Check account status
+        $isActive = (bool) $driver->is_active;
+        $isApproved = (bool) $driver->is_approved;
+        
+        // Check verification statuses
+        $phoneVerified = (bool) ($driver->is_phone_verified ?? $driver->phone_verified_at);
+        $emailVerified = (bool) $driver->email_verified_at;
+        
+        // Check onboarding status
+        $onboardingStep = $driver->onboarding_step ?? 'pending';
+        $onboardingState = $driver->onboarding_state ?? 'otp_pending';
+        $onboardingComplete = $onboardingStep === 'approved';
+        
+        // Check for pending deletion request
+        $deletionRequest = DB::table('account_deletion_requests')
+            ->where('driver_id', $driver->id)
+            ->where('status', 'pending')
+            ->first();
+        
+        // Check document status
+        $documentsStatus = $this->getDocumentsStatus($driver->id);
+        
+        // Check vehicle status
+        $hasVehicle = (bool) $driver->primaryVehicle;
+        $vehicleActive = $driver->primaryVehicle ? (bool) ($driver->primaryVehicle->is_active ?? true) : false;
+        
+        // Determine overall verification status
+        $verificationIssues = [];
+        $verificationStatus = 'verified';
+        
+        if (!$isActive) {
+            $verificationIssues[] = 'account_inactive';
+            $verificationStatus = 'inactive';
+        }
+        
+        if (!$phoneVerified) {
+            $verificationIssues[] = 'phone_not_verified';
+            if ($verificationStatus === 'verified') {
+                $verificationStatus = 'pending';
+            }
+        }
+        
+        if ($driver->email && !$emailVerified) {
+            $verificationIssues[] = 'email_not_verified';
+            if ($verificationStatus === 'verified') {
+                $verificationStatus = 'pending';
+            }
+        }
+        
+        if (!$onboardingComplete) {
+            $verificationIssues[] = 'onboarding_incomplete';
+            if ($verificationStatus === 'verified') {
+                $verificationStatus = 'pending';
+            }
+        }
+        
+        if (!$isApproved) {
+            $verificationIssues[] = 'not_approved';
+            if ($verificationStatus === 'verified') {
+                $verificationStatus = 'pending_approval';
+            }
+        }
+        
+        if ($deletionRequest) {
+            $verificationIssues[] = 'deletion_pending';
+            $verificationStatus = 'pending_deletion';
+        }
+        
+        if (!$hasVehicle) {
+            $verificationIssues[] = 'no_vehicle';
+            if ($verificationStatus === 'verified') {
+                $verificationStatus = 'incomplete';
+            }
+        } elseif (!$vehicleActive) {
+            $verificationIssues[] = 'vehicle_inactive';
+            if ($verificationStatus === 'verified') {
+                $verificationStatus = 'incomplete';
+            }
+        }
+        
+        // Get last activity
+        $lastActivity = $driver->updated_at;
+        if ($driver->driverDetails && $driver->driverDetails->last_active_at) {
+            $lastActivity = $driver->driverDetails->last_active_at;
+        }
+        
+        // Build response
+        $data = [
+            'account' => [
+                'id' => $driver->id,
+                'phone' => $driver->phone,
+                'phone_masked' => $this->maskPhone($driver->phone),
+                'email' => $driver->email,
+                'first_name' => $driver->first_name,
+                'last_name' => $driver->last_name,
+                'created_at' => $driver->created_at ? (is_string($driver->created_at) ? $driver->created_at : $driver->created_at->toIso8601String()) : null,
+                'last_activity' => $lastActivity ? (is_string($lastActivity) ? $lastActivity : $lastActivity->toIso8601String()) : null,
+            ],
+            'verification' => [
+                'status' => $verificationStatus,
+                'is_active' => $isActive,
+                'is_approved' => $isApproved,
+                'phone_verified' => $phoneVerified,
+                'phone_verified_at' => $driver->phone_verified_at ? (is_string($driver->phone_verified_at) ? $driver->phone_verified_at : $driver->phone_verified_at->toIso8601String()) : null,
+                'email_verified' => $emailVerified,
+                'email_verified_at' => $driver->email_verified_at ? (is_string($driver->email_verified_at) ? $driver->email_verified_at : $driver->email_verified_at->toIso8601String()) : null,
+                'onboarding_complete' => $onboardingComplete,
+                'onboarding_step' => $onboardingStep,
+                'onboarding_state' => $onboardingState,
+                'has_vehicle' => $hasVehicle,
+                'vehicle_active' => $vehicleActive,
+                'has_pending_deletion' => (bool) $deletionRequest,
+            ],
+            'documents' => $documentsStatus,
+            'issues' => $verificationIssues,
+            'message' => $this->getVerificationMessage($verificationStatus, $verificationIssues),
+        ];
+        
+        // Add deletion request details if exists
+        if ($deletionRequest) {
+            $data['deletion_request'] = [
+                'requested_at' => $deletionRequest->requested_at,
+                'scheduled_deletion_at' => $deletionRequest->scheduled_deletion_at,
+                'days_remaining' => now()->diffInDays($deletionRequest->scheduled_deletion_at),
+                'reason' => $deletionRequest->reason,
+            ];
+        }
+        
+        // Add vehicle details if exists
+        if ($driver->primaryVehicle) {
+            $data['vehicle'] = [
+                'id' => $driver->primaryVehicle->id,
+                'category' => $driver->primaryVehicle->category?->name,
+                'brand' => $driver->primaryVehicle->brand?->name,
+                'model' => $driver->primaryVehicle->model?->name,
+                'licence_plate' => $driver->primaryVehicle->licence_plate_number,
+                'is_active' => $vehicleActive,
+            ];
+        }
+        
+        return response()->json(responseFormatter(DEFAULT_200, $data));
+    }
+    
+    /**
+     * Get documents status for driver
+     */
+    private function getDocumentsStatus(string $driverId): array
+    {
+        $documents = DB::table('driver_documents')
+            ->where('driver_id', $driverId)
+            ->whereNull('deleted_at') // Exclude soft-deleted documents
+            ->get();
+        
+        // Check if table has verification_status column (new structure) or verified column (old structure)
+        $hasVerificationStatus = $documents->isNotEmpty() && isset($documents->first()->verification_status);
+        
+        if ($hasVerificationStatus) {
+            // New structure with verification_status enum
+            $status = [
+                'total' => $documents->count(),
+                'approved' => $documents->where('verification_status', 'approved')->count(),
+                'pending' => $documents->where('verification_status', 'pending')->count(),
+                'rejected' => $documents->where('verification_status', 'rejected')->count(),
+                'all_approved' => $documents->where('verification_status', 'approved')->count() === $documents->count() && $documents->count() > 0,
+            ];
+        } else {
+            // Old structure with verified boolean
+            $status = [
+                'total' => $documents->count(),
+                'approved' => $documents->where('verified', true)->count(),
+                'pending' => $documents->where('verified', false)->whereNull('rejection_reason')->count(),
+                'rejected' => $documents->where('verified', false)->whereNotNull('rejection_reason')->count(),
+                'all_approved' => $documents->where('verified', true)->count() === $documents->count() && $documents->count() > 0,
+            ];
+        }
+        
+        return $status;
+    }
+    
+    /**
+     * Get verification message based on status
+     */
+    private function getVerificationMessage(string $status, array $issues): string
+    {
+        if (empty($issues)) {
+            return translate('Your account is fully verified and active');
+        }
+        
+        return match ($status) {
+            'inactive' => translate('Your account is currently inactive'),
+            'pending' => translate('Your account verification is pending. Please complete the required steps'),
+            'pending_approval' => translate('Your account is pending admin approval'),
+            'pending_deletion' => translate('Your account deletion is scheduled'),
+            'incomplete' => translate('Please complete your profile setup'),
+            default => translate('Your account needs attention'),
+        };
+    }
+    
+    /**
+     * Mask phone number for display
+     */
+    private function maskPhone(string $phone): string
+    {
+        $length = strlen($phone);
+        if ($length <= 6) {
+            return $phone;
+        }
+        
+        $visible = 4;
+        $masked = str_repeat('*', $length - $visible - 4);
+        return substr($phone, 0, 4) . $masked . substr($phone, -$visible);
     }
 }

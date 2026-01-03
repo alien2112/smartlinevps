@@ -3,11 +3,19 @@
 namespace App\Http\Controllers\Api\Driver;
 
 use App\Http\Controllers\Controller;
+use App\Services\AchievementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
 class GamificationController extends Controller
 {
+    protected AchievementService $achievementService;
+
+    public function __construct(AchievementService $achievementService)
+    {
+        $this->achievementService = $achievementService;
+    }
+
     /**
      * Get driver achievements
      * GET /api/driver/auth/gamification/achievements
@@ -266,5 +274,38 @@ class GamificationController extends Controller
             4 => 'Platinum',
             default => 'Bronze',
         };
+    }
+
+    /**
+     * Manually check and unlock achievements
+     * POST /api/driver/auth/gamification/check-achievements
+     */
+    public function checkAchievements(): JsonResponse
+    {
+        $driver = auth('api')->user();
+
+        // Check and unlock achievements
+        $unlockedAchievements = $this->achievementService->checkAndUnlockAchievements($driver->id);
+
+        // Check and award badges
+        $awardedBadges = $this->achievementService->checkAndAwardBadges($driver->id);
+
+        // Update streak
+        $this->achievementService->updateStreak($driver->id);
+
+        // Get updated stats
+        $stats = $this->achievementService->getDriverStats($driver->id);
+
+        return response()->json(responseFormatter(DEFAULT_200, [
+            'newly_unlocked_achievements' => $unlockedAchievements,
+            'newly_awarded_badges' => $awardedBadges,
+            'current_stats' => $stats,
+            'message' => count($unlockedAchievements) > 0 || count($awardedBadges) > 0
+                ? translate('Congratulations! You unlocked :count achievements and :badges badges', [
+                    'count' => count($unlockedAchievements),
+                    'badges' => count($awardedBadges)
+                ])
+                : translate('Keep going! Complete more trips to unlock achievements.'),
+        ]));
     }
 }

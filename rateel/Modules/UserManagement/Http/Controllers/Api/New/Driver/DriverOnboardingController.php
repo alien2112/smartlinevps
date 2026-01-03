@@ -3,11 +3,12 @@
 namespace Modules\UserManagement\Http\Controllers\Api\New\Driver;
 
 use App\Http\Controllers\Controller;
+use App\Services\BeOnOtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Http; // Imported for Firebase
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -16,7 +17,6 @@ use Modules\UserManagement\Entities\DriverDocument;
 use Modules\UserManagement\Entities\User;
 use Modules\UserManagement\Service\Interface\DriverServiceInterface;
 use Modules\UserManagement\Service\Interface\OtpVerificationServiceInterface;
-use Modules\Gateways\Traits\SmsGateway;
 
 /**
  * DriverOnboardingController
@@ -31,8 +31,6 @@ use Modules\Gateways\Traits\SmsGateway;
  */
 class DriverOnboardingController extends Controller
 {
-    use SmsGateway;
-
     // Onboarding step constants
     public const STEP_PHONE = 'phone';
     public const STEP_OTP = 'otp';
@@ -43,15 +41,19 @@ class DriverOnboardingController extends Controller
     public const STEP_PENDING_APPROVAL = 'pending_approval';
     public const STEP_APPROVED = 'approved';
 
+    // OTP Cache prefix and expiry
+    protected const OTP_CACHE_PREFIX = 'driver_onboarding_otp:';
+    protected const OTP_EXPIRY_MINUTES = 5;
+
     protected DriverServiceInterface $driverService;
-    protected OtpVerificationServiceInterface $otpService;
+    protected BeOnOtpService $beonOtpService;
 
     public function __construct(
         DriverServiceInterface $driverService,
-        OtpVerificationServiceInterface $otpService
+        BeOnOtpService $beonOtpService
     ) {
         $this->driverService = $driverService;
-        $this->otpService = $otpService;
+        $this->beonOtpService = $beonOtpService;
     }
 
     /**
@@ -101,32 +103,23 @@ class DriverOnboardingController extends Controller
                 $driver->save();
             }
 
-            // Check if Firebase verification is enabled
-            // If enabled, we skip sending OTP from backend, as client handles it with Firebase
-            $isFirebaseEnabled = businessConfig('firebase_otp_verification_status')?->value == 1;
+            // Send OTP via Beon OTP Service
+            $otpResult = $this->sendOtpViaBeon($phone);
 
-            if (!$isFirebaseEnabled) {
-                // Send OTP via local/SMS gateway
-                $otpSent = $this->sendOtp($phone);
-
-                if (!$otpSent) {
-                    throw new \Exception('Failed to send OTP');
-                }
-                $message = 'OTP sent successfully';
-            } else {
-                $message = 'Proceed to Firebase verification';
+            if (!$otpResult['success']) {
+                throw new \Exception($otpResult['message'] ?? 'Failed to send OTP');
             }
 
             DB::commit();
 
             return response()->json([
                 'status' => 'success',
-                'message' => $message,
+                'message' => 'OTP sent successfully',
                 'data' => [
                     'next_step' => self::STEP_OTP,
                     'phone' => $phone,
                     'is_new_driver' => $driver->wasRecentlyCreated,
-                    'use_firebase' => $isFirebaseEnabled,
+                    'otp_expiry_seconds' => self::OTP_EXPIRY_MINUTES * 60,
                 ],
             ]);
 
@@ -144,17 +137,14 @@ class DriverOnboardingController extends Controller
     /**
      * Step 2: Verify OTP
      * POST /api/driver/auth/verify-otp
-     * 
-     * Verifies OTP and determines next step based on driver's state
-     * Supports both Local OTP and Firebase OTP
+     *
+     * Verifies OTP using Beon OTP service and determines next step based on driver's state
      */
     public function verifyOtp(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
             'phone' => 'required|string|min:10|max:15',
-            // OTP is required if not using session_info (Firebase)
-            'otp' => 'required_without:session_info',
-            'session_info' => 'sometimes|string',
+            'otp' => 'required|string|size:4',
         ]);
 
         if ($validator->fails()) {
@@ -178,16 +168,8 @@ class DriverOnboardingController extends Controller
             ], 404);
         }
 
-        // Check if Firebase verification is enabled
-        $isFirebaseEnabled = businessConfig('firebase_otp_verification_status')?->value == 1;
-
-        if ($isFirebaseEnabled && $request->has('session_info')) {
-            // Firebase Verification Logic
-            $otpValid = $this->verifyFirebaseOtp($request->session_info, $phone, $request->input('otp', $request->code)); // Support 'code' param too if needed
-        } else {
-            // Local OTP Verification Logic
-            $otpValid = $this->verifyOtpCode($phone, $request->otp);
-        }
+        // Verify OTP from cache (Beon sends OTP, we store and verify locally)
+        $otpValid = $this->verifyOtpFromCache($phone, $request->otp);
 
         if (!$otpValid) {
             return response()->json([
@@ -195,6 +177,9 @@ class DriverOnboardingController extends Controller
                 'message' => 'Invalid or expired OTP',
             ], 400);
         }
+
+        // Clear the OTP from cache after successful verification
+        Cache::forget(self::OTP_CACHE_PREFIX . $phone);
 
         // Mark OTP as verified
         $driver->otp_verified_at = now();
@@ -702,27 +687,22 @@ class DriverOnboardingController extends Controller
             ], 404);
         }
 
-        $isFirebaseEnabled = businessConfig('firebase_otp_verification_status')?->value == 1;
-        
-        if ($isFirebaseEnabled) {
-             return response()->json([
-                'status' => 'success',
-                'message' => 'OTP resend request processed by Firebase (client-side)',
-            ]);
-        }
+        // Send OTP via Beon
+        $otpResult = $this->sendOtpViaBeon($phone);
 
-        $otpSent = $this->sendOtp($phone);
-
-        if (!$otpSent) {
+        if (!$otpResult['success']) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to send OTP. Please try again.',
+                'message' => $otpResult['message'] ?? 'Failed to send OTP. Please try again.',
             ], 500);
         }
 
         return response()->json([
             'status' => 'success',
             'message' => 'OTP sent successfully',
+            'data' => [
+                'otp_expiry_seconds' => self::OTP_EXPIRY_MINUTES * 60,
+            ],
         ]);
     }
 
@@ -798,79 +778,91 @@ class DriverOnboardingController extends Controller
     }
 
     /**
-     * Send OTP to phone number
+     * Send OTP via Beon OTP Service
+     *
+     * @param string $phone Phone number
+     * @return array ['success' => bool, 'message' => string]
      */
-    protected function sendOtp(string $phone): bool
+    protected function sendOtpViaBeon(string $phone): array
     {
         try {
-            // Generate OTP based on configured length
-            $length = config('services.beon_otp.otp_length', 6);
-            $otp = str_pad(random_int(0, pow(10, $length) - 1), $length, '0', STR_PAD_LEFT);
-            
-            // Store OTP (you may want to use cache or database)
-            $this->otpService->storeOtp($phone, $otp);
-            
-            // In development, log the OTP
-            if (app()->environment('local', 'development')) {
-                Log::info('OTP for driver onboarding', ['phone' => $phone, 'otp' => $otp]);
+            // Generate 4-digit OTP
+            $otp = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+
+            // Store OTP in cache for verification
+            Cache::put(
+                self::OTP_CACHE_PREFIX . $phone,
+                $otp,
+                now()->addMinutes(self::OTP_EXPIRY_MINUTES)
+            );
+
+            // In development, log the OTP for testing
+            if (app()->environment('local', 'development', 'staging')) {
+                Log::info('Driver Onboarding OTP', [
+                    'phone' => substr($phone, 0, 5) . '****' . substr($phone, -2),
+                    'otp' => $otp,
+                ]);
             }
-            
-            // Send OTP via SMS service
-            self::send($phone, $otp);
-            
-            return true;
+
+            // Send OTP via Beon service
+            $result = $this->beonOtpService->sendOtp($phone, $otp, 'Rateel');
+
+            if (!$result['success']) {
+                Log::warning('Beon OTP send failed', [
+                    'phone' => substr($phone, 0, 5) . '****',
+                    'error' => $result['message'] ?? 'Unknown error',
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => $result['message'] ?? 'Failed to send OTP',
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => 'OTP sent successfully',
+            ];
+
         } catch (\Exception $e) {
-            Log::error('Failed to send OTP', ['phone' => $phone, 'error' => $e->getMessage()]);
-            return false;
-        }
-    }
-
-    /**
-     * Verify OTP code (Local)
-     */
-    protected function verifyOtpCode(string $phone, string $otp): bool
-    {
-        try {
-            return $this->otpService->verifyOtp($phone, $otp);
-        } catch (\Exception $e) {
-            Log::error('OTP verification failed', ['phone' => $phone, 'error' => $e->getMessage()]);
-            return false;
-        }
-    }
-
-    /**
-     * Verify OTP via Firebase
-     */
-    protected function verifyFirebaseOtp(string $sessionInfo, string $phone, string $code): bool
-    {
-        $webApiKey = businessConfig('firebase_otp_web_api_key')?->value ?? '';
-        
-        if (empty($webApiKey)) {
-            Log::error('Firebase Web API Key is missing');
-            return false;
-        }
-
-        try {
-            $response = Http::post('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPhoneNumber?key=' . $webApiKey, [
-                'sessionInfo' => $sessionInfo,
-                'phoneNumber' => $phone,
-                'code' => $code,
+            Log::error('Beon OTP exception', [
+                'phone' => substr($phone, 0, 5) . '****',
+                'error' => $e->getMessage(),
             ]);
 
-            $responseData = $response->json();
+            return [
+                'success' => false,
+                'message' => 'Failed to send OTP. Please try again.',
+            ];
+        }
+    }
 
-            if (isset($responseData['error'])) {
-                Log::error('Firebase OTP verification failed', ['error' => $responseData['error']]);
-                return false;
-            }
-            
-            // Verification successful
-            return true;
+    /**
+     * Verify OTP from cache
+     *
+     * @param string $phone Phone number
+     * @param string $otp OTP code to verify
+     * @return bool
+     */
+    protected function verifyOtpFromCache(string $phone, string $otp): bool
+    {
+        $cachedOtp = Cache::get(self::OTP_CACHE_PREFIX . $phone);
 
-        } catch (\Exception $e) {
-            Log::error('Firebase OTP HTTP request failed', ['error' => $e->getMessage()]);
+        if (!$cachedOtp) {
+            Log::warning('OTP not found or expired', [
+                'phone' => substr($phone, 0, 5) . '****',
+            ]);
             return false;
         }
+
+        if ($cachedOtp !== $otp) {
+            Log::warning('OTP mismatch', [
+                'phone' => substr($phone, 0, 5) . '****',
+            ]);
+            return false;
+        }
+
+        return true;
     }
 
     /**

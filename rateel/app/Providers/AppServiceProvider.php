@@ -73,6 +73,9 @@ class AppServiceProvider extends ServiceProvider
         \Modules\TransactionManagement\Entities\Transaction::observe(\App\Observers\TransactionObserver::class);
         \Modules\ZoneManagement\Entities\Zone::observe(\App\Observers\ZoneObserver::class);
 
+        // Register observer for rating achievements
+        \Modules\ReviewModule\Entities\Review::observe(\App\Observers\ReviewObserver::class);
+
         // Note: EloquentSpatial::useDefaultSrid(4326) was removed because
         // this method is not available in the installed version of eloquent-spatial.
         // SRID 4326 is typically the default for geographic coordinates anyway.

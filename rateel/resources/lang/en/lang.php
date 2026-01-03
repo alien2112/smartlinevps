@@ -2843,4 +2843,6 @@
   'GET IT ON' => 'GET IT ON',
   'Google Play' => 'Google Play',
   'DOWNLOAD ON THE' => 'DOWNLOAD ON THE',
+  'The file field is required.' => 'The file field is required.',
+  'The kind field is required.' => 'The kind field is required.',
 );

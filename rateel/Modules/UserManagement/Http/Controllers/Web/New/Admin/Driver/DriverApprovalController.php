@@ -27,13 +27,25 @@ class DriverApprovalController extends Controller
         $query = User::where('user_type', 'driver')
             ->with(['driverDetails', 'vehicle']);
 
-        // Filter by onboarding step
+        // Filter by onboarding state (new) or step (legacy)
         if ($status === 'pending_approval') {
-            $query->where('onboarding_step', 'pending_approval');
+            $query->where(function($q) {
+                $q->where('onboarding_state', DriverOnboardingState::PENDING_APPROVAL->value)
+                  ->orWhere('onboarding_step', 'pending_approval'); // Legacy support
+            });
         } elseif ($status === 'approved') {
-            $query->where('onboarding_step', 'approved');
+            $query->where(function($q) {
+                $q->where('onboarding_state', DriverOnboardingState::APPROVED->value)
+                  ->orWhere('onboarding_step', 'approved'); // Legacy support
+            });
         } elseif ($status === 'in_progress') {
-            $query->whereNotIn('onboarding_step', ['pending_approval', 'approved']);
+            $query->where(function($q) {
+                $q->whereNotIn('onboarding_state', [
+                    DriverOnboardingState::PENDING_APPROVAL->value,
+                    DriverOnboardingState::APPROVED->value
+                ])
+                  ->orWhereNotIn('onboarding_step', ['pending_approval', 'approved']); // Legacy support
+            });
         }
 
         $drivers = $query->orderBy('created_at', 'desc')
@@ -41,10 +53,26 @@ class DriverApprovalController extends Controller
 
         // Get counts for tabs
         $counts = [
-            'pending' => User::where('user_type', 'driver')->where('onboarding_step', 'pending_approval')->count(),
-            'approved' => User::where('user_type', 'driver')->where('onboarding_step', 'approved')->count(),
+            'pending' => User::where('user_type', 'driver')
+                ->where(function($q) {
+                    $q->where('onboarding_state', DriverOnboardingState::PENDING_APPROVAL->value)
+                      ->orWhere('onboarding_step', 'pending_approval'); // Legacy support
+                })
+                ->count(),
+            'approved' => User::where('user_type', 'driver')
+                ->where(function($q) {
+                    $q->where('onboarding_state', DriverOnboardingState::APPROVED->value)
+                      ->orWhere('onboarding_step', 'approved'); // Legacy support
+                })
+                ->count(),
             'in_progress' => User::where('user_type', 'driver')
-                ->whereNotIn('onboarding_step', ['pending_approval', 'approved'])
+                ->where(function($q) {
+                    $q->whereNotIn('onboarding_state', [
+                        DriverOnboardingState::PENDING_APPROVAL->value,
+                        DriverOnboardingState::APPROVED->value
+                    ])
+                      ->orWhereNotIn('onboarding_step', ['pending_approval', 'approved']); // Legacy support
+                })
                 ->count(),
         ];
 
@@ -129,14 +157,26 @@ class DriverApprovalController extends Controller
         ]);
 
         $driver = User::where('user_type', 'driver')
-            ->where('onboarding_step', 'pending_approval')
+            ->where(function($query) {
+                $query->where('onboarding_state', DriverOnboardingState::PENDING_APPROVAL->value)
+                      ->orWhere('onboarding_step', 'pending_approval'); // Legacy support
+            })
             ->findOrFail($id);
 
         try {
             DB::beginTransaction();
 
-            // Reset to documents step so driver can re-upload
-            $driver->onboarding_step = 'documents';
+            // Update to new state machine - send back to documents (document rejection, not full rejection)
+            $currentState = DriverOnboardingState::fromString($driver->onboarding_state ?? $driver->onboarding_step ?? 'pending_approval');
+            $newState = DriverOnboardingState::DOCUMENTS_PENDING;
+            
+            if (!$currentState->canTransitionTo($newState)) {
+                return back()->with('error', 'Invalid state transition');
+            }
+
+            $driver->onboarding_state = $newState->value;
+            $driver->onboarding_state_version = ($driver->onboarding_state_version ?? 0) + 1;
+            $driver->onboarding_step = 'documents'; // Keep for backward compatibility
             $driver->documents_completed_at = null;
             $driver->save();
 
@@ -205,7 +245,13 @@ class DriverApprovalController extends Controller
         // Also reset driver's document completion status
         $driver = User::find($driverId);
         if ($driver) {
-            $driver->onboarding_step = 'documents';
+            $currentState = DriverOnboardingState::fromString($driver->onboarding_state ?? $driver->onboarding_step ?? 'documents_pending');
+            // Only update if in a state that allows going back to documents
+            if ($currentState->canTransitionTo(DriverOnboardingState::DOCUMENTS_PENDING)) {
+                $driver->onboarding_state = DriverOnboardingState::DOCUMENTS_PENDING->value;
+                $driver->onboarding_state_version = ($driver->onboarding_state_version ?? 0) + 1;
+            }
+            $driver->onboarding_step = 'documents'; // Keep for backward compatibility
             $driver->documents_completed_at = null;
             $driver->save();
         }
@@ -223,9 +269,21 @@ class DriverApprovalController extends Controller
         ]);
 
         $driver = User::where('user_type', 'driver')
-            ->where('onboarding_step', 'approved')
+            ->where(function($query) {
+                $query->where('onboarding_state', DriverOnboardingState::APPROVED->value)
+                      ->orWhere('onboarding_step', 'approved'); // Legacy support
+            })
             ->findOrFail($id);
 
+        // Update to suspended state
+        $currentState = DriverOnboardingState::fromString($driver->onboarding_state ?? $driver->onboarding_step ?? 'approved');
+        $newState = DriverOnboardingState::SUSPENDED;
+        
+        if ($currentState->canTransitionTo($newState)) {
+            $driver->onboarding_state = $newState->value;
+            $driver->onboarding_state_version = ($driver->onboarding_state_version ?? 0) + 1;
+        }
+        
         $driver->is_active = false;
         $driver->save();
 
@@ -244,10 +302,25 @@ class DriverApprovalController extends Controller
     public function reactivate(Request $request, string $id)
     {
         $driver = User::where('user_type', 'driver')
-            ->where('onboarding_step', 'approved')
-            ->where('is_active', false)
+            ->where(function($query) {
+                $query->where('onboarding_state', DriverOnboardingState::SUSPENDED->value)
+                      ->orWhere(function($q) {
+                          $q->where('onboarding_step', 'approved')
+                            ->where('is_active', false);
+                      }); // Legacy support
+            })
             ->findOrFail($id);
 
+        // Update from suspended to approved
+        $currentState = DriverOnboardingState::fromString($driver->onboarding_state ?? $driver->onboarding_step ?? 'suspended');
+        $newState = DriverOnboardingState::APPROVED;
+        
+        if ($currentState->canTransitionTo($newState)) {
+            $driver->onboarding_state = $newState->value;
+            $driver->onboarding_state_version = ($driver->onboarding_state_version ?? 0) + 1;
+            $driver->onboarding_step = 'approved'; // Keep for backward compatibility
+        }
+        
         $driver->is_active = true;
         $driver->save();
 
@@ -265,14 +338,33 @@ class DriverApprovalController extends Controller
     public function apiApprove(Request $request, string $id)
     {
         $driver = User::where('user_type', 'driver')
-            ->where('onboarding_step', 'pending_approval')
+            ->where(function($query) {
+                $query->where('onboarding_state', DriverOnboardingState::PENDING_APPROVAL->value)
+                      ->orWhere('onboarding_step', 'pending_approval'); // Legacy support
+            })
             ->findOrFail($id);
 
         try {
             DB::beginTransaction();
 
-            $driver->onboarding_step = 'approved';
+            // Update to new state machine
+            $currentState = DriverOnboardingState::fromString($driver->onboarding_state ?? $driver->onboarding_step ?? 'pending_approval');
+            $newState = DriverOnboardingState::APPROVED;
+            
+            if (!$currentState->canTransitionTo($newState)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid state transition',
+                ], 400);
+            }
+
+            $driver->onboarding_state = $newState->value;
+            $driver->onboarding_state_version = ($driver->onboarding_state_version ?? 0) + 1;
+            $driver->onboarding_step = 'approved'; // Keep for backward compatibility
             $driver->is_active = true;
+            $driver->is_approved = true;
+            $driver->approved_at = now();
+            $driver->approved_by = auth()->id();
             $driver->save();
 
             DriverDocument::where('driver_id', $driver->id)
@@ -308,14 +400,44 @@ class DriverApprovalController extends Controller
         ]);
 
         $driver = User::where('user_type', 'driver')
-            ->where('onboarding_step', 'pending_approval')
+            ->where(function($query) {
+                $query->where('onboarding_state', DriverOnboardingState::PENDING_APPROVAL->value)
+                      ->orWhere('onboarding_step', 'pending_approval'); // Legacy support
+            })
             ->findOrFail($id);
 
         try {
             DB::beginTransaction();
 
-            $driver->onboarding_step = 'documents';
-            $driver->documents_completed_at = null;
+            // Check if this is a full rejection or document rejection
+            $isFullRejection = $request->input('full_rejection', false);
+            
+            if ($isFullRejection) {
+                // Full rejection - go to rejected state
+                $currentState = DriverOnboardingState::fromString($driver->onboarding_state ?? $driver->onboarding_step ?? 'pending_approval');
+                $newState = DriverOnboardingState::REJECTED;
+                
+                if ($currentState->canTransitionTo($newState)) {
+                    $driver->onboarding_state = $newState->value;
+                    $driver->onboarding_state_version = ($driver->onboarding_state_version ?? 0) + 1;
+                    $driver->onboarding_step = 'rejected';
+                    $driver->rejection_reason = $request->reason;
+                    $driver->rejected_at = now();
+                    $driver->is_approved = false;
+                }
+            } else {
+                // Document rejection - send back to documents
+                $currentState = DriverOnboardingState::fromString($driver->onboarding_state ?? $driver->onboarding_step ?? 'pending_approval');
+                $newState = DriverOnboardingState::DOCUMENTS_PENDING;
+                
+                if ($currentState->canTransitionTo($newState)) {
+                    $driver->onboarding_state = $newState->value;
+                    $driver->onboarding_state_version = ($driver->onboarding_state_version ?? 0) + 1;
+                    $driver->onboarding_step = 'documents';
+                    $driver->documents_completed_at = null;
+                }
+            }
+            
             $driver->save();
 
             DriverDocument::where('driver_id', $driver->id)
@@ -347,7 +469,10 @@ class DriverApprovalController extends Controller
     public function apiPendingList(Request $request)
     {
         $drivers = User::where('user_type', 'driver')
-            ->where('onboarding_step', 'pending_approval')
+            ->where(function($query) {
+                $query->where('onboarding_state', DriverOnboardingState::PENDING_APPROVAL->value)
+                      ->orWhere('onboarding_step', 'pending_approval'); // Legacy support
+            })
             ->with(['driverDetails'])
             ->orderBy('created_at', 'desc')
             ->paginate(20);

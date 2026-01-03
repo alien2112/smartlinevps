@@ -107,7 +107,7 @@ class ReferralController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate($limit, ['*'], 'page', $offset);
 
-        $data = $invites->map(function ($invite) {
+        $data = $invites->getCollection()->map(function ($invite) {
             return [
                 'id' => $invite->id,
                 'status' => $invite->status,
@@ -128,8 +128,17 @@ class ReferralController extends Controller
             ];
         });
 
+        // Create a custom paginator with transformed data
+        $paginatedData = new \Illuminate\Pagination\LengthAwarePaginator(
+            $data,
+            $invites->total(),
+            $invites->perPage(),
+            $invites->currentPage(),
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
         return response()->json(responseFormatter(DEFAULT_200, [
-            'invites' => $data,
+            'invites' => $data->values()->all(),
             'total' => $invites->total(),
         ], limit: $limit, offset: $offset));
     }
@@ -149,7 +158,7 @@ class ReferralController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate($limit, ['*'], 'page', $offset);
 
-        $data = $rewards->map(function ($reward) {
+        $data = $rewards->getCollection()->map(function ($reward) {
             return [
                 'id' => $reward->id,
                 'points' => $reward->referrer_points,
@@ -164,7 +173,7 @@ class ReferralController extends Controller
         });
 
         return response()->json(responseFormatter(DEFAULT_200, [
-            'rewards' => $data,
+            'rewards' => $data->values()->all(),
             'total' => $rewards->total(),
             'total_points' => ReferralReward::where('referrer_id', $user->id)
                 ->where('referrer_status', ReferralReward::STATUS_PAID)

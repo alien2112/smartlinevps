@@ -173,6 +173,30 @@ class LostItemService extends BaseService implements LostItemServiceInterface
     }
 
     /**
+     * Get unread lost items for driver from the last 24 hours
+     * Unread = items where driver_response is null and status is pending or driver_contacted
+     */
+    public function getUnreadByDriver(string $driverId, int $limit = 10, int $offset = 1): Collection|LengthAwarePaginator
+    {
+        $twentyFourHoursAgo = now()->subHours(24);
+
+        // Use direct query builder for better control over null checks and date range
+        $query = $this->baseRepository->getModel()
+            ->where('driver_id', $driverId)
+            ->whereNull('driver_response') // Driver hasn't responded yet
+            ->whereIn('status', [LostItem::STATUS_PENDING, LostItem::STATUS_DRIVER_CONTACTED])
+            ->whereBetween('created_at', [$twentyFourHoursAgo, now()])
+            ->with(['trip.coordinate', 'customer'])
+            ->orderBy('created_at', 'desc');
+
+        if ($limit) {
+            return $query->paginate(perPage: $limit, page: $offset ?? 1);
+        }
+
+        return $query->get();
+    }
+
+    /**
      * Update driver response
      */
     public function updateDriverResponse(string $id, string $response, ?string $notes = null): ?Model

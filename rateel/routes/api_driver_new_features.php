@@ -84,15 +84,23 @@ Route::group(['prefix' => 'driver/auth', 'middleware' => ['auth:api']], function
         Route::delete('/emergency-contacts/{id}', [\App\Http\Controllers\Api\Driver\AccountController::class, 'deleteEmergencyContact']);
         Route::post('/emergency-contacts/{id}/set-primary', [\App\Http\Controllers\Api\Driver\AccountController::class, 'setPrimaryContact']);
 
-        // Phone Change
-        Route::post('/change-phone/request', [\App\Http\Controllers\Api\Driver\AccountController::class, 'requestPhoneChange']);
-        Route::post('/change-phone/verify-old', [\App\Http\Controllers\Api\Driver\AccountController::class, 'verifyOldPhone']);
-        Route::post('/change-phone/verify-new', [\App\Http\Controllers\Api\Driver\AccountController::class, 'verifyNewPhone']);
+        // Phone Change - Rate limited to prevent OTP abuse and SMS cost attacks
+        // 5 requests per 15 minutes per user for OTP-related endpoints
+        Route::middleware(['throttle:5,15'])->group(function () {
+            Route::post('/change-phone/request', [\App\Http\Controllers\Api\Driver\AccountController::class, 'requestPhoneChange']);
+            Route::post('/change-phone/verify-old', [\App\Http\Controllers\Api\Driver\AccountController::class, 'verifyOldPhone']);
+            Route::post('/change-phone/verify-new', [\App\Http\Controllers\Api\Driver\AccountController::class, 'verifyNewPhone']);
+        });
 
-        // Account Deletion
-        Route::post('/delete-request', [\App\Http\Controllers\Api\Driver\AccountController::class, 'requestAccountDeletion']);
+        // Account Deletion - Strict rate limiting (3 per hour)
+        Route::middleware(['throttle:3,60'])->group(function () {
+            Route::post('/delete-request', [\App\Http\Controllers\Api\Driver\AccountController::class, 'requestAccountDeletion']);
+        });
         Route::post('/delete-cancel', [\App\Http\Controllers\Api\Driver\AccountController::class, 'cancelDeletionRequest']);
         Route::get('/delete-status', [\App\Http\Controllers\Api\Driver\AccountController::class, 'deletionStatus']);
+        
+        // Account Verification
+        Route::get('/verification', [\App\Http\Controllers\Api\Driver\AccountController::class, 'verificationStatus']);
     });
 
     // ============================================
@@ -139,6 +147,16 @@ Route::group(['prefix' => 'driver/auth', 'middleware' => ['auth:api']], function
         Route::get('/achievements', [\App\Http\Controllers\Api\Driver\GamificationController::class, 'achievements']);
         Route::get('/badges', [\App\Http\Controllers\Api\Driver\GamificationController::class, 'badges']);
         Route::get('/progress', [\App\Http\Controllers\Api\Driver\GamificationController::class, 'progress']);
+        Route::post('/check-achievements', [\App\Http\Controllers\Api\Driver\GamificationController::class, 'checkAchievements']);
+    });
+
+    // ============================================
+    // LEADERBOARD
+    // ============================================
+    Route::prefix('leaderboard')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\Driver\LeaderboardController::class, 'index']);
+        Route::get('/my-rank', [\App\Http\Controllers\Api\Driver\LeaderboardController::class, 'myRank']);
+        Route::get('/nearby', [\App\Http\Controllers\Api\Driver\LeaderboardController::class, 'nearby']);
     });
 
     // ============================================

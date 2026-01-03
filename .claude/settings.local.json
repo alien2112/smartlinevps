@@ -28,7 +28,11 @@
       "Bash(redis-cli ping:*)",
       "WebSearch",
       "WebFetch(domain:developers.kashier.io)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(sudo find /var/www/laravel/smartlinevps/rateel/app -user root -type d -exec chown www-data:www-data {} ; -exec chmod 755 {} ;)",
+      "Bash(sudo find:*)",
+      "Bash(cd:*)",
+      "Bash(curl:*)"
     ]
   }
 }

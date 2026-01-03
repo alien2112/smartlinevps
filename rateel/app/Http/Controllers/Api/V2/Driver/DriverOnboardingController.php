@@ -71,27 +71,46 @@ class DriverOnboardingController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'onboarding_id' => 'required|string|min:19|max:24', // onb_ + 16 chars (flexible for future changes)
-            'otp' => 'required|string|size:' . config('driver_onboarding.otp.length', 6),
+            'otp' => 'required|string|size:' . config('driver_onboarding.otp.length', 4),
             'device_id' => 'nullable|string|max:100',
+        ], [
+            'otp.size' => translate('Verification code must be :size digits', ['size' => config('driver_onboarding.otp.length', 4)]),
         ]);
 
         if ($validator->fails()) {
             return $this->validationError($validator);
         }
 
-        $result = $this->onboardingService->verifyOtp(
-            $request->onboarding_id,
-            $request->otp,
-            $request->device_id
-        );
+        try {
+            $result = $this->onboardingService->verifyOtp(
+                $request->onboarding_id,
+                $request->otp,
+                $request->device_id
+            );
 
-        if (!$result['success']) {
-            $statusCode = $this->getErrorStatusCode($result['error']['code'] ?? 'UNKNOWN');
+            if (!$result['success']) {
+                $statusCode = $this->getErrorStatusCode($result['error']['code'] ?? 'UNKNOWN');
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['error']['message'],
+                    'error' => $result['error'],
+                ], $statusCode);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Exception in verifyOtp controller', [
+                'onboarding_id' => $request->onboarding_id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => $result['error']['message'],
-                'error' => $result['error'],
-            ], $statusCode);
+                'message' => translate('An error occurred while verifying the code. Please try again.'),
+                'error' => [
+                    'code' => 'VERIFICATION_ERROR',
+                    'message' => translate('An error occurred while verifying the code. Please try again.'),
+                ],
+            ], 500);
         }
 
         return response()->json([
@@ -176,27 +195,22 @@ class DriverOnboardingController extends Controller
             'password' => [
                 'required',
                 'string',
-                'min:' . ($passwordConfig['min_length'] ?? 8),
+                'min:8',
+                'max:128',
                 'confirmed',
+                'regex:/^[a-zA-Z0-9]+$/', // Only letters and digits, no special characters
             ],
         ];
 
-        // Add password complexity rules
-        if ($passwordConfig['require_uppercase'] ?? true) {
-            $rules['password'][] = 'regex:/[A-Z]/';
-        }
-        if ($passwordConfig['require_lowercase'] ?? true) {
-            $rules['password'][] = 'regex:/[a-z]/';
-        }
-        if ($passwordConfig['require_number'] ?? true) {
-            $rules['password'][] = 'regex:/[0-9]/';
-        }
-        if ($passwordConfig['require_special'] ?? false) {
-            $rules['password'][] = 'regex:/[@$!%*#?&]/';
-        }
-
         $validator = Validator::make($request->all(), $rules, [
-            'password.regex' => translate('Password does not meet complexity requirements'),
+            'password.regex' => translate('Password can only contain letters and numbers. No special characters allowed.'),
+            'password.min' => translate('Password must be at least 8 characters long.'),
+            'password.required' => translate('Password is required.'),
+            'password.confirmed' => translate('Password confirmation does not match.'),
+            'first_name.regex' => translate('First name must contain only letters and spaces. No numbers or special characters allowed.'),
+            'first_name.max' => translate('First name must not exceed 50 characters.'),
+            'last_name.regex' => translate('Last name must contain only letters and spaces. No numbers or special characters allowed.'),
+            'last_name.max' => translate('Last name must not exceed 50 characters.'),
         ]);
 
         if ($validator->fails()) {
@@ -232,18 +246,48 @@ class DriverOnboardingController extends Controller
         $maxAge = $profileConfig['max_age'] ?? 65;
 
         $validator = Validator::make($request->all(), [
-            'first_name' => 'required|string|min:2|max:50',
-            'last_name' => 'required|string|min:2|max:50',
+            'first_name' => [
+                'required',
+                'string',
+                'min:2',
+                'max:50',
+                'regex:/^[\p{L}\s]+$/u', // Only letters (including Arabic) and spaces, no numbers or emojis
+            ],
+            'last_name' => [
+                'required',
+                'string',
+                'min:2',
+                'max:50',
+                'regex:/^[\p{L}\s]+$/u', // Only letters (including Arabic) and spaces, no numbers or emojis
+            ],
             'national_id' => 'required|string|min:10|max:20',
             'city_id' => 'required|string|exists:cities,id',
             'email' => 'nullable|email|max:100',
             'date_of_birth' => "nullable|date|before:-{$minAge} years|after:-{$maxAge} years",
             'gender' => 'nullable|in:male,female',
-            'first_name_ar' => 'nullable|string|min:2|max:50',
-            'last_name_ar' => 'nullable|string|min:2|max:50',
+            'first_name_ar' => [
+                'nullable',
+                'string',
+                'min:2',
+                'max:50',
+                'regex:/^[\p{L}\s]+$/u', // Only letters (including Arabic) and spaces
+            ],
+            'last_name_ar' => [
+                'nullable',
+                'string',
+                'min:2',
+                'max:50',
+                'regex:/^[\p{L}\s]+$/u', // Only letters (including Arabic) and spaces
+            ],
         ], [
             'date_of_birth.before' => translate('You must be at least :min years old', ['min' => $minAge]),
             'date_of_birth.after' => translate('You must be under :max years old', ['max' => $maxAge]),
+            'first_name.regex' => translate('First name must contain only letters and spaces. No numbers or special characters allowed.'),
+            'first_name.max' => translate('First name must not exceed 50 characters.'),
+            'last_name.regex' => translate('Last name must contain only letters and spaces. No numbers or special characters allowed.'),
+            'last_name.max' => translate('Last name must not exceed 50 characters.'),
+            'first_name_ar.regex' => translate('Arabic first name must contain only letters and spaces.'),
+            'last_name_ar.regex' => translate('Arabic last name must contain only letters and spaces.'),
         ]);
 
         if ($validator->fails()) {
@@ -412,10 +456,12 @@ class DriverOnboardingController extends Controller
     {
         return match ($code) {
             'RATE_LIMITED', 'RESEND_COOLDOWN', 'VERIFY_LOCKED' => 429,
-            'SESSION_NOT_FOUND', 'SESSION_EXPIRED', 'UNAUTHORIZED' => 401,
+            'SESSION_NOT_FOUND', 'SESSION_EXPIRED', 'SESSION_INVALID', 'UNAUTHORIZED' => 401,
             'INVALID_STATE_TRANSITION', 'INVALID_STATE' => 409,
             'INVALID_OTP', 'OTP_EXPIRED', 'INVALID_DOCUMENT_TYPE', 'FILE_TOO_LARGE', 'INVALID_FILE_TYPE' => 400,
             'MAX_UPLOADS_REACHED', 'MAX_RESENDS', 'DOCUMENTS_INCOMPLETE' => 400,
+            'DUPLICATE_ENTRY' => 409,
+            'DATABASE_ERROR', 'UNEXPECTED_ERROR', 'VERIFICATION_ERROR' => 500,
             default => 400,
         };
     }

@@ -30,6 +30,7 @@ class Vehicle extends Model
         'driver_id',
         'documents',
         'is_active',
+        'is_primary',
         'deleted_at',
         'created_at',
         'updated_at',
@@ -47,6 +48,7 @@ class Vehicle extends Model
         'licence_expire_date' => 'date',
         'documents' => 'array',
         'is_active' => 'boolean',
+        'is_primary' => 'boolean',
         'vehicle_request_status' => 'string',
         'draft' => 'array',
     ];
@@ -87,6 +89,22 @@ class Vehicle extends Model
         $query->where('is_active', $status);
     }
 
+    /**
+     * Scope to get primary vehicle for a driver
+     */
+    public function scopePrimary($query)
+    {
+        return $query->where('is_primary', true);
+    }
+
+    /**
+     * Scope to get active vehicles
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
 
     public function brand(): BelongsTo
     {
@@ -124,6 +142,20 @@ class Vehicle extends Model
 
         static::creating(function ($item){
             $item->ref_id = (static::withTrashed()->max('ref_id') ?? 100000) + 1;
+            
+            // If this is the first vehicle for the driver, set it as primary
+            if ($item->driver_id && !static::where('driver_id', $item->driver_id)->exists()) {
+                $item->is_primary = true;
+            }
+        });
+
+        // When setting a vehicle as primary, unset others
+        static::updating(function ($item) {
+            if ($item->isDirty('is_primary') && $item->is_primary) {
+                static::where('driver_id', $item->driver_id)
+                    ->where('id', '!=', $item->id)
+                    ->update(['is_primary' => false]);
+            }
         });
 
         static::updated(function($item) {

@@ -44,7 +44,7 @@ return [
         'enabled' => env('BEON_OTP_ENABLED', true),
         'base_url' => env('BEON_OTP_BASE_URL', 'https://v3.api.beon.chat/api/v3'),
         'api_token' => env('BEON_OTP_TOKEN', 'p9ORLwInOCRgjK6BS8DFw5s8yiITUhtEQxAHmD4HudAv1mcgW7WhIvhtiz1I'),
-        'otp_length' => env('BEON_OTP_LENGTH', 6),
+        'otp_length' => env('BEON_OTP_LENGTH', 4),
         'lang' => env('BEON_OTP_LANG', 'ar'),
     ],
 

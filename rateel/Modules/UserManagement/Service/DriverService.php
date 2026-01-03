@@ -222,7 +222,7 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
         } else {
             $existingDocuments = array_key_exists('existing_documents', $data) ? $data['existing_documents'] : [];
             // Remove deleted documents from the existing list
-            $documents = json_decode($existingDocuments, true);
+            $documents = is_string($existingDocuments) ? json_decode($existingDocuments, true) : (is_array($existingDocuments) ? $existingDocuments : []);
             // Handle new uploads
             if ($data['other_documents'] ?? null) {
                 foreach ($data['other_documents'] as $doc) {

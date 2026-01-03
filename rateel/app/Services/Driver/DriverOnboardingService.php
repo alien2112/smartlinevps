@@ -4,12 +4,14 @@ namespace App\Services\Driver;
 
 use App\Enums\DriverOnboardingState;
 use App\Models\User;
+use App\Services\BeOnOtpService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Database\QueryException;
 use Carbon\Carbon;
 
 /**
@@ -25,10 +27,12 @@ use Carbon\Carbon;
 class DriverOnboardingService
 {
     protected OnboardingRateLimiter $rateLimiter;
+    protected BeOnOtpService $beonOtpService;
 
-    public function __construct(OnboardingRateLimiter $rateLimiter)
+    public function __construct(OnboardingRateLimiter $rateLimiter, BeOnOtpService $beonOtpService)
     {
         $this->rateLimiter = $rateLimiter;
+        $this->beonOtpService = $beonOtpService;
     }
 
     // ============================================
@@ -201,23 +205,24 @@ class DriverOnboardingService
             ];
         }
 
-        return DB::transaction(function () use ($onboardingId, $otp, $deviceId, $rateCheck) {
-            // Get session
-            $session = DB::table('driver_onboarding_sessions')
-                ->where('onboarding_id', $onboardingId)
-                ->where('status', 'pending')
-                ->lockForUpdate()
-                ->first();
+        try {
+            return DB::transaction(function () use ($onboardingId, $otp, $deviceId, $rateCheck) {
+                // Get session
+                $session = DB::table('driver_onboarding_sessions')
+                    ->where('onboarding_id', $onboardingId)
+                    ->where('status', 'pending')
+                    ->lockForUpdate()
+                    ->first();
 
-            if (!$session) {
-                return [
-                    'success' => false,
-                    'error' => [
-                        'code' => 'SESSION_NOT_FOUND',
-                        'message' => translate('Session not found or expired. Please start over.'),
-                    ],
-                ];
-            }
+                if (!$session) {
+                    return [
+                        'success' => false,
+                        'error' => [
+                            'code' => 'SESSION_NOT_FOUND',
+                            'message' => translate('Session not found or expired. Please start over.'),
+                        ],
+                    ];
+                }
 
             // Check session expiry
             if (Carbon::parse($session->expires_at)->isPast()) {
@@ -246,7 +251,7 @@ class DriverOnboardingService
                 ];
             }
 
-            // Verify OTP
+            // Verify OTP (OTP still uses bcrypt for security, only password uses SHA256)
             if (!Hash::check($otp, $session->otp_hash)) {
                 $this->rateLimiter->recordOtpVerifyAttempt($onboardingId, false);
 
@@ -331,11 +336,67 @@ class DriverOnboardingService
                 'is_returning' => $isReturning,
             ]);
 
+                return [
+                    'success' => true,
+                    'data' => $responseData,
+                ];
+            });
+        } catch (QueryException $e) {
+            // Handle database errors
+            $errorCode = $e->getCode();
+            $errorMessage = $e->getMessage();
+
+            Log::error('Database error during OTP verification', [
+                'onboarding_id' => $onboardingId,
+                'error_code' => $errorCode,
+                'error_message' => $errorMessage,
+                'sql_state' => $e->errorInfo[0] ?? null,
+            ]);
+
+            // Handle specific database errors
+            if (str_contains($errorMessage, 'foreign key constraint') || $errorCode === '23000') {
+                return [
+                    'success' => false,
+                    'error' => [
+                        'code' => 'SESSION_INVALID',
+                        'message' => translate('Session is invalid. Please start over.'),
+                    ],
+                ];
+            }
+
+            if (str_contains($errorMessage, 'Duplicate entry')) {
+                return [
+                    'success' => false,
+                    'error' => [
+                        'code' => 'DUPLICATE_ENTRY',
+                        'message' => translate('This phone number is already registered. Please login instead.'),
+                    ],
+                ];
+            }
+
+            // Generic database error
             return [
-                'success' => true,
-                'data' => $responseData,
+                'success' => false,
+                'error' => [
+                    'code' => 'DATABASE_ERROR',
+                    'message' => translate('An error occurred. Please try again later.'),
+                ],
             ];
-        });
+        } catch (\Exception $e) {
+            Log::error('Unexpected error during OTP verification', [
+                'onboarding_id' => $onboardingId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => 'UNEXPECTED_ERROR',
+                    'message' => translate('An unexpected error occurred. Please try again.'),
+                ],
+            ];
+        }
     }
 
     /**
@@ -495,7 +556,7 @@ class DriverOnboardingService
         }
 
         $driver->update([
-            'password' => Hash::make($password),
+            'password' => hash('sha256', $password),
             'password_set_at' => now(),
             'onboarding_state' => DriverOnboardingState::PASSWORD_SET->value,
             'onboarding_state_version' => $driver->onboarding_state_version + 1,
@@ -821,30 +882,58 @@ class DriverOnboardingService
 
     private function getOrCreateDriver(string $phone, ?string $deviceId): User
     {
-        $driver = User::where('phone', $phone)
-            ->where('user_type', 'driver')
-            ->first();
+        try {
+            $driver = User::where('phone', $phone)
+                ->where('user_type', 'driver')
+                ->first();
 
-        if ($driver) {
-            $driver->wasRecentlyCreated = false;
+            if ($driver) {
+                $driver->wasRecentlyCreated = false;
+                return $driver;
+            }
+
+            // Check if user exists with different user_type
+            $existingUser = User::where('phone', $phone)->first();
+            if ($existingUser) {
+                Log::warning('Phone number exists with different user type', [
+                    'phone' => $this->maskPhone($phone),
+                    'existing_user_type' => $existingUser->user_type,
+                ]);
+                throw new \Exception('Phone number already registered as ' . $existingUser->user_type);
+            }
+
+            $driver = User::create([
+                'id' => Str::uuid(),
+                'phone' => $phone,
+                'user_type' => 'driver',
+                'is_active' => false,
+                'is_approved' => false,
+                'is_phone_verified' => true,
+                'onboarding_state' => DriverOnboardingState::OTP_PENDING->value,
+                'onboarding_state_version' => 1,
+                'device_fingerprint' => $deviceId,
+                'ref_code' => strtoupper(Str::random(8)),
+            ]);
+
+            $driver->wasRecentlyCreated = true;
             return $driver;
+        } catch (QueryException $e) {
+            Log::error('Database error creating driver', [
+                'phone' => $this->maskPhone($phone),
+                'error' => $e->getMessage(),
+                'error_code' => $e->getCode(),
+            ]);
+
+            // Re-throw to be handled by caller
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Error creating driver', [
+                'phone' => $this->maskPhone($phone),
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
         }
-
-        $driver = User::create([
-            'id' => Str::uuid(),
-            'phone' => $phone,
-            'user_type' => 'driver',
-            'is_active' => false,
-            'is_approved' => false,
-            'is_phone_verified' => true,
-            'onboarding_state' => DriverOnboardingState::OTP_PENDING->value,
-            'onboarding_state_version' => 1,
-            'device_fingerprint' => $deviceId,
-            'ref_code' => strtoupper(Str::random(8)),
-        ]);
-
-        $driver->wasRecentlyCreated = true;
-        return $driver;
     }
 
     private function generateOtp(): string
@@ -855,12 +944,36 @@ class DriverOnboardingService
 
     private function sendOtpSms(string $phone, string $otp): void
     {
-        // TODO: Integrate with your SMS gateway
-        // For now, log the OTP (remove in production!)
-        Log::debug('OTP for driver onboarding', ['phone' => $this->maskPhone($phone), 'otp' => $otp]);
+        try {
+            // Check if BeOn OTP is enabled
+            if (!config('services.beon_otp.enabled', true)) {
+                Log::warning('BeOn OTP is disabled, OTP not sent', [
+                    'phone' => $this->maskPhone($phone),
+                ]);
+                return;
+            }
 
-        // Example SMS integration:
-        // app(SmsService::class)->send($phone, translate('Your verification code is: :otp', ['otp' => $otp]));
+            // Send OTP via BeOn OTP Service
+            $result = $this->beonOtpService->sendOtp($phone, $otp, 'SmartLine');
+
+            if ($result['success']) {
+                Log::info('Driver onboarding OTP sent via BeOn', [
+                    'phone' => $this->maskPhone($phone),
+                    'response' => $result['data'] ?? null,
+                ]);
+            } else {
+                Log::error('Failed to send OTP via BeOn', [
+                    'phone' => $this->maskPhone($phone),
+                    'error' => $result['message'] ?? 'Unknown error',
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Exception while sending OTP via BeOn', [
+                'phone' => $this->maskPhone($phone),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
     }
 
     private function normalizePhone(string $phone): string

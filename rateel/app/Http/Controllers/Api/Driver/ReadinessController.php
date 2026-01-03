@@ -35,7 +35,8 @@ class ReadinessController extends Controller
         ]);
 
         $driverDetails = $driver->driverDetails;
-        $vehicle = $driver->vehicle;
+        // Use primary vehicle for readiness check
+        $vehicle = $driver->primaryVehicle;
 
         // 1. ACCOUNT STATUS
         $accountStatus = $this->checkAccountStatus($driver);
@@ -404,7 +405,7 @@ class ReadinessController extends Controller
             'pickup_address' => $lastTrip->pickup_address,
             'destination_address' => $lastTrip->destination_address,
             'distance_km' => $lastTrip->estimated_distance,
-            'rating_given' => $lastTrip->reviews()->exists(),
+            'rating_given' => $lastTrip->driverReceivedReview()->exists() || $lastTrip->customerReceivedReview()->exists(),
         ];
     }
 

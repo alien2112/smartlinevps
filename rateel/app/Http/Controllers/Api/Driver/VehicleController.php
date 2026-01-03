@@ -15,10 +15,14 @@ class VehicleController extends Controller
      * Get insurance status
      * GET /api/driver/auth/vehicle/insurance-status
      */
-    public function insuranceStatus(): JsonResponse
+    public function insuranceStatus(Request $request): JsonResponse
     {
         $driver = auth('api')->user();
-        $vehicle = $driver->vehicle;
+        // Allow specifying vehicle_id, otherwise use primary vehicle
+        $vehicleId = $request->input('vehicle_id');
+        $vehicle = $vehicleId 
+            ? Vehicle::where('driver_id', $driver->id)->find($vehicleId)
+            : $driver->primaryVehicle;
 
         if (!$vehicle) {
             return response()->json(responseFormatter([
@@ -70,6 +74,7 @@ class VehicleController extends Controller
             'expiry_date' => 'required|date|after:today',
             'company' => 'sometimes|string|max:255',
             'policy_number' => 'sometimes|string|max:255',
+            'vehicle_id' => 'sometimes|uuid|exists:vehicles,id',
         ]);
 
         if ($validator->fails()) {
@@ -80,7 +85,11 @@ class VehicleController extends Controller
         }
 
         $driver = auth('api')->user();
-        $vehicle = $driver->vehicle;
+        // Allow specifying vehicle_id, otherwise use primary vehicle
+        $vehicleId = $request->input('vehicle_id');
+        $vehicle = $vehicleId 
+            ? Vehicle::where('driver_id', $driver->id)->find($vehicleId)
+            : $driver->primaryVehicle;
 
         if (!$vehicle) {
             return response()->json(responseFormatter([
@@ -106,10 +115,14 @@ class VehicleController extends Controller
      * Get inspection status
      * GET /api/driver/auth/vehicle/inspection-status
      */
-    public function inspectionStatus(): JsonResponse
+    public function inspectionStatus(Request $request): JsonResponse
     {
         $driver = auth('api')->user();
-        $vehicle = $driver->vehicle;
+        // Allow specifying vehicle_id, otherwise use primary vehicle
+        $vehicleId = $request->input('vehicle_id');
+        $vehicle = $vehicleId 
+            ? Vehicle::where('driver_id', $driver->id)->find($vehicleId)
+            : $driver->primaryVehicle;
 
         if (!$vehicle) {
             return response()->json(responseFormatter([
@@ -161,6 +174,7 @@ class VehicleController extends Controller
             'inspection_date' => 'required|date|before_or_equal:today',
             'next_due_date' => 'required|date|after:today',
             'certificate_number' => 'sometimes|string|max:255',
+            'vehicle_id' => 'sometimes|uuid|exists:vehicles,id',
         ]);
 
         if ($validator->fails()) {
@@ -171,7 +185,11 @@ class VehicleController extends Controller
         }
 
         $driver = auth('api')->user();
-        $vehicle = $driver->vehicle;
+        // Allow specifying vehicle_id, otherwise use primary vehicle
+        $vehicleId = $request->input('vehicle_id');
+        $vehicle = $vehicleId 
+            ? Vehicle::where('driver_id', $driver->id)->find($vehicleId)
+            : $driver->primaryVehicle;
 
         if (!$vehicle) {
             return response()->json(responseFormatter([
@@ -197,12 +215,20 @@ class VehicleController extends Controller
      * Get all vehicle reminders
      * GET /api/driver/auth/vehicle/reminders
      */
-    public function getReminders(): JsonResponse
+    public function getReminders(Request $request): JsonResponse
     {
         $driver = auth('api')->user();
-        $vehicle = $driver->vehicle;
+        // Get reminders for all vehicles or specific vehicle
+        $vehicleId = $request->input('vehicle_id');
+        
+        if ($vehicleId) {
+            $vehicles = collect([Vehicle::where('driver_id', $driver->id)->find($vehicleId)])->filter();
+        } else {
+            // Get reminders for all active vehicles
+            $vehicles = $driver->activeVehicles;
+        }
 
-        if (!$vehicle) {
+        if ($vehicles->isEmpty()) {
             return response()->json(responseFormatter([
                 'response_code' => 'no_vehicle_404',
                 'message' => translate('No vehicle found'),
@@ -211,37 +237,54 @@ class VehicleController extends Controller
 
         $reminders = [];
 
-        // Insurance reminder
-        if ($vehicle->insurance_expiry_date) {
-            $daysUntilExpiry = now()->diffInDays($vehicle->insurance_expiry_date, false);
-            if ($daysUntilExpiry >= 0 && $daysUntilExpiry <= 30) {
-                $reminders[] = [
-                    'type' => 'insurance',
-                    'title' => translate('Insurance Renewal Due'),
-                    'message' => translate('Your vehicle insurance expires in :days days', ['days' => $daysUntilExpiry]),
-                    'days_remaining' => $daysUntilExpiry,
-                    'due_date' => $vehicle->insurance_expiry_date,
-                    'priority' => $daysUntilExpiry <= 7 ? 'high' : 'medium',
-                    'action' => 'renew_insurance',
-                ];
-            }
-        }
+        // Check reminders for each vehicle
+        foreach ($vehicles as $vehicle) {
+            $vehicleInfo = [
+                'vehicle_id' => $vehicle->id,
+                'licence_plate' => $vehicle->licence_plate_number,
+            ];
 
-        // Inspection reminder
-        if ($vehicle->next_inspection_due) {
-            $daysUntilDue = now()->diffInDays($vehicle->next_inspection_due, false);
-            if ($daysUntilDue >= -7 && $daysUntilDue <= 30) {
-                $reminders[] = [
-                    'type' => 'inspection',
-                    'title' => $daysUntilDue < 0 ? translate('Inspection Overdue') : translate('Inspection Due'),
-                    'message' => $daysUntilDue < 0
-                        ? translate('Your vehicle inspection is overdue by :days days', ['days' => abs($daysUntilDue)])
-                        : translate('Your vehicle inspection is due in :days days', ['days' => $daysUntilDue]),
-                    'days_remaining' => $daysUntilDue,
-                    'due_date' => $vehicle->next_inspection_due,
-                    'priority' => $daysUntilDue <= 0 ? 'urgent' : ($daysUntilDue <= 7 ? 'high' : 'medium'),
-                    'action' => 'schedule_inspection',
-                ];
+            // Insurance reminder
+            if ($vehicle->insurance_expiry_date) {
+                $daysUntilExpiry = now()->diffInDays($vehicle->insurance_expiry_date, false);
+                if ($daysUntilExpiry >= 0 && $daysUntilExpiry <= 30) {
+                    $reminders[] = array_merge($vehicleInfo, [
+                        'type' => 'insurance',
+                        'title' => translate('Insurance Renewal Due'),
+                        'message' => translate('Vehicle :plate insurance expires in :days days', [
+                            'plate' => $vehicle->licence_plate_number,
+                            'days' => $daysUntilExpiry
+                        ]),
+                        'days_remaining' => $daysUntilExpiry,
+                        'due_date' => $vehicle->insurance_expiry_date,
+                        'priority' => $daysUntilExpiry <= 7 ? 'high' : 'medium',
+                        'action' => 'renew_insurance',
+                    ]);
+                }
+            }
+
+            // Inspection reminder
+            if ($vehicle->next_inspection_due) {
+                $daysUntilDue = now()->diffInDays($vehicle->next_inspection_due, false);
+                if ($daysUntilDue >= -7 && $daysUntilDue <= 30) {
+                    $reminders[] = array_merge($vehicleInfo, [
+                        'type' => 'inspection',
+                        'title' => $daysUntilDue < 0 ? translate('Inspection Overdue') : translate('Inspection Due'),
+                        'message' => $daysUntilDue < 0
+                            ? translate('Vehicle :plate inspection is overdue by :days days', [
+                                'plate' => $vehicle->licence_plate_number,
+                                'days' => abs($daysUntilDue)
+                            ])
+                            : translate('Vehicle :plate inspection is due in :days days', [
+                                'plate' => $vehicle->licence_plate_number,
+                                'days' => $daysUntilDue
+                            ]),
+                        'days_remaining' => $daysUntilDue,
+                        'due_date' => $vehicle->next_inspection_due,
+                        'priority' => $daysUntilDue <= 0 ? 'urgent' : ($daysUntilDue <= 7 ? 'high' : 'medium'),
+                        'action' => 'schedule_inspection',
+                    ]);
+                }
             }
         }
 

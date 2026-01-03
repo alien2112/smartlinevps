@@ -48,4 +48,10 @@ interface LostItemServiceInterface extends BaseServiceInterface
      * Check if duplicate report exists
      */
     public function hasDuplicateReport(string $tripRequestId, string $category): bool;
+
+    /**
+     * Get unread lost items for driver from the last 24 hours
+     * Unread = items where driver_response is null and status is pending or driver_contacted
+     */
+    public function getUnreadByDriver(string $driverId, int $limit = 10, int $offset = 1): Collection|LengthAwarePaginator;
 }

@@ -72,19 +72,26 @@ class DashboardController extends Controller
         $rating = $driver->receivedReviews()->avg('rating') ?? 0;
         $totalReviews = $driver->receivedReviews()->count();
 
-        // Active promotions count
+        // Active promotions count (promotions are general, not driver-specific unless target_driver_id is set)
         $activePromotions = DB::table('driver_promotions')
-            ->where('driver_id', $driver->id)
             ->where('is_active', true)
-            ->where('expires_at', '>', now())
+            ->where(function($q) use ($driver) {
+                $q->whereNull('target_driver_id')
+                  ->orWhere('target_driver_id', $driver->id);
+            })
+            ->where(function($q) {
+                $q->whereNull('expires_at')
+                  ->orWhere('expires_at', '>', now());
+            })
             ->count();
 
         // Upcoming reminders
         $reminders = [];
 
-        // Check vehicle insurance expiry
-        if ($driver->vehicle && $driver->vehicle->insurance_expiry_date) {
-            $daysUntilExpiry = now()->diffInDays($driver->vehicle->insurance_expiry_date, false);
+        // Check vehicle insurance expiry (check all vehicles, but prioritize primary)
+        $primaryVehicle = $driver->primaryVehicle;
+        if ($primaryVehicle && $primaryVehicle->insurance_expiry_date) {
+            $daysUntilExpiry = now()->diffInDays($primaryVehicle->insurance_expiry_date, false);
             if ($daysUntilExpiry >= 0 && $daysUntilExpiry <= 30) {
                 $reminders[] = [
                     'type' => 'insurance_expiry',
@@ -256,7 +263,14 @@ class DashboardController extends Controller
         // Get active promotions for this driver
         $promotions = DB::table('driver_promotions')
             ->where('is_active', true)
-            ->where('expires_at', '>', now())
+            ->where(function($query) {
+                $query->whereNull('expires_at')
+                      ->orWhere('expires_at', '>', now());
+            })
+            ->where(function($query) {
+                $query->whereNull('starts_at')
+                      ->orWhere('starts_at', '<=', now());
+            })
             ->where(function($query) use ($driver) {
                 $query->whereNull('target_driver_id')
                       ->orWhere('target_driver_id', $driver->id);

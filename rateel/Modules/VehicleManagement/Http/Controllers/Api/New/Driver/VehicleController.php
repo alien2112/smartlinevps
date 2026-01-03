@@ -21,10 +21,24 @@ class VehicleController extends Controller
 
     public function store(VehicleApiStoreUpdateRequest $request)
     {
-        if ($this->vehicleService->findOneBy(['driver_id' => $request->driver_id])) {
-            return response()->json(responseFormatter(constant: VEHICLE_DRIVER_EXISTS_403), 403);
+        // Allow multiple vehicles per driver
+        // Check if this should be set as primary
+        $existingVehicles = $this->vehicleService->getBy(criteria: ['driver_id' => $request->driver_id]);
+        $isPrimary = $existingVehicles->isEmpty() || ($request->has('is_primary') && $request->is_primary);
+        
+        $data = array_merge($request->validated(), [
+            'vehicle_request_status' => PENDING,
+            'is_primary' => $isPrimary
+        ]);
+        
+        // If setting as primary, unset others
+        if ($isPrimary) {
+            $this->vehicleService->getBy(criteria: ['driver_id' => $request->driver_id])
+                ->each(function ($vehicle) {
+                    $vehicle->update(['is_primary' => false]);
+                });
         }
-        $data = array_merge($request->validated(), ['vehicle_request_status' => PENDING]);
+        
         $this->vehicleService->create(data: $data);
         return response()->json(responseFormatter(VEHICLE_CREATE_200), 200);
     }

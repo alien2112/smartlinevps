@@ -48,7 +48,39 @@ class DriverAuthController extends Controller
             ->first();
 
         // Always return same error message to prevent enumeration
-        if (!$driver || !Hash::check($request->password, $driver->password)) {
+        if (!$driver) {
+            return response()->json([
+                'success' => false,
+                'message' => translate('Invalid credentials'),
+            ], 401);
+        }
+        
+        // Verify password - support both SHA256 (new) and bcrypt (legacy)
+        $passwordValid = false;
+        $storedPassword = $driver->password;
+        
+        if (!$storedPassword) {
+            Log::warning('Login attempt with driver that has no password', [
+                'driver_id' => $driver->id,
+                'phone' => $driver->phone,
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => translate('Invalid credentials'),
+            ], 401);
+        }
+        
+        // Detect hash format: bcrypt starts with $2y$, SHA256 is 64 hex characters
+        if (str_starts_with($storedPassword, '$2y$') || str_starts_with($storedPassword, '$2a$') || str_starts_with($storedPassword, '$2b$')) {
+            // Bcrypt password (legacy)
+            $passwordValid = Hash::check($request->password, $storedPassword);
+        } else {
+            // SHA256 password (new format - 64 hex characters)
+            $passwordHash = hash('sha256', $request->password);
+            $passwordValid = hash_equals($storedPassword, $passwordHash);
+        }
+        
+        if (!$passwordValid) {
             return response()->json([
                 'success' => false,
                 'message' => translate('Invalid credentials'),
@@ -105,6 +137,7 @@ class DriverAuthController extends Controller
         
         // Create onboarding token if doesn't exist
         $token = $driver->createToken('driver-onboarding', ['onboarding'])->accessToken;
+        $tokenExpiresAt = now()->addHours(config('driver_onboarding.session.token_ttl_hours', 48));
 
         return response()->json([
             'success' => true,
@@ -112,10 +145,12 @@ class DriverAuthController extends Controller
             'data' => [
                 'token' => $token,
                 'token_type' => 'Bearer',
+                'token_expires_at' => $tokenExpiresAt->toIso8601String(),
                 'token_scope' => 'onboarding',
                 'is_approved' => false,
                 'onboarding_state' => $onboardingState,
                 'next_step' => $this->getNextStep($onboardingState),
+                'state_version' => $driver->onboarding_state_version ?? 1,
             ],
         ]);
     }
