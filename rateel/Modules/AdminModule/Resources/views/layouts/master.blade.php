@@ -1197,6 +1197,55 @@
         });
     }
 
+    function panicAlertNotification(data) {
+        let panicCheckLaterButton = $('#panicCheckLater');
+
+        // Set notification content
+        $('#panicAlertNotificationTitle').text(data.title || '{{ translate('Emergency Panic Alert') }}');
+        $('#panicAlertNotificationSubtitle').text(data.body || data.description || '');
+        $('#panicAlertCustomerName').text(data.customer_name || '{{ translate('Unknown') }}');
+        $('#panicAlertCustomerPhone').text(data.customer_phone || '{{ translate('N/A') }}');
+        $('#panicAlertReason').text(data.reason || '{{ translate('Emergency') }}');
+
+        // Set map link if coordinates are available
+        if (data.lat && data.lng) {
+            let mapUrl = `https://www.google.com/maps?q=${data.lat},${data.lng}`;
+            $('#panicAlertMapLink').attr('href', mapUrl).show();
+        } else {
+            $('#panicAlertMapLink').hide();
+        }
+
+        const modalElement = document.getElementById('panicAlertNotificationModal');
+        let bootstrapModal = new bootstrap.Modal(modalElement, {
+            backdrop: 'static',
+            keyboard: false,
+        });
+
+        if (modalElement.classList.contains('show')) {
+            bootstrapModal.hide();
+        }
+        bootstrapModal.show();
+
+        const onHidden = () => {
+            modalElement.removeEventListener('hidden.bs.modal', onHidden);
+        };
+        modalElement.addEventListener('hidden.bs.modal', onHidden);
+
+        panicCheckLaterButton.off('click').on('click', function () {
+            stopAudio();
+            bootstrapModal.hide();
+        });
+
+        $('#panicBtnClose').off('click').on('click', function () {
+            stopAudio();
+            bootstrapModal.hide();
+        });
+
+        $('#panicViewAlert').off('click').on('click', function () {
+            stopAudio();
+        });
+    }
+
 
 </script>
 {{--Remove non-numeric characters from the input value  with type="tel" --}}

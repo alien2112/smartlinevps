@@ -520,3 +520,47 @@
     </div>
 </div>
 
+{{--panicAlertNotificationModal--}}
+<div class="modal fade" id="panicAlertNotificationModal" aria-modal="true" role="dialog">
+    <div class="modal-dialog status-warning-modal">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <button type="button" id="panicBtnClose" class="btn-close" data-bs-toggle="modal">
+                </button>
+            </div>
+            <div class="modal-body pb-5 pt-0">
+                <div class="max-349 mx-auto">
+                    <div>
+                        <div class="text-center">
+                            <img alt="" class="mb-4" id="panicAlertIcon"
+                                 src="{{asset('public/assets/admin-module/img/safety-alert-shield-modal-icon-red.svg')}}">
+                            <h5 class="modal-title mb-3 text-danger" id="panicAlertNotificationTitle">{{ translate('Emergency Panic Alert') }}</h5>
+                        </div>
+                        <div class="text-center mb-2">
+                            <p id="panicAlertNotificationSubtitle"></p>
+                        </div>
+                        <div class="text-center mb-2">
+                            <p><strong>{{ translate('Customer') }}:</strong> <span id="panicAlertCustomerName"></span></p>
+                            <p><strong>{{ translate('Phone') }}:</strong> <span id="panicAlertCustomerPhone"></span></p>
+                            <p><strong>{{ translate('Reason') }}:</strong> <span id="panicAlertReason"></span></p>
+                        </div>
+                        <div class="text-center mb-4 pb-2">
+                            <a href="#" id="panicAlertMapLink" target="_blank" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-geo-alt"></i> {{ translate('View Location on Map') }}
+                            </a>
+                        </div>
+                    </div>
+                    <div class="btn--container justify-content-center mt-3">
+                        <button id="panicCheckLater" class="btn btn--cancel min-w-120 fs-14 fw-semibold"
+                        >{{ translate('Check Later') }}</button>
+                        <a href="{{ route('admin.business.setup.safety-precaution.index', ['type' => 'precaution']) }}"
+                           class="btn btn-primary min-w-120 confirm-Toggle fs-14 fw-semibold" id="panicViewAlert">
+                            {{ translate('View Alert') }}
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

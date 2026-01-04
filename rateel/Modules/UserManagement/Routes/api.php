@@ -9,6 +9,7 @@ use Modules\UserManagement\Http\Controllers\Api\Customer\CustomerController;
 use Modules\UserManagement\Http\Controllers\Api\Customer\LoyaltyPointController;
 use Modules\UserManagement\Http\Controllers\Api\Customer\ReferralController;
 use Modules\UserManagement\Http\Controllers\Api\Driver\TimeTrackController;
+use Modules\UserManagement\Http\Controllers\Api\New\Customer\PanicAlertController;
 use Modules\UserManagement\Http\Controllers\Api\New\Customer\WalletTransferController;
 use Modules\UserManagement\Http\Controllers\Api\New\Customer\WalletController;
 use Modules\UserManagement\Http\Controllers\Api\New\Driver\WithdrawController;
@@ -77,6 +78,9 @@ Route::group(['prefix' => 'customer'], function () {
                 Route::get('leaderboard', 'getLeaderboard');
             });
         });
+
+        // Panic Alert / Emergency SOS
+        Route::post('panic-alert/trigger', [PanicAlertController::class, 'trigger']);
     });
 
 });
@@ -191,4 +195,18 @@ Route::group(['prefix' => 'admin/wallet', 'middleware' => ['auth:api']], functio
         Route::get('{userId}/driver-earnings', 'driverEarnings');
     });
 });
+
+// Verification Media Download (signed URL access)
+Route::get('verification/media/{media}', function ($mediaId) {
+    $media = \Modules\UserManagement\Entities\VerificationMedia::findOrFail($mediaId);
+
+    if (!$media->fileExists()) {
+        abort(404, 'File not found');
+    }
+
+    return response()->file(
+        $media->getFullPath(),
+        ['Content-Type' => $media->mime]
+    );
+})->name('verification.media.download')->middleware('signed');
 

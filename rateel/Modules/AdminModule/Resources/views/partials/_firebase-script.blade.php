@@ -51,8 +51,9 @@
             })
             .then(function (token) {
                 // console.log('FCM Token:', token);
-                // Send the token to your backend to subscribe to topic
+                // Send the token to your backend to subscribe to topics
                 subscribeTokenToBackend(token, 'admin_safety_alert_notification');
+                subscribeTokenToBackend(token, 'admin_panic_alert_notification');
             }).catch(function (error) {
             console.error('Error getting permission or token:', error);
         });
@@ -79,19 +80,25 @@
 
     messaging.onMessage(function (payload) {
         if (payload.data) {
-            safetyAlertNotification(payload.data);
-            playAudio();
-            let safetyAlertIconMap = document.getElementsByClassName('safety-alert-icon-map');
-            let zoneMessageDiv = document.getElementsByClassName('get-zone-message');
-            getSafetyAlerts();
-            if (zoneMessageDiv) {
-                getZoneMessage();
+            // Check if this is a panic alert or safety alert
+            if (payload.data.type === 'panic_alert' || payload.data.alert_type === 'panic') {
+                panicAlertNotification(payload.data);
+                playAudio();
+            } else {
+                safetyAlertNotification(payload.data);
+                playAudio();
+                let safetyAlertIconMap = document.getElementsByClassName('safety-alert-icon-map');
+                let zoneMessageDiv = document.getElementsByClassName('get-zone-message');
+                getSafetyAlerts();
+                if (zoneMessageDiv) {
+                    getZoneMessage();
+                }
+                if (safetyAlertIconMap) {
+                    fetchSafetyAlertIcon()
+                }
+                $('.zone-message').removeClass('invisible');
+                sessionStorage.removeItem('showZoneMessage');
             }
-            if (safetyAlertIconMap) {
-                fetchSafetyAlertIcon()
-            }
-            $('.zone-message').removeClass('invisible');
-            sessionStorage.removeItem('showZoneMessage');
         }
     })
     startFCM();
