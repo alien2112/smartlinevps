@@ -7,6 +7,7 @@ use App\Services\Driver\DriverOnboardingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Modules\ZoneManagement\Entities\Zone;
 
 /**
  * Driver Onboarding Controller (V2)
@@ -261,7 +262,6 @@ class DriverOnboardingController extends Controller
                 'regex:/^[\p{L}\s]+$/u', // Only letters (including Arabic) and spaces, no numbers or emojis
             ],
             'national_id' => 'required|string|min:10|max:20',
-            'city_id' => 'required|string|exists:cities,id',
             'email' => 'nullable|email|max:100',
             'date_of_birth' => "nullable|date|before:-{$minAge} years|after:-{$maxAge} years",
             'gender' => 'nullable|in:male,female',
@@ -279,6 +279,18 @@ class DriverOnboardingController extends Controller
                 'max:50',
                 'regex:/^[\p{L}\s]+$/u', // Only letters (including Arabic) and spaces
             ],
+            // Address fields
+            'address' => 'nullable|string|max:500',
+            'street' => 'nullable|string|max:191',
+            'house' => 'nullable|string|max:191',
+            'city' => 'nullable|string|max:191',
+            'zip_code' => 'nullable|string|max:20',
+            'country' => 'nullable|string|max:100',
+            'zone_id' => 'nullable|string|exists:zones,id',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+            'address_label' => 'nullable|string|max:50',
+            'government' => 'nullable|string|max:100',
         ], [
             'date_of_birth.before' => translate('You must be at least :min years old', ['min' => $minAge]),
             'date_of_birth.after' => translate('You must be under :max years old', ['max' => $maxAge]),
@@ -320,10 +332,10 @@ class DriverOnboardingController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'vehicle_category_id' => 'required|string|exists:vehicle_categories,id',
-            'brand_id' => 'required|string|exists:vehicle_brands,id',
-            'model_id' => 'required|string|exists:vehicle_models,id',
-            'year' => 'nullable|integer|min:1990|max:' . (date('Y') + 1),
-            'color' => 'nullable|string|max:30',
+            // Brand, model and other details are collected in documents phase
+            'brand_id' => 'nullable|string|exists:vehicle_brands,id',
+            'model_id' => 'nullable|string|exists:vehicle_models,id',
+            'year_id' => 'nullable|string|exists:vehicle_years,id',
             'licence_plate' => 'nullable|string|max:20',
         ]);
 
@@ -399,6 +411,33 @@ class DriverOnboardingController extends Controller
             'success' => true,
             'message' => translate('Document uploaded successfully'),
             'data' => $result['data'],
+        ]);
+    }
+
+    /**
+     * Get available cities (zones) for profile selection
+     * GET /api/v2/driver/onboarding/cities
+     */
+    public function getCities(): JsonResponse
+    {
+        $cities = Zone::where('is_active', true)
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get()
+            ->map(function ($zone) {
+                return [
+                    'id' => $zone->id,
+                    'name' => $zone->name,
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'message' => translate('Cities retrieved successfully'),
+            'data' => [
+                'cities' => $cities,
+                'total' => $cities->count(),
+            ],
         ]);
     }
 

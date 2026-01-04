@@ -27,6 +27,9 @@ Route::prefix('v2/driver/onboarding')->group(function () {
 
     // Resend OTP
     Route::post('resend-otp', [DriverOnboardingController::class, 'resendOtp']);
+
+    // Get available cities (zones) for profile selection
+    Route::get('cities', [DriverOnboardingController::class, 'getCities']);
 });
 
 // Protected endpoints (require onboarding token)

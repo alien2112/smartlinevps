@@ -3,7 +3,8 @@
 namespace App\Services\Driver;
 
 use App\Enums\DriverOnboardingState;
-use App\Models\User;
+use Modules\UserManagement\Entities\User;
+use Modules\UserManagement\Entities\UserAddress;
 use App\Services\BeOnOtpService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -430,7 +431,7 @@ class DriverOnboardingService
     /**
      * Get driver's current onboarding status
      */
-    public function getStatus(User $driver): array
+    public function getStatus(\Modules\UserManagement\Entities\User $driver): array
     {
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state ?? 'otp_pending');
 
@@ -484,7 +485,7 @@ class DriverOnboardingService
     /**
      * Transition to a new state with validation
      */
-    public function transitionState(User $driver, DriverOnboardingState $newState): array
+    public function transitionState(\Modules\UserManagement\Entities\User $driver, DriverOnboardingState $newState): array
     {
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
 
@@ -519,7 +520,7 @@ class DriverOnboardingService
     /**
      * Validate current state matches expected state
      */
-    public function validateState(User $driver, DriverOnboardingState $expectedState): ?array
+    public function validateState(\Modules\UserManagement\Entities\User $driver, DriverOnboardingState $expectedState): ?array
     {
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
 
@@ -543,7 +544,7 @@ class DriverOnboardingService
     /**
      * Set driver password
      */
-    public function setPassword(User $driver, string $password): array
+    public function setPassword(\Modules\UserManagement\Entities\User $driver, string $password): array
     {
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
 
@@ -556,7 +557,7 @@ class DriverOnboardingService
         }
 
         $driver->update([
-            'password' => hash('sha256', $password),
+            'password' => Hash::make($password),
             'password_set_at' => now(),
             'onboarding_state' => DriverOnboardingState::PASSWORD_SET->value,
             'onboarding_state_version' => $driver->onboarding_state_version + 1,
@@ -575,7 +576,7 @@ class DriverOnboardingService
     /**
      * Submit driver profile
      */
-    public function submitProfile(User $driver, array $data): array
+    public function submitProfile(\Modules\UserManagement\Entities\User $driver, array $data): array
     {
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
 
@@ -587,37 +588,62 @@ class DriverOnboardingService
             ];
         }
 
-        $driver->update([
-            'first_name' => $data['first_name'],
-            'last_name' => $data['last_name'],
-            'identification_number' => $data['national_id'],
-            'identification_type' => 'national_id',
-            'city_id' => $data['city_id'],
-            'email' => $data['email'] ?? null,
-            'date_of_birth' => $data['date_of_birth'] ?? null,
-            'gender' => $data['gender'] ?? null,
-            'first_name_ar' => $data['first_name_ar'] ?? null,
-            'last_name_ar' => $data['last_name_ar'] ?? null,
-            'is_profile_complete' => true,
-            'register_completed_at' => now(),
-            'onboarding_state' => DriverOnboardingState::PROFILE_COMPLETE->value,
-            'onboarding_state_version' => $driver->onboarding_state_version + 1,
-        ]);
-
-        return [
-            'success' => true,
-            'data' => [
-                'next_step' => DriverOnboardingState::PROFILE_COMPLETE->nextStep(),
+        return DB::transaction(function () use ($driver, $data) {
+            $driver->update([
+                'first_name' => $data['first_name'],
+                'last_name' => $data['last_name'],
+                'identification_number' => $data['national_id'],
+                'identification_type' => 'national_id',
+                'email' => $data['email'] ?? null,
+                'date_of_birth' => $data['date_of_birth'] ?? null,
+                'gender' => $data['gender'] ?? null,
+                'first_name_ar' => $data['first_name_ar'] ?? null,
+                'last_name_ar' => $data['last_name_ar'] ?? null,
+                'government' => $data['government'] ?? null,
+                'is_profile_complete' => true,
+                'register_completed_at' => now(),
                 'onboarding_state' => DriverOnboardingState::PROFILE_COMPLETE->value,
-                'state_version' => $driver->onboarding_state_version,
-            ],
-        ];
+                'onboarding_state_version' => $driver->onboarding_state_version + 1,
+            ]);
+
+            // Save address if provided
+            if (!empty($data['address']) || !empty($data['street']) || !empty($data['city'])) {
+                UserAddress::updateOrCreate(
+                    [
+                        'user_id' => $driver->id,
+                        'address_label' => $data['address_label'] ?? 'Home',
+                    ],
+                    [
+                        'user_id' => $driver->id,
+                        'address' => $data['address'] ?? null,
+                        'street' => $data['street'] ?? null,
+                        'house' => $data['house'] ?? null,
+                        'city' => $data['city'] ?? null,
+                        'zip_code' => $data['zip_code'] ?? null,
+                        'country' => $data['country'] ?? null,
+                        'zone_id' => $data['zone_id'] ?? null,
+                        'latitude' => $data['latitude'] ?? null,
+                        'longitude' => $data['longitude'] ?? null,
+                        'address_label' => $data['address_label'] ?? 'Home',
+                    ]
+                );
+            }
+
+            return [
+                'success' => true,
+                'data' => [
+                    'next_step' => DriverOnboardingState::PROFILE_COMPLETE->nextStep(),
+                    'onboarding_state' => DriverOnboardingState::PROFILE_COMPLETE->value,
+                    'state_version' => $driver->onboarding_state_version,
+                ],
+            ];
+        });
     }
 
     /**
      * Select vehicle type and details
      */
-    public function selectVehicle(User $driver, array $data): array
+    public function selectVehicle(\Modules\UserManagement\Entities\User $driver, array $data): array
     {
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
 
@@ -636,22 +662,33 @@ class DriverOnboardingService
                 ->where('is_primary', true)
                 ->update(['is_primary' => false]);
 
-            // Create new vehicle
+            // Create new vehicle (brand/model collected in documents phase)
             $vehicleId = Str::uuid();
-            DB::table('vehicles')->insert([
+            $vehicleData = [
                 'id' => $vehicleId,
                 'driver_id' => $driver->id,
                 'category_id' => $data['vehicle_category_id'],
-                'brand_id' => $data['brand_id'],
-                'model_id' => $data['model_id'],
-                'production_year' => $data['year'] ?? null,
-                'colour' => $data['color'] ?? null,
-                'licence_plate_number' => $data['licence_plate'] ?? null,
                 'is_primary' => true,
                 'is_active' => false, // Not active until approved
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]);
+            ];
+
+            // Add optional fields only if provided
+            if (!empty($data['brand_id'])) {
+                $vehicleData['brand_id'] = $data['brand_id'];
+            }
+            if (!empty($data['model_id'])) {
+                $vehicleData['model_id'] = $data['model_id'];
+            }
+            if (!empty($data['year_id'])) {
+                $vehicleData['year_id'] = $data['year_id'];
+            }
+            if (!empty($data['licence_plate'])) {
+                $vehicleData['licence_plate_number'] = $data['licence_plate'];
+            }
+
+            DB::table('vehicles')->insert($vehicleData);
 
             $driver->update([
                 'selected_vehicle_type' => $data['vehicle_category_id'],
@@ -684,7 +721,7 @@ class DriverOnboardingService
     /**
      * Upload a document
      */
-    public function uploadDocument(User $driver, string $type, UploadedFile $file): array
+    public function uploadDocument(\Modules\UserManagement\Entities\User $driver, string $type, UploadedFile $file): array
     {
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
 
@@ -828,7 +865,7 @@ class DriverOnboardingService
     /**
      * Submit application for review
      */
-    public function submitForReview(User $driver, bool $termsAccepted, bool $privacyAccepted): array
+    public function submitForReview(\Modules\UserManagement\Entities\User $driver, bool $termsAccepted, bool $privacyAccepted): array
     {
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
 

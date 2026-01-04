@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
@@ -55,10 +56,9 @@ class DriverAuthController extends Controller
             ], 401);
         }
         
-        // Verify password - support both SHA256 (new) and bcrypt (legacy)
-        $passwordValid = false;
+        // Verify password using bcrypt
         $storedPassword = $driver->password;
-        
+
         if (!$storedPassword) {
             Log::warning('Login attempt with driver that has no password', [
                 'driver_id' => $driver->id,
@@ -69,18 +69,13 @@ class DriverAuthController extends Controller
                 'message' => translate('Invalid credentials'),
             ], 401);
         }
-        
-        // Detect hash format: bcrypt starts with $2y$, SHA256 is 64 hex characters
-        if (str_starts_with($storedPassword, '$2y$') || str_starts_with($storedPassword, '$2a$') || str_starts_with($storedPassword, '$2b$')) {
-            // Bcrypt password (legacy)
-            $passwordValid = Hash::check($request->password, $storedPassword);
-        } else {
-            // SHA256 password (new format - 64 hex characters)
-            $passwordHash = hash('sha256', $request->password);
-            $passwordValid = hash_equals($storedPassword, $passwordHash);
-        }
-        
-        if (!$passwordValid) {
+
+        // Verify password with bcrypt
+        if (!Hash::check($request->password, $storedPassword)) {
+            Log::info('Failed login attempt for driver', [
+                'driver_id' => $driver->id,
+                'phone' => $this->maskPhone($driver->phone),
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => translate('Invalid credentials'),

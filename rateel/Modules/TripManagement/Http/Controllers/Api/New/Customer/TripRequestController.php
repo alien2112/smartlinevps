@@ -314,9 +314,11 @@ class TripRequestController extends Controller
             $calculatedFare = is_array($estimated_fare) ? ($estimated_fare['estimated_fare'] ?? 0) : $estimated_fare;
 
             // Get admin settings
-            $normalPerKmRate = (float)(get_cache('normal_price_per_km'));
+            $normalPerKmRateConfig = get_cache('normal_price_per_km');
+            $normalPerKmRate = (float)(is_array($normalPerKmRateConfig) ? ($normalPerKmRateConfig['value'] ?? 0) : $normalPerKmRateConfig);
             $normalPerKmEnabled = (bool)(businessConfig('normal_price_per_km', TRIP_SETTINGS)?->value['status'] ?? false);
-            $normalMinPrice = (float)(get_cache('normal_min_price'));
+            $normalMinPriceConfig = get_cache('normal_min_price');
+            $normalMinPrice = (float)(is_array($normalMinPriceConfig) ? ($normalMinPriceConfig['value'] ?? 0) : $normalMinPriceConfig);
             $normalMinPriceEnabled = (bool)(businessConfig('normal_min_price', TRIP_SETTINGS)?->value['status'] ?? false);
 
             // Step 1: Calculate fare (per-km or use existing)

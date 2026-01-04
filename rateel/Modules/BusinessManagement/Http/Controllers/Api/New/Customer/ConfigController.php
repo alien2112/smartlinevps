@@ -57,6 +57,14 @@ class ConfigController extends Controller
 
     public function configuration()
     {
+        // Cache configuration for 5 minutes to reduce repeated queries
+        return \Illuminate\Support\Facades\Cache::remember('customer_configuration', 300, function () {
+            return $this->buildConfiguration();
+        });
+    }
+
+    private function buildConfiguration()
+    {
         $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
 
         $loyaltyPoints = $info
@@ -201,7 +209,9 @@ class ConfigController extends Controller
             'otp_confirmation_for_trip' => (bool)$info->firstWhere('key_name', 'driver_otp_confirmation_for_trip')?->value == 1,
         ];
 
-        return response()->json($configs);
+        return response()->json($configs)
+            ->header('Cache-Control', 'public, max-age=300')
+            ->header('X-Cache-TTL', '300');
     }
 
     public function getPaymentMethods()
@@ -1076,10 +1086,17 @@ class ConfigController extends Controller
             return response()->json(responseFormatter(DEFAULT_400, null, null, null, errorProcessor($validator)), 400);
         }
 
-        $point = new Point($request->lat, $request->lng, 4326);
-        $zone = $this->zoneService->getByPoints($point)->where('is_active', 1)->first();
+        // Cache zone lookup for 10 minutes based on rounded coordinates
+        $cacheKey = 'zone_' . round($request->lat, 3) . '_' . round($request->lng, 3);
+        $zone = \Illuminate\Support\Facades\Cache::remember($cacheKey, 600, function () use ($request) {
+            $point = new Point($request->lat, $request->lng, 4326);
+            return $this->zoneService->getByPoints($point)->where('is_active', 1)->first();
+        });
+
         if ($zone) {
-            return response()->json(responseFormatter(DEFAULT_200, $zone), 200);
+            return response()->json(responseFormatter(DEFAULT_200, $zone), 200)
+                ->header('Cache-Control', 'public, max-age=600')
+                ->header('X-Cache-TTL', '600');
         }
 
         return response()->json(responseFormatter(ZONE_RESOURCE_404), 403);

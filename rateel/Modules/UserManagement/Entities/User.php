@@ -51,6 +51,8 @@ class User extends Authenticatable
         'ref_code',
         'user_type',
         'gender',
+        'government',
+        'date_of_birth',
         'role_id',
         'remember_token',
         'is_active',
@@ -77,6 +79,14 @@ class User extends Authenticatable
         'successful_referrals',
         'signup_ip',
         'referred_by',
+        // Onboarding state machine
+        'onboarding_state',
+        'onboarding_state_version',
+        'is_phone_verified',
+        'is_profile_complete',
+        'is_approved',
+        'terms_accepted_at',
+        'privacy_accepted_at',
     ];
 
     protected $casts = [

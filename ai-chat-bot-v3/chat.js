@@ -319,8 +319,18 @@ async function getConversationState(userId) {
             [userId]
         );
         if (rows.length === 0) return { state: STATES.START, data: {} };
-        return { state: rows[0].current_state, data: rows[0].flow_data ? JSON.parse(rows[0].flow_data) : {} };
+        // flow_data is JSON column - mysql2 auto-parses it
+        let flowData = rows[0].flow_data || {};
+        if (typeof flowData === 'string') {
+            try {
+                flowData = JSON.parse(flowData);
+            } catch (e) {
+                flowData = {};
+            }
+        }
+        return { state: rows[0].current_state, data: flowData };
     } catch (e) {
+        logger.error('Error getting conversation state', { error: e.message, userId });
         return { state: STATES.START, data: {} };
     }
 }
@@ -425,6 +435,281 @@ function formatVehicleCategoriesMessage(categories, lang) {
     let msg = lang === 'ar' ? '✅ تم تحديد الوجهة.\nاختر نوع الرحلة:\n' : '✅ Destination set.\nChoose ride type:\n';
     categories.forEach((cat, i) => { msg += `${i + 1}. ${cat.name}\n`; });
     return msg.trim();
+}
+
+// ============================================
+// 🎫 TRIP CREATION SYSTEM
+// ============================================
+
+const { v4: uuidv4 } = require('uuid');
+
+/**
+ * Generate UUID for trip
+ */
+function generateUUID() {
+    return uuidv4();
+}
+
+/**
+ * Find zone based on pickup coordinates
+ */
+async function findZoneByCoordinates(lat, lng) {
+    try {
+        // Get zones with their coordinates
+        const [zones] = await pool.execute(`
+            SELECT id, name, coordinates FROM zones
+            WHERE is_active = 1 AND deleted_at IS NULL
+        `);
+
+        if (zones.length === 0) {
+            // Return first zone as default
+            const [defaultZone] = await pool.execute(`SELECT id FROM zones LIMIT 1`);
+            return defaultZone[0]?.id || null;
+        }
+
+        // For now, return the first active zone
+        // TODO: Implement proper point-in-polygon check
+        return zones[0].id;
+    } catch (e) {
+        logger.error('Error finding zone', { error: e.message });
+        return null;
+    }
+}
+
+/**
+ * Get next ref_id for trip
+ */
+async function getNextRefId() {
+    try {
+        const [result] = await pool.execute(`
+            SELECT COALESCE(MAX(ref_id), 99999) + 1 as next_ref_id FROM trip_requests
+        `);
+        return result[0].next_ref_id;
+    } catch (e) {
+        return 100000 + Math.floor(Math.random() * 10000);
+    }
+}
+
+/**
+ * Calculate estimated fare based on distance and vehicle category
+ */
+async function calculateEstimatedFare(vehicleCategoryId, distanceKm = 5) {
+    try {
+        const [fares] = await pool.execute(`
+            SELECT base_fare, base_fare_per_km, waiting_fee_per_min, cancellation_fee_percent, min_price
+            FROM trip_fares
+            WHERE vehicle_category_id = ? AND zone_id IS NOT NULL
+            LIMIT 1
+        `, [vehicleCategoryId]);
+
+        if (fares.length > 0) {
+            const fare = fares[0];
+            let estimated = parseFloat(fare.base_fare) + (parseFloat(fare.base_fare_per_km) * distanceKm);
+            if (fare.min_price && estimated < parseFloat(fare.min_price)) {
+                estimated = parseFloat(fare.min_price);
+            }
+            return Math.round(estimated * 100) / 100;
+        }
+
+        // Default fare calculation
+        return Math.round((15 + (distanceKm * 3)) * 100) / 100;
+    } catch (e) {
+        logger.error('Error calculating fare', { error: e.message });
+        return 25.00; // Default fare
+    }
+}
+
+/**
+ * Create a new trip in the database
+ */
+async function createTrip(tripData) {
+    const connection = await pool.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        const tripId = generateUUID();
+        const refId = await getNextRefId();
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+        // Parse coordinates
+        let pickupLat, pickupLng, destLat, destLng;
+
+        if (tripData.pickup && typeof tripData.pickup === 'object') {
+            pickupLat = tripData.pickup.lat;
+            pickupLng = tripData.pickup.lng;
+        } else if (tripData.pickup && typeof tripData.pickup === 'string') {
+            const pickupMatch = tripData.pickup.match(/location:([\d.-]+),([\d.-]+)/);
+            if (pickupMatch) {
+                pickupLat = parseFloat(pickupMatch[1]);
+                pickupLng = parseFloat(pickupMatch[2]);
+            }
+        }
+
+        if (tripData.destination && typeof tripData.destination === 'object') {
+            destLat = tripData.destination.lat;
+            destLng = tripData.destination.lng;
+        } else if (tripData.destination && typeof tripData.destination === 'string') {
+            const destMatch = tripData.destination.match(/location:([\d.-]+),([\d.-]+)/);
+            if (destMatch) {
+                destLat = parseFloat(destMatch[1]);
+                destLng = parseFloat(destMatch[2]);
+            }
+        }
+
+        // Default coordinates if not parsed
+        if (!pickupLat || !pickupLng) {
+            pickupLat = 30.0444; // Cairo default
+            pickupLng = 31.2357;
+        }
+        if (!destLat || !destLng) {
+            destLat = pickupLat + 0.01;
+            destLng = pickupLng + 0.01;
+        }
+
+        // Find zone
+        const zoneId = await findZoneByCoordinates(pickupLat, pickupLng);
+
+        // Calculate estimated fare
+        const estimatedFare = await calculateEstimatedFare(tripData.ride_type, 5);
+
+        // Get pickup and destination addresses
+        const pickupAddress = tripData.pickup_address ||
+            (typeof tripData.pickup === 'object' ? tripData.pickup.address : null) ||
+            'نقطة الانطلاق';
+        const destAddress = tripData.destination_address ||
+            (typeof tripData.destination === 'object' ? tripData.destination.address : null) ||
+            'الوجهة';
+
+        // 1. Insert into trip_requests
+        await connection.execute(`
+            INSERT INTO trip_requests (
+                id, ref_id, customer_id, vehicle_category_id, zone_id,
+                estimated_fare, actual_fare, estimated_distance,
+                payment_method, type, current_status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            tripId,
+            refId,
+            tripData.customer_id,
+            tripData.ride_type,
+            zoneId,
+            estimatedFare,
+            estimatedFare,
+            5.0, // Default 5km
+            'cash', // Default payment method
+            'ride_request',
+            'pending',
+            now,
+            now
+        ]);
+
+        // 2. Insert into trip_status (id is auto_increment)
+        await connection.execute(`
+            INSERT INTO trip_status (
+                trip_request_id, customer_id, pending, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+        `, [
+            tripId,
+            tripData.customer_id,
+            now,
+            now,
+            now
+        ]);
+
+        // 3. Insert into trip_request_coordinates (id is auto_increment)
+        await connection.execute(`
+            INSERT INTO trip_request_coordinates (
+                trip_request_id,
+                pickup_coordinates, destination_coordinates,
+                start_coordinates, customer_request_coordinates,
+                pickup_address, destination_address,
+                created_at, updated_at
+            ) VALUES (?, ST_GeomFromText(?), ST_GeomFromText(?), ST_GeomFromText(?), ST_GeomFromText(?), ?, ?, ?, ?)
+        `, [
+            tripId,
+            `POINT(${pickupLng} ${pickupLat})`,
+            `POINT(${destLng} ${destLat})`,
+            `POINT(${pickupLng} ${pickupLat})`,
+            `POINT(${pickupLng} ${pickupLat})`,
+            pickupAddress,
+            destAddress,
+            now,
+            now
+        ]);
+
+        // 4. Insert into trip_request_fees (id is auto_increment)
+        await connection.execute(`
+            INSERT INTO trip_request_fees (
+                trip_request_id, created_at, updated_at
+            ) VALUES (?, ?, ?)
+        `, [
+            tripId,
+            now,
+            now
+        ]);
+
+        // 5. Insert into trip_request_times (id is auto_increment)
+        await connection.execute(`
+            INSERT INTO trip_request_times (
+                trip_request_id, estimated_time, created_at, updated_at
+            ) VALUES (?, ?, ?, ?)
+        `, [
+            tripId,
+            15, // Default 15 minutes
+            now,
+            now
+        ]);
+
+        await connection.commit();
+
+        logger.info('Trip created successfully', { tripId, refId, customerId: tripData.customer_id });
+
+        return {
+            success: true,
+            trip_id: tripId,
+            ref_id: refId,
+            estimated_fare: estimatedFare,
+            pickup_address: pickupAddress,
+            destination_address: destAddress,
+            status: 'pending'
+        };
+
+    } catch (error) {
+        await connection.rollback();
+        logger.error('Failed to create trip', { error: error.message, stack: error.stack });
+        return {
+            success: false,
+            error: error.message
+        };
+    } finally {
+        connection.release();
+    }
+}
+
+/**
+ * Cancel a trip
+ */
+async function cancelTrip(tripId) {
+    try {
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        await pool.execute(`
+            UPDATE trip_requests
+            SET current_status = 'cancelled', updated_at = ?
+            WHERE id = ?
+        `, [now, tripId]);
+
+        await pool.execute(`
+            UPDATE trip_request_fees
+            SET cancelled_by = 'customer', updated_at = ?
+            WHERE trip_request_id = ?
+        `, [now, tripId]);
+
+        return { success: true };
+    } catch (e) {
+        logger.error('Failed to cancel trip', { error: e.message });
+        return { success: false, error: e.message };
+    }
 }
 
 // ============================================
@@ -576,12 +861,52 @@ async function processConversation(userId, message, lang, userType) {
 
         case STATES.AWAITING_CONFIRMATION:
             if (message.includes('تأكيد') || message.includes('نعم') || message.includes('confirm') || message.includes('yes')) {
-                response.message = lang === 'ar' ? '🎉 تم تأكيد الحجز! جاري البحث عن كابتن...' : '🎉 Booking confirmed! Searching for driver...';
-                const confirmAction = ActionBuilders.confirmBooking(convState.data);
-                response.action = confirmAction.action;
-                response.data = confirmAction.data;
-                response.ui_hint = confirmAction.ui_hint;
-                await setConversationState(userId, STATES.TRIP_ACTIVE, convState.data);
+                // Actually create the trip in the database
+                const tripResult = await createTrip({
+                    customer_id: userId,
+                    pickup: convState.data.pickup,
+                    destination: convState.data.destination,
+                    ride_type: convState.data.ride_type,
+                    ride_type_name: convState.data.ride_type_name,
+                    pickup_address: convState.data.pickup_address,
+                    destination_address: convState.data.destination_address
+                });
+
+                if (tripResult.success) {
+                    response.message = lang === 'ar'
+                        ? `🎉 تم تأكيد الحجز!\n📋 رقم الرحلة: ${tripResult.ref_id}\n💰 السعر المتوقع: ${tripResult.estimated_fare} ج.م\n\nجاري البحث عن كابتن...`
+                        : `🎉 Booking confirmed!\n📋 Trip #${tripResult.ref_id}\n💰 Estimated fare: ${tripResult.estimated_fare} EGP\n\nSearching for driver...`;
+
+                    const confirmAction = ActionBuilders.confirmBooking({
+                        ...convState.data,
+                        trip_id: tripResult.trip_id,
+                        ref_id: tripResult.ref_id,
+                        estimated_fare: tripResult.estimated_fare
+                    });
+                    response.action = confirmAction.action;
+                    response.data = {
+                        ...confirmAction.data,
+                        trip_id: tripResult.trip_id,
+                        ref_id: tripResult.ref_id,
+                        estimated_fare: tripResult.estimated_fare,
+                        pickup_address: tripResult.pickup_address,
+                        destination_address: tripResult.destination_address
+                    };
+                    response.ui_hint = confirmAction.ui_hint;
+                    response.quick_replies = ['أين الكابتن؟', 'إلغاء الرحلة'];
+
+                    await setConversationState(userId, STATES.TRIP_ACTIVE, {
+                        ...convState.data,
+                        trip_id: tripResult.trip_id,
+                        ref_id: tripResult.ref_id
+                    });
+                } else {
+                    response.message = lang === 'ar'
+                        ? '❌ عذراً، حدث خطأ أثناء إنشاء الرحلة. حاول مرة أخرى.'
+                        : '❌ Sorry, an error occurred while creating the trip. Please try again.';
+                    response.quick_replies = ['حاول مرة أخرى', 'مساعدة'];
+                    logger.error('Trip creation failed', { error: tripResult.error, userId });
+                }
             } else {
                 response.message = lang === 'ar' ? 'تم إلغاء الحجز. كيف أساعدك؟' : 'Booking cancelled. How can I help?';
                 response.quick_replies = ['حجز رحلة جديدة'];
@@ -616,7 +941,14 @@ async function processConversation(userId, message, lang, userType) {
 
         case STATES.AWAITING_CANCEL_CONFIRM:
             if (message.includes('نعم') || message.includes('yes') || message.includes('إلغاء')) {
-                response.message = lang === 'ar' ? '❌ تم إلغاء الرحلة.' : '❌ Trip cancelled.';
+                // Actually cancel the trip in the database
+                const cancelResult = await cancelTrip(convState.data.trip_id);
+
+                if (cancelResult.success) {
+                    response.message = lang === 'ar' ? '❌ تم إلغاء الرحلة بنجاح.' : '❌ Trip cancelled successfully.';
+                } else {
+                    response.message = lang === 'ar' ? '❌ تم إلغاء الرحلة.' : '❌ Trip cancelled.';
+                }
                 response.action = ACTION_TYPES.CANCEL_TRIP;
                 response.data = { trip_id: convState.data.trip_id };
                 response.quick_replies = ['حجز رحلة جديدة'];

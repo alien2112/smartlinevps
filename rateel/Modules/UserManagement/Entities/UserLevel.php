@@ -49,6 +49,27 @@ class UserLevel extends Model
         'is_active'=> 'integer'
     ];
 
+    /**
+     * Get the level image URL with proper fallback
+     */
+    public function getImageAttribute($value)
+    {
+        // If there's a valid stored image filename, return it via media route
+        if ($value && !empty($value) && !str_contains($value, '/root/') && !str_contains($value, 'http')) {
+            // Get the storage path based on user type
+            $storagePath = $this->user_type === DRIVER ? 'driver/level/' : 'customer/level/';
+
+            // Return URL via media serving route (files stored in /root/new/)
+            return url('/media/' . $storagePath . $value);
+        }
+
+        // Fall back to default level image based on sequence
+        $levelNumber = min($this->sequence ?? 1, 5);
+        $levelNumber = max($levelNumber, 1);
+
+        return asset('assets/admin-module/img/media/level' . $levelNumber . '.png');
+    }
+
     protected static function newFactory()
     {
         return \Modules\UserManagement\Database\factories\UserLevelFactory::new();

@@ -32,7 +32,30 @@
       "Bash(sudo find /var/www/laravel/smartlinevps/rateel/app -user root -type d -exec chown www-data:www-data {} ; -exec chmod 755 {} ;)",
       "Bash(sudo find:*)",
       "Bash(cd:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(TOKEN=\"eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiI5YTg3OGI0MS1mYzllLTQ3ODktYTgzNS0wYjNlYmUwNjA3NzgiLCJqdGkiOiI3YjVhMDk4MzNhNjNhMmNlOTVlMGU5MDgwZDAzZDNjZjliN2E3NTM2ZmQ3OTc3ZDg4M2EyMDAwNThiNjkzMWQ3MTk4N2FlYzllOTM4N2YzNSIsImlhdCI6MTc2NzQ5NjIxNi45MjU5NDgsIm5iZiI6MTc2NzQ5NjIxNi45MjU5NTIsImV4cCI6MTc5OTAzMjIxNi44OTE3NTQsInN1YiI6ImYxZWVkODUyLTE2NzgtNGM1OS05ZDZhLTUwOGEzMjNkZDFiYiIsInNjb3BlcyI6WyJvbmJvYXJkaW5nIl19.iDIgXvmiLc1D4lKOonowUhRg54m6kD1qXFUoDu7C_aVeDgmRxHLY8Lpk2FXgBAg_9vejfO3PeTLob7N2ZQo6ZTZYjsDKS2YBlJfagEF6kjpdevH8VJnnJ8naQRPYv468zETpDnxgsznUnKc_uGdJx8bgSQXmNq6wiMbSKALAJ7TmDbEFD_qQeFefOPczv7T34PTBKus05mvqAtjDZ5C-CDQ5Vb8bXgkwNRYwqD3SRq-Dr3tigERlEs9smYysdLR4odnH14Fcwj84Ewxjj-QTHheEgvJdfAyNE10SVi2j9xAG2v3iXkiBXVi2_Wq6DvxaWVvYCXThN-0kgNrJAY9qxuTefhFnOSUhMS4z8RRM6QNPvLo1JWQGllWu-oOnSqKGMqNSlDsJmbfZmM39leLvgkuajX-ZM7Oew1FqACXF_21L-3TILCSm72jTWL9V5GeyvIjsL2ojVo1mYfgTpU2zC303OpLaQdtL6saJiJCUVMMWItZ_Okg1Km-duq7xipucQo4F5ylfyPM4zpP9dg1BnhUVFGxohRDrLNO8pWGwzTtmGK-pORCmu9g_LY71RVQWMSl2dg_jvjIVWPTpYH1tBtq20jt1EvqV1dn7BJLyA-jjtYBI_sQsNAaVedD21TLb0mhMNFGWJATIvqJcI0eZzDqMfd-MI2ETeDhY35bEKTk\")",
+      "Bash(__NEW_LINE__ curl -s -X POST \"https://smartline-it.com/api/v2/driver/onboarding/profile\" )",
+      "Bash(__NEW_LINE__ curl -s -X POST \"https://smartline-it.com/api/v2/driver/onboarding/vehicle\" )",
+      "Bash(TOKEN=\"eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiI5YTg3OGI0MS1mYzllLTQ3ODktYTgzNS0wYjNlYmUwNjA3NzgiLCJqdGkiOiIyOTNmMTEwMTU1ZjBmOTdlMjhjZDdiNTBiMzZjZTE3ZTdiZjUxZDY1ODRiZjI5YzZmODczYTBhZjNhODc2ZmYyZTUwNjhiMTc5NzY4NDE4ZiIsImlhdCI6MTc2NzQ5Njg1NC44OTE3NTUsIm5iZiI6MTc2NzQ5Njg1NC44OTE3NTgsImV4cCI6MTc5OTAzMjg1NC44ODE2NCwic3ViIjoiZjFlZWQ4NTItMTY3OC00YzU5LTlkNmEtNTA4YTMyM2RkMWJiIiwic2NvcGVzIjpbIm9uYm9hcmRpbmciXX0.tuiVWMlZ7H1IWBe50fP3xlN19-xymkBYjxiEc2wugmESWyD_1KAo2rBpmdsbIlKYzcLnO5kaOYGVWXZiin1bgQKoXELGbTeoZdAqi1F8mTzDr8YXjt4c-AAvU_ZfbUYszsoqKlhVifHdQRyvBLPz5F2Pj4YBxYffPEtgS-W5KA6WVlLBJN0r4MS5CvH0HeoxpgoYIX2Wy9zy4vht4GaPHm-MIWwKCv1Roi82mmvPaemLfM6dt9FSIQKnPPUlAH4OScfA_WORBQSLwpJNTy2bUEYWMmOHo22JvDRBCAADj9-aRauTgfLl30AT1F4ZkzTu3GjWdZifFxMo9hAb9BXJzejU7RkpWR_aGP0zcHgrpDvibHi3mS0uJDOI4DzCNQxu_pr5erIvnvi75-A-WmCNyEpweH8ljVJzOviueyTH0SBDAZOJPGIINZ3QuS38eLmm8BQwzalTF4GsFQNAYmZ5HvjBK796XkE7aWjVp7uYExiCArJgzNNIm68A0QzYzlkNqMTBb_56d5RDCMhOFWf61h66mY-e1T1xKCzKUgAtzZdSLNUyd8-SkApXdKBlZBHIaEEcrGgk7iYB5jZHVwUTP-4ON8psUd5k4rrO5bt_pz1llLMEqp_NK8Gf_Xs51VdpSIkkqKSVzSouxTGLt4w86ThYLotr4q40iK-574fYhiY\")",
+      "Bash(__NEW_LINE__ curl -s -X GET \"https://smartline-it.com/api/v2/driver/onboarding/status\" )",
+      "Bash(__NEW_LINE__ echo \"Checking status...\")",
+      "Bash(__NEW_LINE__ echo \"\")",
+      "Bash(TOKEN=\"eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiI5YTg3OGI0MS1mYzllLTQ3ODktYTgzNS0wYjNlYmUwNjA3NzgiLCJqdGkiOiJkNjVmYjUxM2Q4MmY2NWY5NmQzZjAxODllMTg2MWViMGFjYTc5M2I2NmJhNmNlOWQ3MzFhZmJhMTFmNDZkOGM0OTQ2NjMzMjkxYzU4OTUyNyIsImlhdCI6MTc2NzQ5NzU1My40NTU3NDEsIm5iZiI6MTc2NzQ5NzU1My40NTU3NDMsImV4cCI6MTc5OTAzMzU1My40NDYzNTksInN1YiI6ImYxZWVkODUyLTE2NzgtNGM1OS05ZDZhLTUwOGEzMjNkZDFiYiIsInNjb3BlcyI6WyJkcml2ZXIiXX0.fyQSn18JEmOqeEtGXqJ56bQ_CeOPvur3XKbs2nxTxPmZmLLdPNDmA4MOalb7s8LdkYqHJkHpPFKIMHuYFp0CBP7-cNek-3jgK4yMwBFR5lnJuk2eHCCeQqRx5pgk_7zM5OFeU8_W0Sd2AtPUnJDDHxKDcwvxiXZVWo01UqoujjbnnhpDPy9VML-0xHuPhMKK11m7l-9rtSMVBdfOt4UthMYn9spHAgsX6oFZPTWIrWv7tuoYpuy9Xq9_wKQ5XuSiLSdTi5hshJkG66R8NwcNogFzEZoseo4Q6fgIyftCugNMCm9GakhwMRIeIZReDDLAwheYkelrvdWLLBEFxm9XkRmAsdrWusLB-FOY00Hzju-mUa4fhBG8qGHOCDHUZgwX9R7DueOZPQwmckiT5lRAONR4nG1PbCmUZIAhTPrn7N2J6MZ7TbbJ8MHT1tSMYfBDFnwFIOl46b1uMKZ-67sGVVw35v6wQthU4e7yOxFJzuzVnFTieKeaiPY0VvBmcSW6lxrCTGLTrHpqzssAsvMrDLXCAKB-iXIqT91UUmThTd5fczyN2_kVKtX22FWE66u86dnLzB63gMGxYzB0ZWSkQO98iwnwod2Oafb6cgZffgpUJtZNBhfW_xwcwA9RmRcdT-epf8uW1IyiXbDwJ0dFBLTX93o1-4q_pWYVIA7p7-U\")",
+      "Bash(echo \"Step 1: Create verification session...\" curl -s -X POST \"https://smartline-it.com/api/driver/verification/session\" -H \"Accept: application/json\" -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(__NEW_LINE__ echo \"Step 1: Create verification session...\")",
+      "Bash(__NEW_LINE__ SESSION_ID=\"05beba9f-7155-425a-a16a-90c858e342c5\")",
+      "Bash(TEST_DIR=\"/var/www/laravel/smartlinevps/rateel/storage/app/test-kyc\":*)",
+      "Bash(__NEW_LINE__ echo \"Step 2: Upload ID Front...\")",
+      "Bash(__NEW_LINE__ echo \"Step 3: Upload Selfie...\")",
+      "Bash(TOKEN=\"eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiI5YTg3OGI0MS1mYzllLTQ3ODktYTgzNS0wYjNlYmUwNjA3NzgiLCJqdGkiOiJiM2U4YzU1ZWUzZDk0ZTYxYzA0YTZiNjJkM2UwM2JkMzBjNGZlODVkOTFjNTg2MTMwZTY5MDU1OTg4M2M0M2I0YThiMTkyZmU4NjU0MmY5MiIsImlhdCI6MTc2NzQ5OTUyOS4wNTA1MTMsIm5iZiI6MTc2NzQ5OTUyOS4wNTA1MTcsImV4cCI6MTc5OTAzNTUyOS4wMzYyODksInN1YiI6ImYxZWVkODUyLTE2NzgtNGM1OS05ZDZhLTUwOGEzMjNkZDFiYiIsInNjb3BlcyI6WyJkcml2ZXIiXX0.I-bjC7_oUI0dwsLIkcM6Y1lP3ZhPEL-5LV0lKgnlQ-lSsd9hZx4d3aWuFxdQhuFEIcUMzPPWKIBlhu2L_mUdqaUGrCLJtr539zv1jd8SjqfrOWftnWiA-0uevjStx917uismxLD25JOiHcTtJ-1MuT8rR5c-MuSe2zM1TAZg2AUQJYH2j-GXlsP5sVXV1U_IHrdlUDaBtljSTIqrEt2JzbXesTs9R1-pv-fsdNwroUbrGxJrMRBBDjupV8pCJWOgnVydiN2cuynR_dkuKxAXbnyBh8Vf8Vnb8VcCBp1U_7CNt9hejyZcRwkS-IkQCzqJARCxWcPPXrz4HrDLrTplm4bLMYjkX8Pv1hko-aUxzBJ0PHh5dBewCp0jo68BZmCsVV8mTbXNumt66nxUqFBq_5Avpv_mR8Hgo9wEz7tmUe_lPTAEOWPGzFWT1yJPsZ5QVJitwAk2qge_z1DBJwnvYYz-W20vXO9R9Ewf8ee2y4_KjNsvejrptrWMfMRXGu68bB3YV-vv6wwRdHyNOoADV9TPSUx6Dj1BAJDmNp97dbpKRIkuH1mPRTyJiRPZ2ZCkoi2OAhczgW83uM7PXBJq5ZVbRIwMLXdRh017XxgZhDZCOfH1kWgZ8wm9cjJfSXZP48JDGuDxQpYhbEhPFxtiVOkUDvH73NoOWw05y8df1IM\")",
+      "Bash(chown:*)",
+      "Bash(git pull:*)",
+      "Bash(pm2 stop:*)",
+      "Bash(pm2 delete:*)",
+      "Bash(npm install:*)",
+      "Bash(pm2 start:*)",
+      "Bash(pm2 save:*)",
+      "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\nCheck state:\")"
     ]
   }
 }

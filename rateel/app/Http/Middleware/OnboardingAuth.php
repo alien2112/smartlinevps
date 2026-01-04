@@ -43,25 +43,35 @@ class OnboardingAuth
             ], 403);
         }
 
-        // Check token scope (Passport tokens have scopes)
-        // For Passport, we check if the token has the onboarding scope
-        // If scopes aren't configured, we'll allow any authenticated driver token
+        // Check token scope - strictly enforce onboarding scope
         $token = $user->token();
-        if ($token) {
-            $scopes = $token->scopes ?? [];
-            // If Passport scopes are configured and token doesn't have onboarding scope
-            if (!empty($scopes) && !in_array('onboarding', $scopes)) {
-                // Token exists but doesn't have onboarding scope
-                // This might be a full driver token - check if approved
-                if ($user->is_approved) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => translate('Please use the driver login endpoint'),
-                        'error' => ['code' => 'USE_DRIVER_LOGIN'],
-                    ], 403);
-                }
+        if (!$token) {
+            return response()->json([
+                'success' => false,
+                'message' => translate('Invalid token'),
+                'error' => ['code' => 'INVALID_TOKEN'],
+            ], 401);
+        }
+
+        $scopes = $token->scopes ?? [];
+
+        // Strictly require onboarding scope for onboarding endpoints
+        if (!in_array('onboarding', $scopes)) {
+            // Check if this is a driver token (approved driver trying to access onboarding)
+            if (in_array('driver', $scopes) || $user->is_approved) {
+                return response()->json([
+                    'success' => false,
+                    'message' => translate('Please use the driver app endpoints'),
+                    'error' => ['code' => 'USE_DRIVER_ENDPOINTS'],
+                ], 403);
             }
-            // If scopes are empty (not configured), allow any authenticated driver
+
+            // Token without proper scope - reject
+            return response()->json([
+                'success' => false,
+                'message' => translate('Invalid token scope'),
+                'error' => ['code' => 'INVALID_SCOPE'],
+            ], 403);
         }
 
         return $next($request);

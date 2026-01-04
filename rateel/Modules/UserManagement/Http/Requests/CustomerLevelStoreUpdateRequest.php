@@ -15,7 +15,8 @@ class CustomerLevelStoreUpdateRequest extends FormRequest
      */
     public function rules()
     {
-        $id = $this->id;
+        // Get id from route parameter (for update) or request body (for store)
+        $id = $this->route('id') ?? $this->id;
         $rewardType = $this->reward_type;
         $minimumRideComplete = (bool)$this->minimum_ride_complete;
         $minimumEarnAmount = (bool)$this->minimum_earn_amount;
@@ -36,11 +37,16 @@ class CustomerLevelStoreUpdateRequest extends FormRequest
                 'in:no_rewards,wallet,loyalty_points'
             ],
             'minimum_ride_complete' => [
-                Rule::requiredIf(function () use ($minimumRideComplete, $minimumEarnAmount, $maximumCancellationRate, $minimumReviewReceive) {
-                    return !($minimumRideComplete || $minimumEarnAmount || $maximumCancellationRate || $minimumReviewReceive) ? true : false;
+                // Only require at least one target when CREATING (not updating)
+                Rule::requiredIf(function () use ($id, $minimumRideComplete, $minimumEarnAmount, $maximumCancellationRate, $minimumReviewReceive) {
+                    // Skip this validation if updating (id exists)
+                    if (!empty($id)) {
+                        return false;
+                    }
+                    return !($minimumRideComplete || $minimumEarnAmount || $maximumCancellationRate || $minimumReviewReceive);
                 }),
+                'nullable',
                 'boolean',
-
             ],
             'minimum_earn_amount' => ['nullable', 'boolean'],
             'maximum_cancellation_rate' => ['nullable', 'boolean'],
@@ -127,9 +133,11 @@ class CustomerLevelStoreUpdateRequest extends FormRequest
             ],
             'image' => [
                 Rule::requiredIf(empty($id)),
+                Rule::when(!empty($id), 'nullable'),
                 'image',
                 'mimes:png',
-                'max:5000']
+                'max:5000'
+            ]
         ];
     }
 

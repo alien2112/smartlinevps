@@ -28,13 +28,20 @@ if (!function_exists('translate')) {
     {
         $local = app()->getLocale();
         try {
-            $langArray = include(base_path('resources/lang/' . $local . '/lang.php'));
+            $langFile = base_path('resources/lang/' . $local . '/lang.php');
+            $langArray = file_exists($langFile) ? include($langFile) : [];
+
+            // Ensure langArray is actually an array
+            if (!is_array($langArray)) {
+                $langArray = [];
+            }
+
             $processedKey = ucfirst(str_replace('_', ' ', removeSpecialCharacters($key)));
             $key = removeSpecialCharacters($key);
             if (!array_key_exists($key, $langArray)) {
                 $langArray[$key] = $processedKey;
                 $str = "<?php return " . var_export($langArray, true) . ";";
-                file_put_contents(base_path('resources/lang/' . $local . '/lang.php'), $str);
+                file_put_contents($langFile, $str);
                 $result = $processedKey;
             } else {
                 $result = trans('lang.' . $key);
