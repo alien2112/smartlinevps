@@ -295,11 +295,16 @@ class BusinessSettingService extends BaseService implements BusinessSettingServi
     public function storeCustomerSetting(array $data)
     {
         if ($data['type'] == 'loyalty_point') {
+            // Get point_value (how much 1 point is worth in currency)
+            $pointValue = floatval($data['loyalty_points']['point_value'] ?? 0.5);
+            // Calculate points per currency for backward compatibility
+            $pointsPerCurrency = $pointValue > 0 ? round(1 / $pointValue, 2) : 2;
 
             $storeData['type'] = 'loyalty_point';
             $storeData['loyalty_points'] = [
                 'status' => ($data['loyalty_points']['status'] ?? 0) == 'on' ? 1 : 0,
-                'points' => $data['loyalty_points']['value'] ?? 0,
+                'points' => $pointsPerCurrency, // backward compatibility
+                'point_value' => $pointValue,   // direct point value (1 point = X currency)
             ];
         }
         foreach ($storeData as $key => $value) {

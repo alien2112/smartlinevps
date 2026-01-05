@@ -1924,6 +1924,8 @@
   'environment_information' => 'Environment information',
   'environment_setup' => 'Environment setup',
   'equivalent_to_points' => 'Equivalent to points',
+  '1_point_equals' => '1 Point Value',
+  'Current: 1 point' => 'Current: 1 point',
   'ex' => 'Ex',
   'ex: Maximilian' => 'Ex: Maximilian',
   'ex: Schwarzmüller' => 'Ex: Schwarzmüller',

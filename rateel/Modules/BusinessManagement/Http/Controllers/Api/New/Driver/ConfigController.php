@@ -578,21 +578,30 @@ class ConfigController extends Controller
                         try {
                             $point = new Point($lat, $lng, 4326);
                             $isInZone = $this->zoneService->getByPoints($point)
-                                ->where('id', $zoneId)
+                                ->where('id', (string) $zoneId)
                                 ->where('is_active', 1)
                                 ->exists();
 
                             if (!$isInZone) {
                                 $filteredCount++;
+                                \Log::debug('Autocomplete result filtered out - outside zone', [
+                                    'lat' => $lat,
+                                    'lng' => $lng,
+                                    'zone_id' => $zoneId,
+                                    'name' => $name
+                                ]);
                                 continue; // Skip this result
                             }
                         } catch (\Exception $e) {
-                            \Log::warning('Error checking point in zone', [
+                            \Log::warning('Error checking point in zone - filtering out result', [
                                 'lat' => $lat,
                                 'lng' => $lng,
                                 'zone_id' => $zoneId,
                                 'error' => $e->getMessage()
                             ]);
+                            // On error, filter out the result to be safe
+                            $filteredCount++;
+                            continue;
                         }
                     }
 

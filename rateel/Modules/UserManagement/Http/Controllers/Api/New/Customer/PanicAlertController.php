@@ -36,25 +36,24 @@ class PanicAlertController extends Controller
         }
 
         try {
+            // Build description with location and reason
+            $description = translate('Customer :name triggered a panic alert', ['name' => $customer->first_name . ' ' . $customer->last_name]);
+            $description .= ' | Location: ' . $request->lat . ',' . $request->lng;
+            if ($request->reason) {
+                $description .= ' | Reason: ' . $request->reason;
+            }
+            
             // Send Firebase notification to admin dashboard
             sendTopicNotification(
                 topic: 'admin_panic_alert_notification',
                 title: translate('Emergency Panic Alert'),
-                description: translate('Customer :name triggered a panic alert', ['name' => $customer->first_name . ' ' . $customer->last_name]),
+                description: $description,
+                image: null,
+                ride_request_id: null,
                 type: 'panic_alert',
                 sentBy: $customer->id,
                 tripReferenceId: null,
-                route: '/admin/business/setup/safety-precaution/precaution',
-                additionalData: [
-                    'customer_id' => $customer->id,
-                    'customer_name' => $customer->first_name . ' ' . $customer->last_name,
-                    'customer_phone' => $customer->phone,
-                    'lat' => $request->lat,
-                    'lng' => $request->lng,
-                    'reason' => $request->reason ?? 'Emergency',
-                    'timestamp' => now()->toIso8601String(),
-                    'alert_type' => 'panic',
-                ]
+                route: '/admin/business/setup/safety-precaution/precaution'
             );
 
             Log::info('Panic alert triggered', [

@@ -61,13 +61,17 @@ class LoyaltyPointController extends Controller
         }
         $conversion_rate = businessConfig('loyalty_points', 'customer_settings')?->value;
         $user = auth('api')->user();
-        if (($conversion_rate['status'] ?? false) && $user->loyalty_points >= $request->points && $request->points >= ($conversion_rate['points'] ?? 1)) {
+        // Minimum points to convert is 1
+        $minPoints = 1;
+        if (($conversion_rate['status'] ?? false) && $user->loyalty_points >= $request->points && $request->points >= $minPoints) {
             DB::beginTransaction();
             $driver = $this->customer->update(attributes: [
                 'column' => 'id',
                 'decrease' => $request->points,
             ], id: $user->id);
-            $balance = $request->points / ($conversion_rate['points'] ?? 1);
+            // Use point_value if available (1 point = X currency), otherwise calculate from points
+            $pointValue = $conversion_rate['point_value'] ?? (1 / ($conversion_rate['points'] ?? 1));
+            $balance = $request->points * $pointValue;
             $account = $this->customerLoyaltyPointsTransaction($driver, $balance);
             $attributes = [
                 'user_id' => $user->id,

@@ -18,9 +18,23 @@ Route::group(['prefix' => 'location', 'middleware' => ['auth:api', 'maintenance_
 #new route
 Route::group(['prefix' => 'customer'], function () {
     Route::controller(\Modules\BusinessManagement\Http\Controllers\Api\New\Customer\ConfigController::class)->group(function () {
+        // Legacy full configuration (backward compatibility)
         Route::get('configuration', 'configuration');
         Route::get('pages/{page_name}', 'pages');
+
         Route::group(['prefix' => 'config'], function () {
+            // OPTIMIZED: Smaller, focused configuration endpoints
+            // Use these instead of /configuration for better performance
+            Route::get('core', 'coreConfig');           // Essential startup data (~2KB)
+            Route::get('auth', 'authConfig');           // Authentication settings
+            Route::get('trip', 'tripConfig');           // Trip/ride settings + payment gateways
+            Route::get('safety', 'safetyConfig');       // Safety features
+            Route::get('parcel', 'parcelConfig');       // Parcel settings
+            Route::get('external', 'externalConfig');   // External/Mart integration
+            Route::get('contact', 'contactConfig');     // Business contact info
+            Route::get('loyalty', 'loyaltyConfig');     // Loyalty points/levels settings
+
+            // Existing endpoints
             Route::get('get-zone-id', 'getZone');
             Route::get('place-api-autocomplete', 'placeApiAutocomplete');
             Route::get('distance_api', 'distanceApi');

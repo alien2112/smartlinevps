@@ -55,7 +55,8 @@
       "Bash(npm install:*)",
       "Bash(pm2 start:*)",
       "Bash(pm2 save:*)",
-      "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\nCheck state:\")"
+      "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\nCheck state:\")",
+      "Bash(python3:*)"
     ]
   }
 }

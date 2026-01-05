@@ -12,6 +12,7 @@ return [
     | Supported Services:
     | - Mailgun: Email delivery (primary)
     | - Realtime: Node.js WebSocket service
+    | - AI Chatbot: AI-powered customer support
     |
     */
 
@@ -48,6 +49,23 @@ return [
     'realtime' => [
         'url' => env('NODEJS_REALTIME_URL', 'http://localhost:3000'),
         'api_key' => env('NODEJS_REALTIME_API_KEY'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | AI Chatbot Service - Node.js Chatbot Server
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the AI-powered chatbot service:
+    | - Customer support automation
+    | - Trip booking via chat
+    | - Multi-language support (Arabic/English)
+    |
+    */
+    'ai_chatbot' => [
+        'url' => env('AI_CHATBOT_URL', 'http://localhost:3001'),
+        'api_key' => env('AI_CHATBOT_API_KEY'),
+        'timeout' => env('AI_CHATBOT_TIMEOUT', 30),
     ],
 
 ];

@@ -17,9 +17,7 @@ class CustomerSettingStoreOrUpdateRequest extends FormRequest
         return [
             'type' => 'required',
             'loyalty_points.status' => 'required_if:loyalty_points,array,on',
-            'loyalty_points.value' => 'required_if:loyalty_points,array|gt:0|integer'
-
-
+            'loyalty_points.point_value' => 'required_if:loyalty_points,array|numeric|gt:0'
         ];
     }
 

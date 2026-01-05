@@ -13,8 +13,8 @@ const morgan = require('morgan');
 require('dotenv').config();
 
 // Utilities
-const { logger, logRequest, logError } = require('./utils/logger');
-const { adminAuth } = require('./utils/auth');
+const { logger, logRequest, logError, logSecurityEvent } = require('./utils/logger');
+const { adminAuth, getAuthStats } = require('./utils/auth');
 const responseCache = require('./utils/cache');
 const { checkProfanity, detectUserLanguage } = require('./utils/moderation');
 const { escalationReply, languageGuardReply } = require('./utils/escalationMessages');
@@ -23,9 +23,67 @@ const { escalationReply, languageGuardReply } = require('./utils/escalationMessa
 const { ACTION_TYPES, UI_HINTS, ActionBuilders } = require('./actions');
 
 const app = express();
-app.use(express.json());
-app.use(cors());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// ============================================
+// 🛡️ SECURITY MIDDLEWARE
+// ============================================
+
+// Trust proxy for accurate IP detection behind reverse proxy
+if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+}
+
+// Security headers (production-ready)
+app.use((req, res, next) => {
+    // Prevent clickjacking
+    res.setHeader('X-Frame-Options', 'DENY');
+    // Prevent MIME sniffing
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // XSS protection
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    // Referrer policy
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Content Security Policy (relaxed for API)
+    res.setHeader('Content-Security-Policy', "default-src 'self'");
+    // Remove X-Powered-By header
+    res.removeHeader('X-Powered-By');
+    next();
+});
+
+// Request body size limit
+app.use(express.json({ limit: '100kb' }));
+
+// CORS configuration (restrict in production)
+const corsOptions = {
+    origin: process.env.NODE_ENV === 'production'
+        ? (process.env.ALLOWED_ORIGINS?.split(',') || ['https://smartline-it.com'])
+        : '*',
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'X-API-Key', 'Authorization', 'zoneId'],
+    maxAge: 86400 // 24 hours
+};
+app.use(cors(corsOptions));
+
+// Static files with caching headers
+app.use(express.static(path.join(__dirname, 'public'), {
+    maxAge: process.env.NODE_ENV === 'production' ? '1d' : 0
+}));
+
+// Request timeout middleware
+const REQUEST_TIMEOUT = parseInt(process.env.REQUEST_TIMEOUT) || 30000; // 30 seconds
+app.use((req, res, next) => {
+    req.setTimeout(REQUEST_TIMEOUT, () => {
+        logError(new Error('Request timeout'), { path: req.path, method: req.method });
+        if (!res.headersSent) {
+            res.status(408).json({
+                message: 'Request timeout. Please try again.',
+                action: ACTION_TYPES.NONE,
+                error: 'REQUEST_TIMEOUT'
+            });
+        }
+    });
+    next();
+});
 
 // HTTP logging
 morgan.token('user-id', (req) => req.body?.user_id || '-');
@@ -43,21 +101,25 @@ app.use((req, res, next) => {
 // 🛡️ RATE LIMITING
 // ============================================
 
-const rateLimitMax = process.env.NODE_ENV === 'production' ? 10 : 30;
+const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX) || (process.env.NODE_ENV === 'production' ? 10 : 30);
+const rateLimitWindow = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000;
 const chatRateLimiter = rateLimit({
-    windowMs: 60 * 1000,
+    windowMs: rateLimitWindow,
     max: rateLimitMax,
     message: (req) => {
         const lang = detectUserLanguage(req.body?.message || '').primary;
+        logSecurityEvent('rate_limit_exceeded', { ip: req.ip, userId: req.body?.user_id });
         return {
             message: lang === 'ar' ? 'طلبات كتير. استنى شوية.' : 'Too many requests. Please wait.',
             action: ACTION_TYPES.NONE,
             error: 'RATE_LIMIT_EXCEEDED',
-            retryAfter: 60
+            retryAfter: Math.ceil(rateLimitWindow / 1000)
         };
     },
     keyGenerator: (req) => req.body?.user_id || req.ip,
-    skip: (req) => req.path.startsWith('/admin') || req.path === '/health'
+    skip: (req) => req.path.startsWith('/admin') || req.path === '/health',
+    standardHeaders: true,
+    legacyHeaders: false
 });
 
 // ============================================
@@ -303,7 +365,9 @@ function detectIntent(message) {
 const STATES = {
     START: 'START',
     AWAITING_PICKUP: 'AWAITING_PICKUP',
+    AWAITING_PICKUP_SELECTION: 'AWAITING_PICKUP_SELECTION',
     AWAITING_DESTINATION: 'AWAITING_DESTINATION',
+    AWAITING_DESTINATION_SELECTION: 'AWAITING_DESTINATION_SELECTION',
     AWAITING_RIDE_TYPE: 'AWAITING_RIDE_TYPE',
     AWAITING_CONFIRMATION: 'AWAITING_CONFIRMATION',
     TRIP_ACTIVE: 'TRIP_ACTIVE',
@@ -628,10 +692,10 @@ async function createTrip(tripData) {
             ) VALUES (?, ST_GeomFromText(?), ST_GeomFromText(?), ST_GeomFromText(?), ST_GeomFromText(?), ?, ?, ?, ?)
         `, [
             tripId,
-            `POINT(${pickupLng} ${pickupLat})`,
-            `POINT(${destLng} ${destLat})`,
-            `POINT(${pickupLng} ${pickupLat})`,
-            `POINT(${pickupLng} ${pickupLat})`,
+            `POINT(${pickupLat} ${pickupLng})`,
+            `POINT(${destLat} ${destLng})`,
+            `POINT(${pickupLat} ${pickupLng})`,
+            `POINT(${pickupLat} ${pickupLng})`,
             pickupAddress,
             destAddress,
             now,
@@ -713,6 +777,53 @@ async function cancelTrip(tripId) {
 }
 
 // ============================================
+// 📍 AUTOCOMPLETE API INTEGRATION
+// ============================================
+
+/**
+ * Call Laravel autocomplete API to search for places
+ */
+async function searchPlaces(searchText, latitude, longitude, zoneId, language = 'ar') {
+    try {
+        const baseUrl = process.env.LARAVEL_BASE_URL || 'https://smartline-it.com';
+        const url = `${baseUrl}/api/customer/config/place-api-autocomplete?search_text=${encodeURIComponent(searchText)}&latitude=${latitude}&longitude=${longitude}&language=${language}&country=eg&zoneId=${zoneId}`;
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.response_code === 'default_200' && data.data && data.data.predictions) {
+            return {
+                success: true,
+                predictions: data.data.predictions.slice(0, 5) // Top 5 results
+            };
+        }
+        
+        return { success: false, predictions: [] };
+    } catch (error) {
+        logger.error('Autocomplete API failed', { error: error.message });
+        return { success: false, predictions: [] };
+    }
+}
+
+/**
+ * Format predictions as numbered list for user
+ */
+function formatPredictions(predictions, lang) {
+    if (predictions.length === 0) {
+        return lang === 'ar' ? '❌ لم يتم العثور على نتائج. حاول مرة أخرى.' : '❌ No results found. Try again.';
+    }
+    
+    let message = lang === 'ar' ? '📍 اختر الموقع:\n\n' : '📍 Choose location:\n\n';
+    predictions.forEach((pred, index) => {
+        const mainText = pred.structured_formatting?.main_text || pred.description;
+        message += `${index + 1}. ${mainText}\n`;
+    });
+    message += '\n' + (lang === 'ar' ? 'أرسل رقم الخيار' : 'Send the number');
+    
+    return message;
+}
+
+// ============================================
 // 🤖 GROQ LLM API
 // ============================================
 
@@ -757,6 +868,19 @@ async function processConversation(userId, message, lang, userType) {
         response.quick_replies = ['نعم، أنا بأمان', 'لا، أحتاج مساعدة'];
         await setConversationState(userId, STATES.RESOLVED, {});
         return response;
+    }
+
+    // Check for reset/cancel commands at any state
+    if (message.includes('إلغاء') || message.includes('cancel') || message.includes('رجوع') || message.includes('back')) {
+        // Only cancel if not in confirmation or trip active
+        if (convState.state !== STATES.TRIP_ACTIVE && convState.state !== STATES.AWAITING_CANCEL_CONFIRM) {
+            response.message = lang === 'ar' 
+                ? 'تم الإلغاء. كيف أساعدك؟\n\n1️⃣ حجز رحلة\n2️⃣ رحلاتي\n3️⃣ مساعدة'
+                : 'Cancelled. How can I help?\n\n1️⃣ Book trip\n2️⃣ My trips\n3️⃣ Help';
+            response.quick_replies = ['حجز رحلة', 'رحلاتي', 'مساعدة'];
+            await setConversationState(userId, STATES.START, {});
+            return response;
+        }
     }
 
     // HUMAN HANDOFF
@@ -813,34 +937,134 @@ async function processConversation(userId, message, lang, userType) {
             break;
 
         case STATES.AWAITING_PICKUP:
-            if (message.includes('lat:') || message.includes('location:') || convState.data.pickup_received) {
-                response.message = lang === 'ar' ? '✅ تم. إلى أين تريد الذهاب؟' : '✅ Got it. Where to?';
-                const destAction = ActionBuilders.requestDestination(convState.data.pickup || message);
-                response.action = destAction.action;
-                response.data = destAction.data;
-                await setConversationState(userId, STATES.AWAITING_DESTINATION, { pickup: message });
+            // User should type location name (not coordinates)
+            if (message.length > 2) {
+                // Search for the location
+                const userLat = convState.data.user_lat || 30.0444; // Default or from user profile
+                const userLng = convState.data.user_lng || 31.2357;
+                const zoneId = convState.data.zone_id || '182440b2-da90-11f0-bfad-581122408b4d';
+                
+                const searchResult = await searchPlaces(message, userLat, userLng, zoneId, lang);
+                
+                if (searchResult.success && searchResult.predictions.length > 0) {
+                    response.message = formatPredictions(searchResult.predictions, lang);
+                    response.action = 'show_location_options';
+                    response.data = { predictions: searchResult.predictions, type: 'pickup' };
+                    response.quick_replies = searchResult.predictions.map((p, i) => `${i + 1}`);
+                    
+                    const updatedData = { 
+                        ...convState.data, 
+                        pickup_predictions: searchResult.predictions,
+                        pickup_search: message 
+                    };
+                    
+                    await setConversationState(userId, STATES.AWAITING_PICKUP_SELECTION, updatedData);
+                    // Update local convState so next case can access it
+                    convState.data = updatedData;
+                    convState.state = STATES.AWAITING_PICKUP_SELECTION;
+                } else {
+                    response.message = lang === 'ar' 
+                        ? '❌ لم يتم العثور على نتائج. اكتب اسم المكان مرة أخرى:'
+                        : '❌ No results found. Type location name again:';
+                }
             } else {
-                response.message = lang === 'ar' ? '📍 حدد موقعك على الخريطة' : '📍 Select your location on the map';
-                const pickupAction = ActionBuilders.requestPickup();
-                response.action = pickupAction.action;
-                response.data = pickupAction.data;
+                response.message = lang === 'ar' ? '📍 اكتب اسم موقع الانطلاق (مثال: مدينة نصر)' : '📍 Type pickup location name (e.g., Nasr City)';
+                response.action = 'none';
+            }
+            break;
+
+        case STATES.AWAITING_PICKUP_SELECTION:
+            // User selects a number from predictions
+            const pickupIndex = parseInt(message) - 1;
+            const pickupPredictions = convState.data.pickup_predictions || [];
+            
+            if (pickupIndex >= 0 && pickupIndex < pickupPredictions.length) {
+                const selected = pickupPredictions[pickupIndex];
+                response.message = lang === 'ar' 
+                    ? `✅ تم اختيار: ${selected.structured_formatting?.main_text}\n\nإلى أين تريد الذهاب؟ (اكتب اسم الوجهة)`
+                    : `✅ Selected: ${selected.structured_formatting?.main_text}\n\nWhere to? (Type destination name)`;
+                response.action = 'none';
+                
+                await setConversationState(userId, STATES.AWAITING_DESTINATION, { 
+                    ...convState.data,
+                    pickup: selected,
+                    pickup_place_id: selected.place_id,
+                    pickup_lat: selected.geometry?.location?.lat,
+                    pickup_lng: selected.geometry?.location?.lng,
+                    pickup_address: selected.description
+                });
+            } else {
+                response.message = lang === 'ar' ? '❌ خيار غير صحيح. اختر رقم من القائمة:' : '❌ Invalid option. Choose a number from the list:';
+                response.message += '\n\n' + formatPredictions(pickupPredictions, lang);
+                response.quick_replies = pickupPredictions.map((p, i) => `${i + 1}`);
             }
             break;
 
         case STATES.AWAITING_DESTINATION:
-            if (message.includes('lat:') || message.includes('location:') || message.length > 3) {
-                const categories = await getVehicleCategories();
-                response.message = formatVehicleCategoriesMessage(categories, lang);
-                const rideOptions = ActionBuilders.showRideOptions(convState.data.pickup, message, categories);
-                response.action = rideOptions.action;
-                response.data = rideOptions.data;
-                response.quick_replies = categories.map(c => c.name);
-                await setConversationState(userId, STATES.AWAITING_RIDE_TYPE, { ...convState.data, destination: message, vehicle_categories: categories });
+            // User should type destination name
+            if (message.length > 2) {
+                const userLat = convState.data.pickup_lat || 30.0444;
+                const userLng = convState.data.pickup_lng || 31.2357;
+                const zoneId = convState.data.zone_id || '182440b2-da90-11f0-bfad-581122408b4d';
+                
+                const searchResult = await searchPlaces(message, userLat, userLng, zoneId, lang);
+                
+                if (searchResult.success && searchResult.predictions.length > 0) {
+                    response.message = formatPredictions(searchResult.predictions, lang);
+                    response.action = 'show_location_options';
+                    response.data = { predictions: searchResult.predictions, type: 'destination' };
+                    response.quick_replies = searchResult.predictions.map((p, i) => `${i + 1}`);
+                    
+                    const updatedData = { 
+                        ...convState.data,
+                        destination_predictions: searchResult.predictions,
+                        destination_search: message
+                    };
+                    
+                    await setConversationState(userId, STATES.AWAITING_DESTINATION_SELECTION, updatedData);
+                    // Update local convState
+                    convState.data = updatedData;
+                    convState.state = STATES.AWAITING_DESTINATION_SELECTION;
+                } else {
+                    response.message = lang === 'ar' 
+                        ? '❌ لم يتم العثور على نتائج. اكتب اسم المكان مرة أخرى:'
+                        : '❌ No results found. Type location name again:';
+                }
             } else {
-                response.message = lang === 'ar' ? '📍 إلى أين تريد الذهاب؟' : '📍 Where would you like to go?';
-                const destAction = ActionBuilders.requestDestination(convState.data.pickup);
-                response.action = destAction.action;
-                response.data = destAction.data;
+                response.message = lang === 'ar' ? '📍 اكتب اسم الوجهة (مثال: التجمع الخامس)' : '📍 Type destination name (e.g., Fifth Settlement)';
+                response.action = 'none';
+            }
+            break;
+
+        case STATES.AWAITING_DESTINATION_SELECTION:
+            // User selects a number from predictions
+            const destIndex = parseInt(message) - 1;
+            const destPredictions = convState.data.destination_predictions || [];
+            
+            if (destIndex >= 0 && destIndex < destPredictions.length) {
+                const selected = destPredictions[destIndex];
+                const categories = await getVehicleCategories();
+                
+                response.message = lang === 'ar'
+                    ? `✅ تم اختيار: ${selected.structured_formatting?.main_text}\n\n${formatVehicleCategoriesMessage(categories, lang)}`
+                    : `✅ Selected: ${selected.structured_formatting?.main_text}\n\n${formatVehicleCategoriesMessage(categories, lang)}`;
+                response.action = 'show_ride_options';
+                response.data = { categories };
+                response.quick_replies = categories.map(c => c.name);
+                
+                await setConversationState(userId, STATES.AWAITING_RIDE_TYPE, { 
+                    ...convState.data,
+                    destination: selected,
+                    destination_place_id: selected.place_id,
+                    destination_lat: selected.geometry?.location?.lat,
+                    destination_lng: selected.geometry?.location?.lng,
+                    destination_address: selected.description,
+                    vehicle_categories: categories
+                });
+            } else {
+                response.message = lang === 'ar' ? '❌ خيار غير صحيح. اختر رقم من القائمة:' : '❌ Invalid option. Choose a number from the list:';
+                response.message += '\n\n' + formatPredictions(destPredictions, lang);
+                response.quick_replies = destPredictions.map((p, i) => `${i + 1}`);
             }
             break;
 
@@ -848,13 +1072,17 @@ async function processConversation(userId, message, lang, userType) {
             const categories = convState.data.vehicle_categories || await getVehicleCategories();
             let selectedCat = categories[0];
             for (let i = 0; i < categories.length; i++) {
-                if (message.includes(String(i + 1)) || message.includes(categories[i].name.toLowerCase())) {
+                if (message.includes(String(i + 1)) || message.toLowerCase().includes(categories[i].name.toLowerCase())) {
                     selectedCat = categories[i]; break;
                 }
             }
+            
+            const pickupName = convState.data.pickup_address?.split(',')[0] || 'نقطة الانطلاق';
+            const destName = convState.data.destination_address?.split(',')[0] || 'الوجهة';
+            
             response.message = lang === 'ar'
-                ? `تأكيد:\n📍 من: ${convState.data.pickup}\n📍 إلى: ${convState.data.destination}\n🚗 ${selectedCat.name}\n\nتأكيد الحجز؟`
-                : `Confirm:\n📍 From: ${convState.data.pickup}\n📍 To: ${convState.data.destination}\n🚗 ${selectedCat.name}\n\nConfirm?`;
+                ? `تأكيد الحجز:\n\n📍 من: ${pickupName}\n📍 إلى: ${destName}\n🚗 نوع السيارة: ${selectedCat.name}\n\nهل تريد تأكيد الحجز؟`
+                : `Confirm booking:\n\n📍 From: ${pickupName}\n📍 To: ${destName}\n🚗 Vehicle: ${selectedCat.name}\n\nConfirm booking?`;
             response.quick_replies = ['تأكيد الحجز', 'إلغاء'];
             await setConversationState(userId, STATES.AWAITING_CONFIRMATION, { ...convState.data, ride_type: selectedCat.id, ride_type_name: selectedCat.name });
             break;
@@ -864,8 +1092,16 @@ async function processConversation(userId, message, lang, userType) {
                 // Actually create the trip in the database
                 const tripResult = await createTrip({
                     customer_id: userId,
-                    pickup: convState.data.pickup,
-                    destination: convState.data.destination,
+                    pickup: {
+                        lat: convState.data.pickup_lat,
+                        lng: convState.data.pickup_lng,
+                        address: convState.data.pickup_address
+                    },
+                    destination: {
+                        lat: convState.data.destination_lat,
+                        lng: convState.data.destination_lng,
+                        address: convState.data.destination_address
+                    },
                     ride_type: convState.data.ride_type,
                     ride_type_name: convState.data.ride_type_name,
                     pickup_address: convState.data.pickup_address,
@@ -874,8 +1110,8 @@ async function processConversation(userId, message, lang, userType) {
 
                 if (tripResult.success) {
                     response.message = lang === 'ar'
-                        ? `🎉 تم تأكيد الحجز!\n📋 رقم الرحلة: ${tripResult.ref_id}\n💰 السعر المتوقع: ${tripResult.estimated_fare} ج.م\n\nجاري البحث عن كابتن...`
-                        : `🎉 Booking confirmed!\n📋 Trip #${tripResult.ref_id}\n💰 Estimated fare: ${tripResult.estimated_fare} EGP\n\nSearching for driver...`;
+                        ? `🎉 تم تأكيد الحجز!\n📋 رقم الرحلة: ${tripResult.ref_id}\n💰 السعر المتوقع: ${tripResult.estimated_fare} ج.م\n📍 من: ${convState.data.pickup_address?.split(',')[0]}\n📍 إلى: ${convState.data.destination_address?.split(',')[0]}\n\nجاري البحث عن كابتن...`
+                        : `🎉 Booking confirmed!\n📋 Trip #${tripResult.ref_id}\n💰 Estimated fare: ${tripResult.estimated_fare} EGP\n📍 From: ${convState.data.pickup_address?.split(',')[0]}\n📍 To: ${convState.data.destination_address?.split(',')[0]}\n\nSearching for driver...`;
 
                     const confirmAction = ActionBuilders.confirmBooking({
                         ...convState.data,
@@ -915,7 +1151,20 @@ async function processConversation(userId, message, lang, userType) {
             break;
 
         case STATES.TRIP_ACTIVE:
-            const currentRide = activeRide || await getLastTrip(userId);
+            // Check if trip is still active - if cancelled/completed externally, reset state
+            if (!activeRide) {
+                // Trip was cancelled or completed outside chatbot - reset state
+                await setConversationState(userId, STATES.START, {});
+                response.message = lang === 'ar'
+                    ? 'الرحلة السابقة انتهت. كيف أقدر أساعدك؟'
+                    : 'Previous trip ended. How can I help you?';
+                response.action = ACTION_TYPES.NONE;
+                response.quick_replies = lang === 'ar'
+                    ? ['حجز رحلة', 'تتبع طلبي', 'مساعدة']
+                    : ['Book a ride', 'Track my order', 'Help'];
+                break;
+            }
+            const currentRide = activeRide;
             if (detectedIntent.intent === 'CANCEL_TRIP') {
                 response.message = lang === 'ar' ? '⚠️ هل أنت متأكد من الإلغاء؟' : '⚠️ Are you sure you want to cancel?';
                 const cancelAction = ActionBuilders.confirmCancelTrip(currentRide?.id, 5);
@@ -1032,16 +1281,46 @@ app.post('/chat', chatRateLimiter, [
             userType = detectedType;
         }
 
-        // Handle location data
+        // Handle location data and store for autocomplete
         let processedMessage = message;
+        const convState = await getConversationState(user_id);
+        
         if (location_data?.lat && location_data?.lng) {
             processedMessage = `location:${location_data.lat},${location_data.lng} ${message}`;
-            const convState = await getConversationState(user_id);
+            
+            // Store user location for autocomplete API calls
+            await setConversationState(user_id, convState.state, { 
+                ...convState.data, 
+                user_lat: location_data.lat,
+                user_lng: location_data.lng,
+                zone_id: location_data.zone_id || req.headers.zoneid || '182440b2-da90-11f0-bfad-581122408b4d'
+            });
+            
             if (convState.state === STATES.AWAITING_PICKUP) {
-                await setConversationState(user_id, convState.state, { ...convState.data, pickup: location_data, pickup_received: true });
+                await setConversationState(user_id, convState.state, { 
+                    ...convState.data,
+                    user_lat: location_data.lat,
+                    user_lng: location_data.lng,
+                    zone_id: location_data.zone_id || req.headers.zoneid,
+                    pickup: location_data, 
+                    pickup_received: true 
+                });
             } else if (convState.state === STATES.AWAITING_DESTINATION) {
-                await setConversationState(user_id, convState.state, { ...convState.data, destination: location_data });
+                await setConversationState(user_id, convState.state, { 
+                    ...convState.data, 
+                    destination: location_data 
+                });
             }
+        } else if (!convState.data.user_lat && !convState.data.user_lng) {
+            // If no location data provided, try to get from headers or set defaults
+            const zoneId = req.headers.zoneid || '182440b2-da90-11f0-bfad-581122408b4d';
+            // Set Alexandria as default (from your example)
+            await setConversationState(user_id, convState.state, {
+                ...convState.data,
+                user_lat: 31.2001,
+                user_lng: 29.9187,
+                zone_id: zoneId
+            });
         }
 
         // Process conversation
@@ -1166,8 +1445,10 @@ app.get('/admin/stats', async (req, res) => {
                 userTypesInMemory: userTypes.size,
                 lastMessagesInMemory: lastMessages.size,
                 cacheStats: responseCache.getStats(),
+                authStats: getAuthStats(),
                 memory: { heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)}MB`, rss: `${Math.round(mem.rss / 1024 / 1024)}MB` },
-                uptime: `${Math.round(process.uptime())}s`
+                uptime: `${Math.round(process.uptime())}s`,
+                nodeEnv: process.env.NODE_ENV || 'development'
             }
         });
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }

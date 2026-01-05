@@ -41,13 +41,20 @@
                                 </div>
 
                                 <div class="mb-3">
-                                    <label for="equivalent_points"
-                                           class="mb-2">{{getCurrencyFormat(1). ' ' . translate('equivalent_to_points')}}</label>
-                                    <input type="tel" name="loyalty_points[value]" id="equivalent_points"
-                                           class="form-control" required pattern="[1-9][0-9]{0,200}"
-                                           data-bs-toggle="tooltip" title="Please input integer value. Ex:1,2,22,10"
-                                           value="{{$settings->firstWhere('key_name', 'loyalty_points')?->value['points'] ?? ''}}"
-                                           placeholder="{{translate('Ex: 2')}}">
+                                    <label for="point_value"
+                                           class="mb-2">{{translate('1_point_equals')}} ({{getCurrencyFormat(1)}})</label>
+                                    <input type="number" step="0.01" min="0.01" name="loyalty_points[point_value]" id="point_value"
+                                           class="form-control" required
+                                           data-bs-toggle="tooltip" title="How much is 1 point worth? Ex: 0.5 means 1 point = 0.50 EGP"
+                                           value="{{$settings->firstWhere('key_name', 'loyalty_points')?->value['point_value'] ?? (1 / ($settings->firstWhere('key_name', 'loyalty_points')?->value['points'] ?? 1))}}"
+                                           placeholder="{{translate('Ex: 0.5')}}">
+                                    <small class="text-muted">
+                                        @php
+                                            $pointValue = $settings->firstWhere('key_name', 'loyalty_points')?->value['point_value']
+                                                ?? (1 / ($settings->firstWhere('key_name', 'loyalty_points')?->value['points'] ?? 1));
+                                        @endphp
+                                        {{translate('Current: 1 point')}} = {{getCurrencyFormat($pointValue)}}
+                                    </small>
                                 </div>
 
                                 <div class="d-flex justify-content-end">
