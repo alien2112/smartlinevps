@@ -140,21 +140,35 @@ class TripRequestController extends Controller
             }
 
             // Auto-calculate min_price based on admin settings
+            // Note: get_cache returns array with 'status' and 'value' keys
             $distanceKm = $request->input('estimated_distance', 0);
             $baseFare = $request->estimated_fare ?? 0;
 
-            // Method 1: Use travel price per km from admin settings
-            $perKmRate = (float)(get_cache('travel_price_per_km'));
-            if ($perKmRate > 0 && $distanceKm > 0) {
+            // Method 1: Use travel price per km from admin settings (if enabled)
+            $perKmRateConfig = get_cache('travel_price_per_km');
+            $perKmRate = is_array($perKmRateConfig)
+                ? (float)($perKmRateConfig['value'] ?? 0)
+                : (float)($perKmRateConfig ?? 0);
+            $perKmRateEnabled = is_array($perKmRateConfig)
+                ? (bool)($perKmRateConfig['status'] ?? false)
+                : ($perKmRate > 0);
+
+            if ($perKmRateEnabled && $perKmRate > 0 && $distanceKm > 0) {
                 $minPrice = round($distanceKm * $perKmRate, 2);
             } else {
                 // Method 2: Use travel multiplier on base fare
-                $travelMultiplier = (float)(get_cache('travel_price_multiplier') ?? 1.0);
+                $travelMultiplierConfig = get_cache('travel_price_multiplier');
+                $travelMultiplier = is_array($travelMultiplierConfig)
+                    ? (float)($travelMultiplierConfig['value'] ?? 1.0)
+                    : (float)($travelMultiplierConfig ?? 1.0);
                 $minPrice = round($baseFare * $travelMultiplier, 2);
             }
 
             // Calculate recommended_fare from admin setting
-            $recommendedMultiplier = (float)(get_cache('travel_recommended_multiplier') ?? 1.2);
+            $recommendedMultiplierConfig = get_cache('travel_recommended_multiplier');
+            $recommendedMultiplier = is_array($recommendedMultiplierConfig)
+                ? (float)($recommendedMultiplierConfig['value'] ?? 1.2)
+                : (float)($recommendedMultiplierConfig ?? 1.2);
             $recommendedFare = round($minPrice * $recommendedMultiplier, 2);
 
             // Validate offer_price >= auto-calculated min_price
@@ -395,18 +409,44 @@ class TripRequestController extends Controller
 
             // Calculate min_price based on admin settings (price per km)
             // Get base per-km rate from trip fare settings or use fare from estimation
-            $travelMultiplier = (float)(get_cache('travel_price_multiplier') ?? 1.0); // Default no markup
-            $minPrice = round($baseFare * $travelMultiplier, 2);
+            // Note: get_cache returns array with 'status' and 'value' keys
+            $travelMultiplierConfig = get_cache('travel_price_multiplier');
+            $travelMultiplier = is_array($travelMultiplierConfig)
+                ? (float)($travelMultiplierConfig['value'] ?? 1.0)
+                : (float)($travelMultiplierConfig ?? 1.0);
+            $travelMultiplierEnabled = is_array($travelMultiplierConfig)
+                ? (bool)($travelMultiplierConfig['status'] ?? false)
+                : true;
 
-            // Alternative: Use distance-based calculation if per_km_rate is set
-            $perKmRate = (float)(get_cache('travel_price_per_km'));
-            if ($perKmRate > 0 && $distanceKm > 0) {
+            $minPrice = $travelMultiplierEnabled && $travelMultiplier > 0
+                ? round($baseFare * $travelMultiplier, 2)
+                : $baseFare;
+
+            // Alternative: Use distance-based calculation if per_km_rate is set and enabled
+            $perKmRateConfig = get_cache('travel_price_per_km');
+            $perKmRate = is_array($perKmRateConfig)
+                ? (float)($perKmRateConfig['value'] ?? 0)
+                : (float)($perKmRateConfig ?? 0);
+            $perKmRateEnabled = is_array($perKmRateConfig)
+                ? (bool)($perKmRateConfig['status'] ?? false)
+                : ($perKmRate > 0);
+
+            if ($perKmRateEnabled && $perKmRate > 0 && $distanceKm > 0) {
                 $minPrice = round($distanceKm * $perKmRate, 2);
             }
 
             // Calculate recommended_fare from admin setting (multiplier on min_price)
-            $recommendedMultiplier = (float)(get_cache('travel_recommended_multiplier') ?? 1.2);
-            $recommendedFare = round($minPrice * $recommendedMultiplier, 2);
+            $recommendedMultiplierConfig = get_cache('travel_recommended_multiplier');
+            $recommendedMultiplier = is_array($recommendedMultiplierConfig)
+                ? (float)($recommendedMultiplierConfig['value'] ?? 1.2)
+                : (float)($recommendedMultiplierConfig ?? 1.2);
+            $recommendedMultiplierEnabled = is_array($recommendedMultiplierConfig)
+                ? (bool)($recommendedMultiplierConfig['status'] ?? false)
+                : true;
+
+            $recommendedFare = $recommendedMultiplierEnabled && $recommendedMultiplier > 0
+                ? round($minPrice * $recommendedMultiplier, 2)
+                : $minPrice;
 
             // Suggest offer price range (min to recommended)
             $maxSuggestedOffer = round($minPrice * 1.5, 2);

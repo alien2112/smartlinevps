@@ -34,14 +34,18 @@ class AiChatbotController extends Controller
         $rateLimitPerMinute = BusinessSetting::where(['key_name' => 'ai_chatbot_rate_limit', 'settings_type' => 'ai_config'])->first();
         $maxTokens = BusinessSetting::where(['key_name' => 'ai_chatbot_max_tokens', 'settings_type' => 'ai_config'])->first();
 
-        // Get recent chat logs from database (cached for 2 minutes)
-        $logs = Cache::remember('ai_chatbot_logs_recent', 120, function () {
+        // Get recent chat conversations (user + assistant messages grouped) - cached for 2 minutes
+        $chatHistory = Cache::remember('ai_chatbot_chat_history', 120, function () {
             return DB::table('ai_chat_history')
-                ->select('user_id', 'content', 'role', 'created_at')
-                ->where('role', 'user')
+                ->select('user_id', 'content', 'role', 'action_type', 'created_at')
                 ->orderBy('created_at', 'desc')
-                ->limit(20)
-                ->get();
+                ->limit(100)
+                ->get()
+                ->groupBy('user_id')
+                ->map(function ($messages) {
+                    return $messages->sortBy('created_at')->values();
+                })
+                ->take(10);
         });
 
         // Get chatbot stats (cached for 5 minutes)
@@ -53,7 +57,54 @@ class AiChatbotController extends Controller
             ];
         });
 
-        return view('adminmodule::admin.chatbot.index', compact('isEnabled', 'prompt', 'rateLimitPerMinute', 'maxTokens', 'logs', 'stats'));
+        // Prompt embedding templates
+        $promptTemplates = $this->getPromptTemplates();
+
+        return view('adminmodule::admin.chatbot.index', compact('isEnabled', 'prompt', 'rateLimitPerMinute', 'maxTokens', 'chatHistory', 'stats', 'promptTemplates'));
+    }
+
+    /**
+     * Get prompt embedding templates
+     */
+    private function getPromptTemplates(): array
+    {
+        return [
+            [
+                'name' => 'Greeting Style',
+                'snippets' => [
+                    ['label' => 'Friendly Greeting', 'text' => 'Always greet users warmly and introduce yourself as the SmartLine AI assistant.'],
+                    ['label' => 'Professional Greeting', 'text' => 'Maintain a professional tone. Begin each conversation by confirming how you can assist.'],
+                    ['label' => 'Bilingual Greeting', 'text' => 'Greet users in their preferred language (Arabic or English). Respond in the same language the user uses.'],
+                ]
+            ],
+            [
+                'name' => 'Behavior Rules',
+                'snippets' => [
+                    ['label' => 'Stay On Topic', 'text' => 'Only answer questions related to ride booking, trip management, and SmartLine services. Politely decline unrelated requests.'],
+                    ['label' => 'Error Handling', 'text' => 'If you cannot understand a request, ask clarifying questions. Never make assumptions about trip details.'],
+                    ['label' => 'Safety First', 'text' => 'Prioritize user safety. Provide emergency contact information when users report safety concerns.'],
+                    ['label' => 'No Personal Data', 'text' => 'Never ask for or store sensitive personal information like passwords, credit card numbers, or ID numbers.'],
+                ]
+            ],
+            [
+                'name' => 'Service Knowledge',
+                'snippets' => [
+                    ['label' => 'Trip Booking', 'text' => 'You can help users book trips by collecting pickup location, destination, and ride type preferences.'],
+                    ['label' => 'Trip Status', 'text' => 'You can provide real-time trip status updates including driver location and estimated arrival time.'],
+                    ['label' => 'Payment Info', 'text' => 'Explain that payment can be made via cash or digital wallet. Guide users on how to add payment methods.'],
+                    ['label' => 'Complaint Handling', 'text' => 'Listen to complaints empathetically. Collect trip ID and issue details, then escalate to support if needed.'],
+                ]
+            ],
+            [
+                'name' => 'Response Style',
+                'snippets' => [
+                    ['label' => 'Concise Responses', 'text' => 'Keep responses brief and to the point. Avoid lengthy explanations unless specifically requested.'],
+                    ['label' => 'Step-by-Step', 'text' => 'When explaining processes, use numbered steps for clarity.'],
+                    ['label' => 'Emoji Friendly', 'text' => 'Use appropriate emojis to make responses friendly and engaging, but don\'t overuse them.'],
+                    ['label' => 'Formal Arabic', 'text' => 'When responding in Arabic, use Modern Standard Arabic (فصحى) for clarity.'],
+                ]
+            ],
+        ];
     }
 
     /**

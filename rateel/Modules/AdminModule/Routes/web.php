@@ -90,6 +90,8 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
         Route::get('chatbot/config', 'index')->name('chatbot.index');
         Route::post('chatbot/update', 'update')->name('chatbot.update');
         Route::get('chatbot/logs', 'logs')->name('chatbot.logs');
+        Route::post('chatbot/clear-history', 'clearUserHistory')->name('chatbot.clear-history');
+        Route::get('chatbot/health', 'health')->name('chatbot.health');
     });
 
     // App Settings (Tracking, Dispatch, Travel, Map)
