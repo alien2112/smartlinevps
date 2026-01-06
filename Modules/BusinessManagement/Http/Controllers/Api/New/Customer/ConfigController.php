@@ -531,54 +531,78 @@ class ConfigController extends Controller
             return response()->json(responseFormatter(DEFAULT_400, null, null, null, errorProcessor($validator)), 400);
         }
 
-        // Allow manual API key override via request parameter
         $mapKey = $request->input('key') ?? businessConfig(GOOGLE_MAP_API)?->value['map_api_key_server'] ?? null;
 
         if (empty($mapKey)) {
-            \Log::error('GeoLink API key not configured for text search');
             return response()->json(responseFormatter(DEFAULT_200, [
                 'predictions' => [],
                 'status' => 'ZERO_RESULTS'
             ]), 200);
         }
 
-        // Get zone_id from header or query parameter for filtering
         $zoneId = $request->header('zoneId') ?? $request->input('zoneId') ?? $request->input('zone_id');
+        $searchText = $request->input('search_text');
+        $latitude = $request->input('latitude');
+        $longitude = $request->input('longitude');
+        $country = $request->input('country', 'eg');
 
-        // GeoLink Text Search API
-        $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/text_search', [
-            'query' => $request['search_text'],
-            'key' => $mapKey
-        ]);
+        // Create cache key based on search parameters
+        $cacheKey = 'place_autocomplete_' . md5($searchText . $latitude . $longitude . $country . $zoneId);
 
-        // Log the response for debugging
-        if (!$response->successful()) {
-            \Log::error('GeoLink text search API request failed', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-                'search_text' => $request['search_text']
-            ]);
+        // Try to get from cache first (60 seconds TTL)
+        $cachedResult = \Cache::get($cacheKey);
+        if ($cachedResult !== null) {
+            return response()->json(responseFormatter(DEFAULT_200, $cachedResult), 200);
         }
 
-        // Transform GeoLink response to match expected format
-        $geoLinkData = $response->json();
+        // Build GeoLink API parameters
+        // GeoLink text_search uses 'latitude' and 'longitude' for location biasing
+        $apiParams = [
+            'query' => $searchText,
+            'key' => $mapKey
+        ];
 
-        // Log the raw response for debugging
-        \Log::info('GeoLink text search API response', [
-            'http_status' => $response->status(),
-            'response' => $geoLinkData,
-            'search_text' => $request['search_text'],
-            'api_url' => MAP_API_BASE_URI . '/api/v2/text_search',
-            'zone_filtering' => !empty($zoneId)
-        ]);
+        // GeoLink API expects 'latitude' and 'longitude' for location-based search biasing
+        if ($latitude) $apiParams['latitude'] = $latitude;
+        if ($longitude) $apiParams['longitude'] = $longitude;
+        if ($request->filled('language')) $apiParams['language'] = $request->input('language');
+        if ($country) $apiParams['country'] = $country;
 
-        $transformedData = $this->transformTextSearchResponse($geoLinkData, $zoneId);
+        // GeoLink API call with optimized settings
+        $response = Http::timeout(5)
+            ->connectTimeout(2)
+            ->withOptions(['http_errors' => false])
+            ->get(MAP_API_BASE_URI . '/api/v2/text_search', $apiParams);
+
+        if (!$response->successful()) {
+            return response()->json(responseFormatter(DEFAULT_200, [
+                'predictions' => [],
+                'status' => 'ZERO_RESULTS'
+            ]), 200);
+        }
+
+        $transformedData = $this->transformTextSearchResponse($response->json(), $zoneId);
+
+        // Cache for 60 seconds
+        \Cache::put($cacheKey, $transformedData, 60);
 
         return response()->json(responseFormatter(DEFAULT_200, $transformedData), 200);
     }
     
     /**
      * Transform GeoLink text search response to Google Places format
+     * GeoLink response structure:
+     * {
+     *   "data": [
+     *     {
+     *       "address": "Full address string",
+     *       "short_address": "Short name",
+     *       "location": { "lat": 31.xxx, "lng": 29.xxx },
+     *       "address_parts": { "country": "EG", "district": "...", "governorate": "..." }
+     *     }
+     *   ],
+     *   "success": true
+     * }
      * @param array $geoLinkData The raw response from GeoLink API
      * @param string|null $zoneId Optional zone ID to filter results by zone boundaries
      */
@@ -591,126 +615,81 @@ class ConfigController extends Controller
         $zone = null;
         if (!empty($zoneId)) {
             $zone = $this->zoneService->findOne($zoneId);
-            if (!$zone) {
-                \Log::warning('Zone not found for autocomplete filtering', ['zone_id' => $zoneId]);
-            }
         }
 
         // Check if response is null or empty
         if (empty($geoLinkData) || !is_array($geoLinkData)) {
-            \Log::warning('GeoLink text search returned empty or invalid response', [
-                'response' => $geoLinkData
-            ]);
             return [
                 'predictions' => $predictions,
                 'status' => 'ZERO_RESULTS'
             ];
         }
 
-        // Handle GeoLink API v2 response structure
-        // Check for different possible response structures
-        $data = null;
+        // GeoLink API v2 returns data in 'data' key
+        $data = $geoLinkData['data'] ?? $geoLinkData['results'] ?? null;
 
-        if (isset($geoLinkData['data']) && is_array($geoLinkData['data'])) {
-            $data = $geoLinkData['data'];
-        } elseif (isset($geoLinkData['results']) && is_array($geoLinkData['results'])) {
-            // Some APIs return 'results' instead of 'data'
-            $data = $geoLinkData['results'];
-        } elseif (is_array($geoLinkData) && isset($geoLinkData[0])) {
-            // Response might be a direct array of results
+        // If data key not found, check if response is direct array
+        if ($data === null && is_array($geoLinkData) && isset($geoLinkData[0])) {
             $data = $geoLinkData;
         }
 
         if ($data && is_array($data)) {
             foreach ($data as $result) {
-                // Convert object to array if needed
-                if (is_object($result)) {
-                    $result = json_decode(json_encode($result), true);
+                if (!is_array($result)) {
+                    continue;
                 }
 
-                if (is_array($result)) {
-                    // Extract coordinates and identifiers
-                    // GeoLink API uses nested location object with 'lat' and 'lng' fields
-                    $lat = $result['location']['lat'] ?? $result['lat'] ?? $result['latitude'] ?? null;
-                    $lng = $result['location']['lng'] ?? $result['lng'] ?? $result['longitude'] ?? null;
-                    $placeId = $result['place_id'] ?? $result['id'] ?? null;
-                    $name = $result['short_address'] ?? $result['name'] ?? '';
-                    $address = $result['address'] ?? $result['formatted_address'] ?? '';
+                // GeoLink actual response: location.lat, location.lng (nested object)
+                $lat = $result['location']['lat'] ?? $result['latitude'] ?? $result['lat'] ?? null;
+                $lng = $result['location']['lng'] ?? $result['longitude'] ?? $result['lng'] ?? null;
+                $name = $result['short_address'] ?? $result['name'] ?? '';
+                // GeoLink actual response: 'address' field contains full address
+                $address = $result['address'] ?? $result['long_address'] ?? $result['formatted_address'] ?? '';
 
-                    // Zone filtering: Skip results outside the zone
-                    if ($zone && $lat && $lng) {
-                        try {
-                            $point = new Point($lat, $lng, 4326);
-                            $isInZone = $this->zoneService->getByPoints($point)
-                                ->where('id', $zoneId)
-                                ->where('is_active', 1)
-                                ->exists();
+                // Zone filtering: Skip results outside the zone
+                if ($zone && $lat && $lng) {
+                    try {
+                        $point = new Point($lat, $lng, 4326);
+                        $isInZone = $this->zoneService->getByPoints($point)
+                            ->where('id', $zoneId)
+                            ->where('is_active', 1)
+                            ->exists();
 
-                            if (!$isInZone) {
-                                $filteredCount++;
-                                continue; // Skip this result
-                            }
-                        } catch (\Exception $e) {
-                            \Log::warning('Error checking point in zone', [
-                                'lat' => $lat,
-                                'lng' => $lng,
-                                'zone_id' => $zoneId,
-                                'error' => $e->getMessage()
-                            ]);
+                        if (!$isInZone) {
+                            $filteredCount++;
+                            continue;
                         }
+                    } catch (\Exception $e) {
+                        // Silently continue on zone check error
                     }
+                }
 
-                    // Create a smart place_id that can be used to retrieve details later
-                    if (!$placeId) {
-                        if ($lat && $lng) {
-                            // Encode coordinates as place_id
-                            $placeId = base64_encode(json_encode([
-                                'lat' => $lat,
-                                'lng' => $lng,
-                                'name' => $name,
-                                'address' => $address
-                            ]));
-                        } else {
-                            // Last resort: use name/address as query
-                            $placeId = base64_encode(json_encode([
-                                'query' => $name ?: $address
-                            ]));
-                        }
-                    }
+                // Create place_id with embedded coordinates for fast detail retrieval
+                $placeId = $result['place_id'] ?? $result['id'] ?? null;
+                if (!$placeId && $lat && $lng) {
+                    $placeId = base64_encode(json_encode([
+                        'lat' => $lat,
+                        'lng' => $lng,
+                        'name' => $name,
+                        'address' => $address
+                    ]));
+                }
 
-                    $predictions[] = [
-                        'place_id' => $placeId,
-                        'description' => $address ?: $name,
-                        'structured_formatting' => [
-                            'main_text' => $name,
-                            'secondary_text' => $address
-                        ],
-                        // Include coordinates for direct use
-                        'geometry' => [
-                            'location' => [
-                                'lat' => $lat,
-                                'lng' => $lng
-                            ]
+                $predictions[] = [
+                    'place_id' => $placeId,
+                    'description' => $address ?: $name,
+                    'structured_formatting' => [
+                        'main_text' => $name,
+                        'secondary_text' => $address
+                    ],
+                    'geometry' => [
+                        'location' => [
+                            'lat' => $lat,
+                            'lng' => $lng
                         ]
-                    ];
-                }
+                    ]
+                ];
             }
-        } else {
-            // Log if we couldn't find data in expected format
-            \Log::warning('GeoLink text search response structure unexpected', [
-                'response_keys' => array_keys($geoLinkData),
-                'response' => $geoLinkData
-            ]);
-        }
-
-        // Log zone filtering results
-        if ($zone && $filteredCount > 0) {
-            \Log::info('Autocomplete zone filtering applied', [
-                'zone_id' => $zoneId,
-                'total_results' => count($data ?? []),
-                'filtered_out' => $filteredCount,
-                'returned' => count($predictions)
-            ]);
         }
 
         return [

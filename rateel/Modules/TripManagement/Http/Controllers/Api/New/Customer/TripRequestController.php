@@ -391,15 +391,21 @@ class TripRequestController extends Controller
                 'routes' => $getRoutes,
             ]), 200);
         }
-        //Recent address store
-        $this->recentAddressService->create(data: [
-            'user_id' => $user->id,
-            'zone_id' => $zoneId,
-            'pickup_coordinates' => $pickupCoordinatesPoints,
-            'destination_coordinates' => $destinationCoordinatesPoints,
-            'pickup_address' => $request->pickup_address,
-            'destination_address' => $request->destination_address,
-        ]);
+        //Recent address store - deferred to run after response for faster user experience
+        $recentAddressService = $this->recentAddressService;
+        $userId = $user->id;
+        $pickupAddress = $request->pickup_address;
+        $destinationAddress = $request->destination_address;
+        dispatch(function () use ($recentAddressService, $userId, $zoneId, $pickupCoordinatesPoints, $destinationCoordinatesPoints, $pickupAddress, $destinationAddress) {
+            $recentAddressService->create(data: [
+                'user_id' => $userId,
+                'zone_id' => $zoneId,
+                'pickup_coordinates' => $pickupCoordinatesPoints,
+                'destination_coordinates' => $destinationCoordinatesPoints,
+                'pickup_address' => $pickupAddress,
+                'destination_address' => $destinationAddress,
+            ]);
+        })->afterResponse();
 
         // For travel mode, return min_price and recommended_fare
         if ($isTravelMode) {

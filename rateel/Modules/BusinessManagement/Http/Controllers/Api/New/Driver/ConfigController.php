@@ -289,11 +289,25 @@ class ConfigController extends Controller
         // Get zone_id from header or query parameter for filtering
         $zoneId = $request->header('zoneId') ?? $request->input('zoneId') ?? $request->input('zone_id');
 
-        // GeoLink Text Search API
-        $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/text_search', [
+        // Accept both 'lat'/'lng' and 'latitude'/'longitude' from request (Flutter sends lat/lng)
+        $latitude = $request->input('latitude') ?? $request->input('lat');
+        $longitude = $request->input('longitude') ?? $request->input('lng');
+
+        // Build GeoLink API parameters with location biasing
+        // GeoLink text_search requires 'latitude' and 'longitude' per docs
+        $apiParams = [
             'query' => $request['search_text'],
             'key' => $mapKey
-        ]);
+        ];
+
+        // GeoLink API requires 'latitude' and 'longitude' parameter names
+        if ($latitude) $apiParams['latitude'] = $latitude;
+        if ($longitude) $apiParams['longitude'] = $longitude;
+        if ($request->filled('language')) $apiParams['language'] = $request->input('language');
+        if ($request->filled('country')) $apiParams['country'] = $request->input('country');
+
+        // GeoLink Text Search API
+        $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/text_search', $apiParams);
 
         // Log the response for debugging
         if (!$response->successful()) {
@@ -363,87 +377,39 @@ class ConfigController extends Controller
         if ($validator->fails()) {
             return response()->json(responseFormatter(DEFAULT_400, null, null, null, errorProcessor($validator)), 400);
         }
-        
-        // Allow manual API key override via request parameter
-        $mapKey = $request->input('key') ?? businessConfig(GOOGLE_MAP_API)?->value['map_api_key_server'] ?? null;
-        
-        if (empty($mapKey)) {
-            return response()->json(responseFormatter(DEFAULT_400, null, null, null, ['message' => 'Map API key not configured']), 400);
-        }
-        
+
         $placeId = $request['placeid'];
-        
-        // Try to decode if it's a base64 encoded data
-        $decodedData = null;
+
+        // Try to decode if it's a base64 encoded data (from autocomplete)
         $decoded = base64_decode($placeId, true);
         if ($decoded !== false) {
             $jsonData = json_decode($decoded, true);
-            if (is_array($jsonData)) {
-                $decodedData = $jsonData;
+            if (is_array($jsonData) && isset($jsonData['lat']) && isset($jsonData['lng'])) {
+                // We already have all the data from autocomplete - return it directly
+                $result = [
+                    'place_id' => $placeId,
+                    'name' => $jsonData['name'] ?? '',
+                    'formatted_address' => $jsonData['address'] ?? '',
+                    'geometry' => [
+                        'location' => [
+                            'lat' => (float)$jsonData['lat'],
+                            'lng' => (float)$jsonData['lng']
+                        ]
+                    ],
+                    'address_components' => []
+                ];
+
+                return response()->json(responseFormatter(DEFAULT_200, [
+                    'result' => $result,
+                    'status' => 'OK'
+                ]), 200);
             }
         }
-        
-        // Determine which API endpoint to use based on available data
-        if ($decodedData && isset($decodedData['lat']) && isset($decodedData['lng'])) {
-            // Case 1: We have coordinates - use reverse geocode
-            $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/reverse_geocode', [
-                'latitude' => $decodedData['lat'],
-                'longitude' => $decodedData['lng'],
-                'key' => $mapKey
-            ]);
-            
-            \Log::info('GeoLink place details using reverse_geocode', [
-                'lat' => $decodedData['lat'],
-                'lng' => $decodedData['lng']
-            ]);
-            
-        } elseif ($decodedData && isset($decodedData['query'])) {
-            // Case 2: We have a search query - use text search
-            $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/text_search', [
-                'query' => $decodedData['query'],
-                'key' => $mapKey
-            ]);
-            
-            \Log::info('GeoLink place details using text_search', [
-                'query' => $decodedData['query']
-            ]);
-            
-        } else {
-            // Case 3: Try using place_id directly with geocode endpoint
-            $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/geocode', [
-                'query' => $placeId,  // GeoLink geocode needs 'query' not 'place_id'
-                'key' => $mapKey
-            ]);
-            
-            \Log::info('GeoLink place details using geocode with query', [
-                'query' => $placeId
-            ]);
-        }
-        
-        // Check if HTTP request was successful
-        if (!$response->successful()) {
-            \Log::error('GeoLink place details API request failed', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-                'placeid' => $placeId,
-                'decoded_data' => $decodedData
-            ]);
-            
-            return response()->json(responseFormatter(DEFAULT_400, null, null, null, [
-                'message' => 'Failed to fetch place details from map service',
-                'status_code' => $response->status(),
-                'debug' => [
-                    'placeid' => $placeId,
-                    'response' => $response->body()
-                ]
-            ]), 400);
-        }
-        
-        // Transform GeoLink response to match expected place details format
-        $geoLinkData = $response->json();
-        $transformedData = $this->transformPlaceDetailsResponse($geoLinkData, $placeId);
 
-        return response()->json(responseFormatter(DEFAULT_200, $transformedData), 200);
+        // Fallback: If place_id is not base64 encoded with coordinates, return error
+        return response()->json(responseFormatter(DEFAULT_400, null, null, null, [
+            'message' => 'Invalid place_id format'
+        ]), 400);
     }
 
     public function geocodeApi(Request $request): JsonResponse
@@ -566,12 +532,13 @@ class ConfigController extends Controller
 
                 if (is_array($result)) {
                     // Extract coordinates and identifiers
-                    // GeoLink API uses nested location object with 'lat' and 'lng' fields
-                    $lat = $result['location']['lat'] ?? $result['lat'] ?? $result['latitude'] ?? null;
-                    $lng = $result['location']['lng'] ?? $result['lng'] ?? $result['longitude'] ?? null;
+                    // GeoLink actual response: location.lat, location.lng (nested object)
+                    $lat = $result['location']['lat'] ?? $result['latitude'] ?? $result['lat'] ?? null;
+                    $lng = $result['location']['lng'] ?? $result['longitude'] ?? $result['lng'] ?? null;
                     $placeId = $result['place_id'] ?? $result['id'] ?? null;
                     $name = $result['short_address'] ?? $result['name'] ?? '';
-                    $address = $result['address'] ?? $result['formatted_address'] ?? '';
+                    // GeoLink actual response: 'address' field contains full address
+                    $address = $result['address'] ?? $result['long_address'] ?? $result['formatted_address'] ?? '';
 
                     // Zone filtering: Skip results outside the zone
                     if ($zone && $lat && $lng) {

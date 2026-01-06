@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <title>حذف الحساب والبيانات - Smart Line</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Cairo', Arial, sans-serif;
+      direction: rtl;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+      color: #333;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .header .logo {
+      width: 80px;
+      height: 80px;
+      background: #fff;
+      border-radius: 50%;
+      margin: 0 auto 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+      overflow: hidden;
+    }
+    
+    .header .logo img {
+      width: 60px;
+      height: 60px;
+      object-fit: contain;
+    }
+    
+    .header h1 {
+      color: #fff;
+      font-size: 28px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .container {
+      max-width: 700px;
+      background: #fff;
+      padding: 40px;
+      margin: auto;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    
+    .section {
+      margin-bottom: 30px;
+      padding-bottom: 25px;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    
+    h2 {
+      color: #667eea;
+      font-size: 20px;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    h2 .icon {
+      width: 28px;
+      height: 28px;
+      fill: #667eea;
+    }
+    
+    p {
+      line-height: 1.8;
+      color: #555;
+      font-size: 16px;
+    }
+    
+    ul {
+      padding-right: 25px;
+      margin: 15px 0;
+    }
+    
+    li {
+      line-height: 2;
+      color: #555;
+      font-size: 15px;
+    }
+    
+    li::marker { color: #667eea; }
+    
+    .highlight {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      padding: 3px 12px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    
+    .email-link {
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    
+    .email-link:hover {
+      color: #764ba2;
+      text-decoration: underline;
+    }
+    
+    .info-box {
+      background: #f8f9ff;
+      border-right: 4px solid #667eea;
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    
+    .warning-box {
+      background: #fff8e6;
+      border-right: 4px solid #ffc107;
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    
+    .back-link {
+      display: inline-block;
+      margin-top: 25px;
+      padding: 12px 30px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 30px;
+      font-weight: 600;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    .back-link:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    }
+    
+    .footer {
+      text-align: center;
+      margin-top: 30px;
+      color: rgba(255,255,255,0.8);
+      font-size: 14px;
+    }
+    
+    @media (max-width: 600px) {
+      .container { padding: 25px; }
+      h2 { font-size: 18px; }
+      .header h1 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">
+      <img src="logo-smart.jfif" alt="Smart Line">
+    </div>
+    <h1>طلب حذف الحساب والبيانات</h1>
+  </div>
+
+  <div class="container">
+    <div class="section">
+      <h2>
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+        مقدمة
+      </h2>
+      <p>نحترم خصوصيتك ونوفر لك إمكانية حذف حسابك وجميع البيانات المرتبطة به في أي وقت تشاء.</p>
+    </div>
+
+    <div class="section">
+      <h2>
+        <svg class="icon" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        كيفية طلب الحذف
+      </h2>
+      <div class="info-box">
+        <ul>
+          <li><strong>من داخل التطبيق:</strong> الإعدادات ← حذف الحساب</li>
+          <li><strong>عبر البريد الإلكتروني:</strong> <a href="mailto:acwadtechnology3@gmail.com" class="email-link">acwadtechnology3@gmail.com</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>
+        <svg class="icon" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+        مدة تنفيذ الطلب
+      </h2>
+      <p>يتم حذف الحساب والبيانات خلال مدة لا تتجاوز <span class="highlight">30 يومًا</span> من تاريخ الطلب.</p>
+    </div>
+
+    <div class="section">
+      <h2>
+        <svg class="icon" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        البيانات التي يتم حذفها
+      </h2>
+      <ul>
+        <li>بيانات الحساب الشخصية</li>
+        <li>الاسم والبريد الإلكتروني ورقم الهاتف</li>
+        <li>سجل الرحلات والاستخدام</li>
+        <li>بيانات الدفع والمحفظة</li>
+        <li>الصور والمستندات المرفوعة</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>
+        <svg class="icon" viewBox="0 0 24 24" style="fill: #ffc107;"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+        البيانات التي قد نحتفظ بها
+      </h2>
+      <div class="warning-box">
+        <p>قد يتم الاحتفاظ ببعض البيانات إذا كان ذلك مطلوبًا قانونيًا أو لأغراض المحاسبة، ولمدة محدودة فقط وفقًا للقوانين المعمول بها.</p>
+      </div>
+    </div>
+
+    <div style="text-align: center;">
+      <a href="/" class="back-link">← العودة للصفحة الرئيسية</a>
+    </div>
+  </div>
+
+  <div class="footer">
+    © 2026 Smart Line - جميع الحقوق محفوظة
+  </div>
+</body>
+</html>

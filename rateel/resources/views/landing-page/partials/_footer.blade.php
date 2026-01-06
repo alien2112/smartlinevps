@@ -14,11 +14,11 @@
                     <div class="cont">
                         <a href="{{ route('index') }}" class="logo">
                             @if($footerLogo)
-                                <img src="{{ asset("storage/app/public/business/".$footerLogo) }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.onerror=null; this.src='{{ asset('public/logo-smart.jfif') }}'; this.style.filter='brightness(0) invert(1)';">
+                                <img src="{{ asset("storage/app/public/business/".$footerLogo) }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.onerror=null; this.src='{{ asset('logo-smart.jfif') }}'; this.style.filter='brightness(0) invert(1)';">
                             @elseif($logo)
-                                <img src="{{ asset("storage/app/public/business/".$logo) }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.onerror=null; this.src='{{ asset('public/logo-smart.jfif') }}'; this.style.filter='brightness(0) invert(1)';">
+                                <img src="{{ asset("storage/app/public/business/".$logo) }}" alt="Smart Line Logo" style="max-height: 50px;" onerror="this.onerror=null; this.src='{{ asset('logo-smart.jfif') }}'; this.style.filter='brightness(0) invert(1)';">
                             @else
-                                <img src="{{ asset('public/logo-smart.jfif') }}" alt="Smart Line Logo" style="max-height: 50px; filter: brightness(0) invert(1);" onerror="this.onerror=null; this.src='{{ asset('public/landing-page/assets/img/smartline-logo.svg') }}'; this.style.filter='brightness(0) invert(1)'; this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                                <img src="{{ asset('logo-smart.jfif') }}" alt="Smart Line Logo" style="max-height: 50px; filter: brightness(0) invert(1);" onerror="this.onerror=null; this.src='{{ asset('landing-page/assets/img/smartline-logo.svg') }}'; this.style.filter='brightness(0) invert(1)'; this.style.display='none'; this.nextElementSibling.style.display='inline';">
                                 <span style="font-size: 24px; font-weight: bold; color: white; display: none;">Smart Line</span>
                             @endif
                         </a>
@@ -101,6 +101,9 @@
                         </li>
                         <li>
                             <a href="{{ route('terms') }}">{{ translate('Terms & Condition') }}</a>
+                        </li>
+                        <li>
+                            <a href="{{ asset('delete-account.html') }}">{{ translate('lang.Delete Account') }}</a>
                         </li>
                     </ul>
                 </div>

@@ -56,7 +56,11 @@
       "Bash(pm2 start:*)",
       "Bash(pm2 save:*)",
       "Bash(__NEW_LINE__ echo -e \"\\\\n\\\\nCheck state:\")",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "WebFetch(domain:geolink-eg.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(redis-cli FLUSHALL:*)",
+      "Bash(sudo systemctl restart:*)"
     ]
   }
 }

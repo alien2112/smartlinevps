@@ -122,16 +122,17 @@
                             @foreach ($driver->identification_image as $doc)
                                 <div class="mb-2">
                                     <a href="{{ getMediaUrl($doc, 'driver/identity') }}"
-                                       download="{{ basename($doc) }}"
                                        target="_blank"
-                                       class="border border-C5D2D2 rounded p-3 d-flex align-items-center gap-3">
-                                        <div class="d-flex align-items-center gap-2">
-                                            <img class="w-30px aspect-1"
-                                                 src="{{ getExtensionIcon($doc) }}"
-                                                 alt="">
-                                            <h6 class="fs-12">{{ basename($doc) }}</h6>
-                                        </div>
-                                        <i class="bi bi-arrow-down-circle-fill fs-20 text-primary"></i>
+                                       class="border border-C5D2D2 rounded overflow-hidden d-block"
+                                       style="width: 150px; height: 150px;"
+                                       data-bs-toggle="modal"
+                                       data-bs-target="#imageModal"
+                                       data-image-url="{{ getMediaUrl($doc, 'driver/identity') }}"
+                                       data-image-title="{{ translate('identity_image') }}">
+                                        <img class="w-100 h-100 object-fit-cover"
+                                             src="{{ getMediaUrl($doc, 'driver/identity') }}"
+                                             alt="{{ translate('identity_image') }}"
+                                             onerror="this.src='{{ asset('public/assets/admin-module/img/media/banner-upload-file.png') }}'">
                                     </a>
                                 </div>
                             @endforeach
@@ -146,16 +147,17 @@
                             @foreach ($driver->driving_license as $doc)
                                 <div class="mb-2">
                                     <a href="{{ getMediaUrl($doc, 'driver/license') }}"
-                                       download="{{ basename($doc) }}"
                                        target="_blank"
-                                       class="border border-C5D2D2 rounded p-3 d-flex align-items-center gap-3">
-                                        <div class="d-flex align-items-center gap-2">
-                                            <img class="w-30px aspect-1"
-                                                 src="{{ getExtensionIcon($doc) }}"
-                                                 alt="">
-                                            <h6 class="fs-12">{{ basename($doc) }}</h6>
-                                        </div>
-                                        <i class="bi bi-arrow-down-circle-fill fs-20 text-primary"></i>
+                                       class="border border-C5D2D2 rounded overflow-hidden d-block"
+                                       style="width: 150px; height: 150px;"
+                                       data-bs-toggle="modal"
+                                       data-bs-target="#imageModal"
+                                       data-image-url="{{ getMediaUrl($doc, 'driver/license') }}"
+                                       data-image-title="{{ translate('driving_license') }}">
+                                        <img class="w-100 h-100 object-fit-cover"
+                                             src="{{ getMediaUrl($doc, 'driver/license') }}"
+                                             alt="{{ translate('driving_license') }}"
+                                             onerror="this.src='{{ asset('public/assets/admin-module/img/media/banner-upload-file.png') }}'">
                                     </a>
                                 </div>
                             @endforeach
@@ -170,16 +172,17 @@
                             @foreach ($driver->vehicle_license as $doc)
                                 <div class="mb-2">
                                     <a href="{{ getMediaUrl($doc, 'driver/vehicle') }}"
-                                       download="{{ basename($doc) }}"
                                        target="_blank"
-                                       class="border border-C5D2D2 rounded p-3 d-flex align-items-center gap-3">
-                                        <div class="d-flex align-items-center gap-2">
-                                            <img class="w-30px aspect-1"
-                                                 src="{{ getExtensionIcon($doc) }}"
-                                                 alt="">
-                                            <h6 class="fs-12">{{ basename($doc) }}</h6>
-                                        </div>
-                                        <i class="bi bi-arrow-down-circle-fill fs-20 text-primary"></i>
+                                       class="border border-C5D2D2 rounded overflow-hidden d-block"
+                                       style="width: 150px; height: 150px;"
+                                       data-bs-toggle="modal"
+                                       data-bs-target="#imageModal"
+                                       data-image-url="{{ getMediaUrl($doc, 'driver/vehicle') }}"
+                                       data-image-title="{{ translate('vehicle_license') }}">
+                                        <img class="w-100 h-100 object-fit-cover"
+                                             src="{{ getMediaUrl($doc, 'driver/vehicle') }}"
+                                             alt="{{ translate('vehicle_license') }}"
+                                             onerror="this.src='{{ asset('public/assets/admin-module/img/media/banner-upload-file.png') }}'">
                                     </a>
                                 </div>
                             @endforeach
@@ -262,16 +265,17 @@
                             @foreach ($driver->other_documents as $doc)
                                 <div class="mb-2">
                                     <a href="{{ getMediaUrl($doc, 'driver/document') }}"
-                                       download="{{ basename($doc) }}"
                                        target="_blank"
-                                       class="border border-C5D2D2 rounded p-3 d-flex align-items-center gap-3">
-                                        <div class="d-flex align-items-center gap-2">
-                                            <img class="w-30px aspect-1"
-                                                 src="{{ getExtensionIcon($doc) }}"
-                                                 alt="">
-                                            <h6 class="fs-12">{{ basename($doc) }}</h6>
-                                        </div>
-                                        <i class="bi bi-arrow-down-circle-fill fs-20 text-primary"></i>
+                                       class="border border-C5D2D2 rounded overflow-hidden d-block"
+                                       style="width: 150px; height: 150px;"
+                                       data-bs-toggle="modal"
+                                       data-bs-target="#imageModal"
+                                       data-image-url="{{ getMediaUrl($doc, 'driver/document') }}"
+                                       data-image-title="{{ translate('other_document') }}">
+                                        <img class="w-100 h-100 object-fit-cover"
+                                             src="{{ getMediaUrl($doc, 'driver/document') }}"
+                                             alt="{{ translate('other_document') }}"
+                                             onerror="this.src='{{ asset('public/assets/admin-module/img/media/banner-upload-file.png') }}'">
                                     </a>
                                 </div>
                             @endforeach
@@ -286,3 +290,48 @@
         </div>
     </div>
 </div>
+
+<!-- Image Modal for Full Size View -->
+<div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageModalLabel">{{ translate('document_preview') }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" src="" alt="{{ translate('document') }}" class="img-fluid w-100" style="max-height: 70vh; object-fit: contain;">
+            </div>
+            <div class="modal-footer">
+                <a id="downloadLink" href="" download class="btn btn-primary">
+                    <i class="bi bi-download"></i> {{ translate('download') }}
+                </a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ translate('close') }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@push('script')
+<script>
+    // Image modal handler
+    document.addEventListener('DOMContentLoaded', function() {
+        const imageModal = document.getElementById('imageModal');
+        if (imageModal) {
+            imageModal.addEventListener('show.bs.modal', function (event) {
+                const button = event.relatedTarget;
+                const imageUrl = button.getAttribute('data-image-url');
+                const imageTitle = button.getAttribute('data-image-title');
+                
+                const modalImage = document.getElementById('modalImage');
+                const modalTitle = document.getElementById('imageModalLabel');
+                const downloadLink = document.getElementById('downloadLink');
+                
+                if (modalImage) modalImage.src = imageUrl;
+                if (modalTitle) modalTitle.textContent = imageTitle;
+                if (downloadLink) downloadLink.href = imageUrl;
+            });
+        }
+    });
+</script>
+@endpush

@@ -230,11 +230,20 @@ class ConfigController extends Controller
         // Get zone_id from header or query parameter for filtering
         $zoneId = $request->header('zoneId') ?? $request->input('zoneId') ?? $request->input('zone_id');
 
-        // GeoLink Text Search API
-        $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/text_search', [
+        // Build GeoLink API parameters with location biasing
+        // GeoLink text_search uses 'latitude' and 'longitude' for location biasing
+        $apiParams = [
             'query' => $request['search_text'],
             'key' => $mapKey
-        ]);
+        ];
+        
+        if ($request->filled('latitude')) $apiParams['latitude'] = $request->input('latitude');
+        if ($request->filled('longitude')) $apiParams['longitude'] = $request->input('longitude');
+        if ($request->filled('language')) $apiParams['language'] = $request->input('language');
+        if ($request->filled('country')) $apiParams['country'] = $request->input('country');
+
+        // GeoLink Text Search API
+        $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/text_search', $apiParams);
 
         // Log the response for debugging
         if (!$response->successful()) {
@@ -507,12 +516,13 @@ class ConfigController extends Controller
 
                 if (is_array($result)) {
                     // Extract coordinates and identifiers
-                    // GeoLink API uses nested location object with 'lat' and 'lng' fields
-                    $lat = $result['location']['lat'] ?? $result['lat'] ?? $result['latitude'] ?? null;
-                    $lng = $result['location']['lng'] ?? $result['lng'] ?? $result['longitude'] ?? null;
+                    // GeoLink actual response: location.lat, location.lng (nested object)
+                    $lat = $result['location']['lat'] ?? $result['latitude'] ?? $result['lat'] ?? null;
+                    $lng = $result['location']['lng'] ?? $result['longitude'] ?? $result['lng'] ?? null;
                     $placeId = $result['place_id'] ?? $result['id'] ?? null;
                     $name = $result['short_address'] ?? $result['name'] ?? '';
-                    $address = $result['address'] ?? $result['formatted_address'] ?? '';
+                    // GeoLink actual response: 'address' field contains full address
+                    $address = $result['address'] ?? $result['long_address'] ?? $result['formatted_address'] ?? '';
 
                     // Zone filtering: Skip results outside the zone
                     if ($zone && $lat && $lng) {

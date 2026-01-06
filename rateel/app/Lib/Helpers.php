@@ -944,10 +944,15 @@ if (!function_exists('getRoutes')) {
             'mode' => $drivingMode
         ]));
 
-        // Cache for 10 minutes (600 seconds) - routes don't change frequently
-        return Cache::remember($cacheKey, 600, function () use ($originCoordinates, $destinationCoordinates, $intermediateCoordinates, $drivingMode) {
-            $apiKey = businessConfig(GOOGLE_MAP_API)?->value['map_api_key_server'] ?? '';
-            $responses = [];
+        // Check cache first
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        // Fetch fresh data
+        $apiKey = businessConfig(GOOGLE_MAP_API)?->value['map_api_key_server'] ?? '';
+        $responses = [];
 
         $encodePolyline = function (array $points): string {
             $result = '';
@@ -1093,6 +1098,8 @@ if (!function_exists('getRoutes')) {
                 'encoded_polyline' => $encodedPolyline,
             ];
 
+            // Cache successful results for 10 minutes
+            Cache::put($cacheKey, $responses, 600);
             return $responses;
         } else {
             // Handle the error if the request was not successful
@@ -1111,12 +1118,12 @@ if (!function_exists('getRoutes')) {
                 $errorMessage = $responseBody['message'];
             }
 
+            // Don't cache error results
             return [
                 0 => ['status' => 'ERROR', 'error_detail' => $errorMessage],
                 1 => ['status' => 'ERROR', 'error_detail' => $errorMessage]
             ];
         }
-        }); // End of Cache::remember
     }
 }
 

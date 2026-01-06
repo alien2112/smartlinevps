@@ -60,6 +60,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | KYC Verification Service (FastAPI)
+    |--------------------------------------------------------------------------
+    |
+    | AI-powered document verification for driver onboarding.
+    | Auto-starts on demand and shuts down after 30 min of inactivity.
+    |
+    */
+
+    'kyc' => [
+        'url' => env('KYC_SERVICE_URL', 'http://localhost:8100'),
+        'api_key' => env('FASTAPI_VERIFICATION_KEY', 'your-secret-key'),
+        'idle_timeout' => env('KYC_IDLE_TIMEOUT', 1800),  // 30 minutes
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Firebase Cloud Messaging (FCM)
     |--------------------------------------------------------------------------
     |

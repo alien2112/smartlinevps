@@ -128,6 +128,27 @@ class TripRequestController extends Controller
         $destination_coordinates = is_array($request['destination_coordinates'])
             ? $request['destination_coordinates']
             : json_decode($request['destination_coordinates'], true);
+
+        // Handle object format {lat, lng} or {latitude, longitude}
+        if (is_array($pickup_coordinates) && isset($pickup_coordinates['lat'])) {
+            $pickup_coordinates = [$pickup_coordinates['lat'], $pickup_coordinates['lng'] ?? $pickup_coordinates['lon'] ?? $pickup_coordinates['longitude'] ?? 0];
+        } elseif (is_array($pickup_coordinates) && isset($pickup_coordinates['latitude'])) {
+            $pickup_coordinates = [$pickup_coordinates['latitude'], $pickup_coordinates['longitude']];
+        }
+        if (is_array($destination_coordinates) && isset($destination_coordinates['lat'])) {
+            $destination_coordinates = [$destination_coordinates['lat'], $destination_coordinates['lng'] ?? $destination_coordinates['lon'] ?? $destination_coordinates['longitude'] ?? 0];
+        } elseif (is_array($destination_coordinates) && isset($destination_coordinates['latitude'])) {
+            $destination_coordinates = [$destination_coordinates['latitude'], $destination_coordinates['longitude']];
+        }
+
+        // Validate coordinates format
+        if (!is_array($pickup_coordinates) || count($pickup_coordinates) < 2 || !isset($pickup_coordinates[0], $pickup_coordinates[1])) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['field' => 'pickup_coordinates', 'message' => 'Invalid pickup coordinates format. Expected [lat, lng] array.']]), 403);
+        }
+        if (!is_array($destination_coordinates) || count($destination_coordinates) < 2 || !isset($destination_coordinates[0], $destination_coordinates[1])) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['field' => 'destination_coordinates', 'message' => 'Invalid destination coordinates format. Expected [lat, lng] array.']]), 403);
+        }
+
         $pickup_point = new Point($pickup_coordinates[1], $pickup_coordinates[0], 4326);
         $destination_point = new Point($destination_coordinates[1], $destination_coordinates[0], 4326);
 
@@ -512,12 +533,36 @@ class TripRequestController extends Controller
             $pickup_point = $save_trip->coordinate->pickup_coordinates;
             $destination_point = $save_trip->coordinate->destination_coordinates;
         } else {
-            $pickup_coordinates = json_decode($request['pickup_coordinates'], true);
-            $destination_coordinates = json_decode($request['destination_coordinates'], true);
+            $pickup_coordinates = is_array($request['pickup_coordinates'])
+                ? $request['pickup_coordinates']
+                : json_decode($request['pickup_coordinates'], true);
+            $destination_coordinates = is_array($request['destination_coordinates'])
+                ? $request['destination_coordinates']
+                : json_decode($request['destination_coordinates'], true);
+
+            // Handle object format {lat, lng} or {latitude, longitude}
+            if (is_array($pickup_coordinates) && isset($pickup_coordinates['lat'])) {
+                $pickup_coordinates = [$pickup_coordinates['lat'], $pickup_coordinates['lng'] ?? $pickup_coordinates['lon'] ?? $pickup_coordinates['longitude'] ?? 0];
+            } elseif (is_array($pickup_coordinates) && isset($pickup_coordinates['latitude'])) {
+                $pickup_coordinates = [$pickup_coordinates['latitude'], $pickup_coordinates['longitude']];
+            }
+            if (is_array($destination_coordinates) && isset($destination_coordinates['lat'])) {
+                $destination_coordinates = [$destination_coordinates['lat'], $destination_coordinates['lng'] ?? $destination_coordinates['lon'] ?? $destination_coordinates['longitude'] ?? 0];
+            } elseif (is_array($destination_coordinates) && isset($destination_coordinates['latitude'])) {
+                $destination_coordinates = [$destination_coordinates['latitude'], $destination_coordinates['longitude']];
+            }
+
+            // Validate coordinates format
+            if (!is_array($pickup_coordinates) || count($pickup_coordinates) < 2 || !isset($pickup_coordinates[0], $pickup_coordinates[1])) {
+                return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['field' => 'pickup_coordinates', 'message' => 'Invalid pickup coordinates format. Expected [lat, lng] array.']]), 403);
+            }
+            if (!is_array($destination_coordinates) || count($destination_coordinates) < 2 || !isset($destination_coordinates[0], $destination_coordinates[1])) {
+                return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['field' => 'destination_coordinates', 'message' => 'Invalid destination coordinates format. Expected [lat, lng] array.']]), 403);
+            }
+
             $pickup_point = new Point($pickup_coordinates[1], $pickup_coordinates[0], 4326);
             $destination_point = new Point($destination_coordinates[1], $destination_coordinates[0], 4326);
         }
-//        dd($pickup_coordinates);
 
         $zone = $this->zoneService->getByPoints($pickup_point)->where('is_active', 1)->first();
         if (!$zone) {
