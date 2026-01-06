@@ -55,80 +55,66 @@ class ConfigController extends Controller
         $this->safetyPrecautionService = $safetyPrecautionService;
     }
 
+    /**
+     * Full configuration endpoint (legacy - for backward compatibility)
+     * Consider using the optimized endpoints instead:
+     * - /config/core - Essential startup data (~2KB)
+     * - /config/auth - Authentication settings
+     * - /config/trip - Trip/ride settings
+     * - /config/safety - Safety features
+     * - /config/parcel - Parcel settings
+     * - /config/contact - Business contact info
+     * - /config/loyalty - Loyalty points/levels settings
+     */
     public function configuration()
     {
-        // PERFORMANCE FIX: Cache configuration for 1 hour (config rarely changes)
-        // This endpoint is called frequently by driver apps, so caching significantly reduces DB load
-        $cacheKey = 'driver:configuration:full';
-        $cacheTTL = 3600; // 1 hour
-        
-        $configs = Cache::remember($cacheKey, $cacheTTL, function () {
-            // Fetch only driver_settings and app_version settings (not all 999 records)
-            $driverSettings = $this->businessSettingService->getBy(criteria: ['settings_type' => 'driver_settings']);
-            $appVersions = $this->businessSettingService->getBy(criteria: ['settings_type' => APP_VERSION]);
-            $dataValues = $this->settingService->getBy(criteria: ['settings_type' => SMS_CONFIG]);
-            
-            // Convert to key-value map for O(1) lookups instead of O(n) firstWhere() calls
-            $settingsMap = [];
-            foreach ($driverSettings as $setting) {
-                $settingsMap[$setting->key_name] = $setting;
-            }
-            
-            // Helper function for safe setting retrieval
-            $getSetting = function($keyName) use ($settingsMap) {
-                return $settingsMap[$keyName] ?? null;
-            };
-            
-            $loyaltyPoints = $getSetting('loyalty_points')?->value;
-            
-            if ($dataValues->where('live_values.status', 1)->isEmpty()) {
-                $smsConfiguration = 0;
-            } else {
-                $smsConfiguration = 1;
-            }
-            
-            // Build app versions map
-            $appVersionsMap = [];
-            foreach ($appVersions as $version) {
-                $appVersionsMap[$version->key_name] = $version;
-            }
-            
-            return $this->buildConfigurationArray($getSetting, $loyaltyPoints, $appVersionsMap, $smsConfiguration);
+        // Cache configuration for 5 minutes to reduce repeated queries
+        return Cache::remember('driver_configuration', 300, function () {
+            return $this->buildConfiguration();
         });
-        
-        return response()->json($configs);
     }
     
-    /**
-     * Build configuration array from settings
-     * Extracted to separate method for better organization and caching
-     */
-    private function buildConfigurationArray($getSetting, $loyaltyPoints, $appVersionsMap, $smsConfiguration): array
+    private function buildConfiguration()
     {
-        return [
+        $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
+
+        $loyaltyPoints = $info
+            ->where('key_name', 'loyalty_points')
+            ->firstWhere('settings_type', 'driver_settings')?->value;
+
+        $appVersions = $this->businessSettingService->getBy(criteria: ['settings_type' => APP_VERSION]);
+        $dataValues = $this->settingService->getBy(criteria: ['settings_type' => SMS_CONFIG]);
+
+        if ($dataValues->where('live_values.status', 1)->isEmpty()) {
+            $smsConfiguration = 0;
+        } else {
+            $smsConfiguration = 1;
+        }
+
+        $configs = [
             'is_demo' => (bool)env('APP_MODE') != 'live',
             'maintenance_mode' => checkMaintenanceMode(),
-            'required_pin_to_start_trip' => (bool)$getSetting('required_pin_to_start_trip')?->value ?? false,
-            'add_intermediate_points' => (bool)$getSetting('add_intermediate_points')?->value ?? false,
-            'business_name' => $getSetting('business_name')?->value ?? null,
-            'logo' => $getSetting('header_logo')?->value ?? null,
-            'bid_on_fare' => (bool)$getSetting('bid_on_fare')?->value ?? 0,
-            'driver_completion_radius' => $getSetting('driver_completion_radius')?->value ?? 10,
-            'country_code' => $getSetting('country_code')?->value ?? null,
-            'business_address' => $getSetting('business_address')?->value ?? null,
-            'business_contact_phone' => $getSetting('business_contact_phone')?->value ?? null,
-            'business_contact_email' => $getSetting('business_contact_email')?->value ?? null,
-            'business_support_phone' => $getSetting('business_support_phone')?->value ?? null,
-            'business_support_email' => $getSetting('business_support_email')?->value ?? null,
+            'required_pin_to_start_trip' => (bool)$info->firstWhere('key_name', 'required_pin_to_start_trip')?->value ?? false,
+            'add_intermediate_points' => (bool)$info->firstWhere('key_name', 'add_intermediate_points')?->value ?? false,
+            'business_name' => (string)$info->firstWhere('key_name', 'business_name')?->value ?? null,
+            'logo' => $info->firstWhere('key_name', 'header_logo')?->value ?? null,
+            'bid_on_fare' => (bool)$info->firstWhere('key_name', 'bid_on_fare')?->value ?? 0,
+            'driver_completion_radius' => $info->firstWhere('key_name', 'driver_completion_radius')?->value ?? 10,
+            'country_code' => (string)$info->firstWhere('key_name', 'country_code')?->value ?? null,
+            'business_address' => (string)$info->firstWhere('key_name', 'business_address')?->value ?? null,
+            'business_contact_phone' => (string)$info->firstWhere('key_name', 'business_contact_phone')?->value ?? null,
+            'business_contact_email' => (string)$info->firstWhere('key_name', 'business_contact_email')?->value ?? null,
+            'business_support_phone' => (string)$info->firstWhere('key_name', 'business_support_phone')?->value ?? null,
+            'business_support_email' => (string)$info->firstWhere('key_name', 'business_support_email')?->value ?? null,
             'conversion_status' => (bool)($loyaltyPoints['status'] ?? false),
             'conversion_rate' => (double)($loyaltyPoints['points'] ?? 0),
             'base_url' => url('/') . '/api/',
-            'websocket_url' => $getSetting('websocket_url')?->value ?? null,
-            'websocket_port' => (string)$getSetting('websocket_port')?->value ?? 6001,
+            'websocket_url' => $info->firstWhere('key_name', 'websocket_url')?->value ?? null,
+            'websocket_port' => (string)$info->firstWhere('key_name', 'websocket_port')?->value ?? 6001,
             'websocket_key' => env('PUSHER_APP_KEY'),
             'websocket_scheme' => env('PUSHER_SCHEME'),
-            'review_status' => (bool)$getSetting(DRIVER_REVIEW)?->value ?? null,
-            'level_status' => (bool)$getSetting(DRIVER_LEVEL)?->value ?? null,
+            'review_status' => (bool)$info->firstWhere('key_name', DRIVER_REVIEW)?->value ?? null,
+            'level_status' => (bool)$info->firstWhere('key_name', DRIVER_LEVEL)?->value ?? null,
             'image_base_url' => [
                 'profile_image_customer' => asset('storage/app/public/customer/profile'),
                 'profile_image_admin' => asset('storage/app/public/employee/profile'),
@@ -143,54 +129,292 @@ class ConfigController extends Controller
                 'conversation' => asset('storage/app/public/conversation'),
                 'parcel' => asset('storage/app/public/parcel/category'),
             ],
-            'otp_resend_time' => (int)$getSetting('otp_resend_time')?->value ?? 60,
-            'currency_decimal_point' => $getSetting('currency_decimal_point')?->value ?? null,
-            'currency_code' => $getSetting('currency_code')?->value ?? null,
-            'currency_symbol' => $getSetting('currency_symbol')?->value ?? '$',
-            'currency_symbol_position' => $getSetting('currency_symbol_position')?->value ?? null,
-            'about_us' => $getSetting('about_us')?->value ?? null,
-            'privacy_policy' => $getSetting('privacy_policy')?->value ?? null,
-            'terms_and_conditions' => $getSetting('terms_and_conditions')?->value ?? null,
-            'legal' => $getSetting('legal')?->value,
-            'refund_policy' => $getSetting('refund_policy')?->value,
-            'verification' => (bool)$getSetting('driver_verification')?->value ?? 0,
-            'sms_verification' => (bool)$getSetting('sms_verification')?->value ?? 0,
-            'email_verification' => (bool)$getSetting('email_verification')?->value ?? 0,
-            'facebook_login' => (bool)$getSetting('facebook_login')?->value['status'] ?? 0,
-            'google_login' => (bool)$getSetting('google_login')?->value['status'] ?? 0,
-            'self_registration' => (bool)$getSetting('driver_self_registration')?->value ?? 0,
+            'otp_resend_time' => (int)$info->firstWhere('key_name', 'otp_resend_time')?->value ?? 60,
+            'currency_decimal_point' => $info->firstWhere('key_name', 'currency_decimal_point')?->value ?? null,
+            'currency_code' => $info->firstWhere('key_name', 'currency_code')?->value ?? null,
+            'currency_symbol' => $info->firstWhere('key_name', 'currency_symbol')?->value ?? '$',
+            'currency_symbol_position' => $info->firstWhere('key_name', 'currency_symbol_position')?->value ?? null,
+            'about_us' => $info->firstWhere('key_name', 'about_us')?->value ?? null,
+            'privacy_policy' => $info->firstWhere('key_name', 'privacy_policy')?->value ?? null,
+            'terms_and_conditions' => $info->firstWhere('key_name', 'terms_and_conditions')?->value ?? null,
+            'legal' => $info->firstWhere('key_name', 'legal')?->value,
+            'refund_policy' => $info->firstWhere('key_name', 'refund_policy')?->value,
+            'verification' => (bool)$info->firstWhere('key_name', 'driver_verification')?->value ?? 0,
+            'sms_verification' => (bool)$info->firstWhere('key_name', 'sms_verification')?->value ?? 0,
+            'email_verification' => (bool)$info->firstWhere('key_name', 'email_verification')?->value ?? 0,
+            'facebook_login' => (bool)$info->firstWhere('key_name', 'facebook_login')?->value['status'] ?? 0,
+            'google_login' => (bool)$info->firstWhere('key_name', 'google_login')?->value['status'] ?? 0,
+            'self_registration' => (bool)$info->firstWhere('key_name', 'driver_self_registration')?->value ?? 0,
             'referral_earning_status' => (bool)referralEarningSetting('referral_earning_status', DRIVER)?->value,
             'parcel_return_time_fee_status' => (bool)businessConfig('parcel_return_time_fee_status', PARCEL_SETTINGS)?->value ?? false,
             'return_time_for_driver' => (int)businessConfig('return_time_for_driver', PARCEL_SETTINGS)?->value ?? 0,
             'return_time_type_for_driver' => businessConfig('return_time_type_for_driver', PARCEL_SETTINGS)?->value ?? "day",
             'return_fee_for_driver_time_exceed' => (double)businessConfig('return_fee_for_driver_time_exceed', PARCEL_SETTINGS)?->value ?? 0,
-            'app_minimum_version_for_android' => (double)($appVersionsMap['driver_app_version_control_for_android']?->value['minimum_app_version'] ?? 0),
-            'app_url_for_android' => $appVersionsMap['driver_app_version_control_for_android']?->value['app_url'] ?? null,
-            'app_minimum_version_for_ios' => (double)($appVersionsMap['driver_app_version_control_for_ios']?->value['minimum_app_version'] ?? 0),
-            'app_url_for_ios' => $appVersionsMap['driver_app_version_control_for_ios']?->value['app_url'] ?? null,
-            'firebase_otp_verification' => (bool)$getSetting('firebase_otp_verification_status')?->value == 1,
+            'app_minimum_version_for_android' => (double)$appVersions->firstWhere('key_name', 'driver_app_version_control_for_android')?->value['minimum_app_version'] ?? 0,
+            'app_url_for_android' => $appVersions->firstWhere('key_name', 'driver_app_version_control_for_android')?->value['app_url'] ?? null,
+            'app_minimum_version_for_ios' => (double)$appVersions->firstWhere('key_name', 'driver_app_version_control_for_ios')?->value['minimum_app_version'] ?? 0,
+            'app_url_for_ios' => $appVersions->firstWhere('key_name', 'driver_app_version_control_for_ios')?->value['app_url'] ?? null,
+            'firebase_otp_verification' => (bool)$info->firstWhere('key_name', 'firebase_otp_verification_status')?->value == 1,
             'sms_gateway' => (bool)$smsConfiguration,
-            'chatting_setup_status' => (bool)$getSetting('chatting_setup_status')?->value == 1,
-            'driver_question_answer_status' => (bool)$getSetting('chatting_setup_status')?->value == 1 && (bool)$getSetting('driver_question_answer_status')?->value == 1,
-            'maximum_parcel_request_accept_limit_status_for_driver' => (bool)$getSetting('maximum_parcel_request_accept_limit')?->value['status'] == 1,
-            'maximum_parcel_request_accept_limit_for_driver' => (int)$getSetting('maximum_parcel_request_accept_limit')?->value['limit'] ?? 0,
+            'chatting_setup_status' => (bool)$info->firstWhere('key_name', 'chatting_setup_status')?->value == 1,
+            'driver_question_answer_status' => (bool)$info->firstWhere('key_name', 'chatting_setup_status')?->value == 1 && (bool)$info->firstWhere('key_name', 'driver_question_answer_status')?->value == 1,
+            'maximum_parcel_request_accept_limit_status_for_driver' => (bool)$info->firstWhere('key_name', 'maximum_parcel_request_accept_limit')?->value['status'] == 1,
+            'maximum_parcel_request_accept_limit_for_driver' => (int)$info->firstWhere('key_name', 'maximum_parcel_request_accept_limit')?->value['limit'] ?? 0,
             'parcel_weight_unit' => businessConfig(key: 'parcel_weight_unit', settingsType: PARCEL_SETTINGS)?->value ?? 'kg',
-            'safety_feature_status' => (bool)$getSetting('safety_feature_status')?->value == 1,
-            'safety_feature_minimum_trip_delay_time' => $getSetting('safety_feature_status')?->value == 1 ? convertTimeToSecond(
-                $getSetting('for_trip_delay')?->value['minimum_delay_time'],
-                $getSetting('for_trip_delay')?->value['time_format']
+            'safety_feature_status' => (bool)$info->firstWhere('key_name', 'safety_feature_status')?->value == 1,
+            'safety_feature_minimum_trip_delay_time' => $info->firstWhere('key_name', 'safety_feature_status')?->value == 1 ? convertTimeToSecond(
+                $info->firstWhere('key_name', 'for_trip_delay')?->value['minimum_delay_time'],
+                $info->firstWhere('key_name', 'for_trip_delay')?->value['time_format']
             ) : null,
-            'safety_feature_minimum_trip_delay_time_type' => $getSetting('safety_feature_status')?->value == 1 ? $getSetting('for_trip_delay')?->value['time_format'] : null,
-            'after_trip_completed_safety_feature_active_status' => (bool)$getSetting('safety_feature_status')?->value == 1 && (bool)$getSetting('after_trip_complete')?->value['safety_feature_active_status'] == 1,
-            'after_trip_completed_safety_feature_set_time' => $getSetting('after_trip_complete')?->value['safety_feature_active_status'] == 1 ? convertTimeToSecond(
-                $getSetting('after_trip_complete')?->value['set_time'],
-                $getSetting('after_trip_complete_time_format')?->value
+            'safety_feature_minimum_trip_delay_time_type' => $info->firstWhere('key_name', 'safety_feature_status')?->value == 1 ? $info->firstWhere('key_name', 'for_trip_delay')?->value['time_format'] : null,
+            'after_trip_completed_safety_feature_active_status' => (bool)$info->firstWhere('key_name', 'safety_feature_status')?->value == 1 && (bool)$info->firstWhere('key_name', 'after_trip_complete')?->value['safety_feature_active_status'] == 1,
+            'after_trip_completed_safety_feature_set_time' => $info->firstWhere('key_name', 'after_trip_complete')?->value['safety_feature_active_status'] == 1 ? convertTimeToSecond(
+                $info->firstWhere('key_name', 'after_trip_complete')?->value['set_time'],
+                $info->firstWhere('key_name', 'after_trip_complete_time_format')?->value
             ) : null,
-            'after_trip_completed_safety_feature_set_time_type' => $getSetting('after_trip_complete')?->value['safety_feature_active_status'] == 1 ? $getSetting('after_trip_complete_time_format')?->value : null,
-            'safety_feature_emergency_govt_number' => $getSetting('safety_feature_status')?->value == 1 ? $getSetting('emergency_govt_number_for_call')?->value : null,
-            'otp_confirmation_for_trip' => (bool)$getSetting('driver_otp_confirmation_for_trip')?->value == 1,
+            'after_trip_completed_safety_feature_set_time_type' => $info->firstWhere('key_name', 'after_trip_complete')?->value['safety_feature_active_status'] == 1 ? $info->firstWhere('key_name', 'after_trip_complete_time_format')?->value : null,
+            'safety_feature_emergency_govt_number' => $info->firstWhere('key_name', 'emergency_number_for_call_status')?->value == 1 ? $info->firstWhere('key_name', 'emergency_govt_number_for_call')?->value : null,
+            'otp_confirmation_for_trip' => (bool)$info->firstWhere('key_name', 'driver_otp_confirmation_for_trip')?->value == 1,
             'fuel_types' => array_keys(FUEL_TYPES)
         ];
+
+        return response()->json($configs)
+            ->header('Cache-Control', 'public, max-age=300')
+            ->header('X-Cache-TTL', '300');
+    }
+
+    /**
+     * OPTIMIZED: Core configuration - Essential data for app startup (~2KB)
+     * Call this first on app launch
+     */
+    public function coreConfig()
+    {
+        return Cache::remember('driver_config_core', 300, function () {
+            $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
+
+            $config = [
+                'is_demo' => (bool)env('APP_MODE') != 'live',
+                'maintenance_mode' => checkMaintenanceMode(),
+                'business_name' => (string)$info->firstWhere('key_name', 'business_name')?->value ?? null,
+                'logo' => $info->firstWhere('key_name', 'header_logo')->value ?? null,
+                'country_code' => (string)$info->firstWhere('key_name', 'country_code')?->value ?? null,
+                'base_url' => url('/') . '/api/',
+                // Currency
+                'currency_code' => $info->firstWhere('key_name', 'currency_code')?->value ?? null,
+                'currency_symbol' => $info->firstWhere('key_name', 'currency_symbol')?->value ?? '$',
+                'currency_symbol_position' => $info->firstWhere('key_name', 'currency_symbol_position')?->value ?? null,
+                'currency_decimal_point' => $info->firstWhere('key_name', 'currency_decimal_point')?->value ?? null,
+                // WebSocket
+                'websocket_url' => $info->firstWhere('key_name', 'websocket_url')?->value ?? null,
+                'websocket_port' => (string)$info->firstWhere('key_name', 'websocket_port')?->value ?? 6001,
+                'websocket_key' => env('PUSHER_APP_KEY'),
+                'websocket_scheme' => env('PUSHER_SCHEME'),
+                // Image base URLs
+                'image_base_url' => [
+                    'profile_image_customer' => asset('storage/app/public/customer/profile'),
+                    'profile_image_admin' => asset('storage/app/public/employee/profile'),
+                    'banner' => asset('storage/app/public/promotion/banner'),
+                    'vehicle_category' => asset('storage/app/public/vehicle/category'),
+                    'vehicle_model' => asset('storage/app/public/vehicle/model'),
+                    'vehicle_brand' => asset('storage/app/public/vehicle/brand'),
+                    'profile_image' => asset('storage/app/public/driver/profile'),
+                    'identity_image' => asset('storage/app/public/driver/identity'),
+                    'documents' => asset('storage/app/public/driver/document'),
+                    'pages' => asset('storage/app/public/business/pages'),
+                    'conversation' => asset('storage/app/public/conversation'),
+                    'parcel' => asset('storage/app/public/parcel/category'),
+                ],
+                // App versions
+                'app_minimum_version_for_android' => (double)$this->getAppVersion('driver_app_version_control_for_android'),
+                'app_url_for_android' => $this->getAppUrl('driver_app_version_control_for_android'),
+                'app_minimum_version_for_ios' => (double)$this->getAppVersion('driver_app_version_control_for_ios'),
+                'app_url_for_ios' => $this->getAppUrl('driver_app_version_control_for_ios'),
+                'fuel_types' => array_keys(FUEL_TYPES)
+            ];
+
+            return response()->json($config)
+                ->header('Cache-Control', 'public, max-age=300')
+                ->header('X-Cache-TTL', '300');
+        });
+    }
+
+    /**
+     * OPTIMIZED: Authentication configuration
+     */
+    public function authConfig()
+    {
+        return Cache::remember('driver_config_auth', 300, function () {
+            $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
+            $dataValues = $this->settingService->getBy(criteria: ['settings_type' => SMS_CONFIG]);
+            $smsConfiguration = $dataValues->where('live_values.status', 1)->isNotEmpty() ? 1 : 0;
+
+            $config = [
+                'verification' => (bool)$info->firstWhere('key_name', 'driver_verification')?->value ?? 0,
+                'sms_verification' => (bool)$info->firstWhere('key_name', 'sms_verification')?->value ?? 0,
+                'email_verification' => (bool)$info->firstWhere('key_name', 'email_verification')?->value ?? 0,
+                'facebook_login' => (bool)$info->firstWhere('key_name', 'facebook_login')?->value['status'] ?? 0,
+                'google_login' => (bool)$info->firstWhere('key_name', 'google_login')?->value['status'] ?? 0,
+                'firebase_otp_verification' => (bool)$info->firstWhere('key_name', 'firebase_otp_verification_status')?->value == 1,
+                'otp_resend_time' => (int)($info->firstWhere('key_name', 'otp_resend_time')?->value ?? 60),
+                'sms_gateway' => (bool)$smsConfiguration,
+                'self_registration' => (bool)$info->firstWhere('key_name', 'driver_self_registration')?->value ?? 0,
+                'referral_earning_status' => (bool)referralEarningSetting('referral_earning_status', DRIVER)?->value,
+            ];
+
+            return response()->json($config)
+                ->header('Cache-Control', 'public, max-age=300')
+                ->header('X-Cache-TTL', '300');
+        });
+    }
+
+    /**
+     * OPTIMIZED: Trip/Ride settings
+     */
+    public function tripConfig()
+    {
+        return Cache::remember('driver_config_trip', 300, function () {
+            $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
+            $loyaltyPoints = $info
+                ->where('key_name', 'loyalty_points')
+                ->firstWhere('settings_type', 'driver_settings')?->value;
+
+            $config = [
+                'bid_on_fare' => (bool)$info->firstWhere('key_name', 'bid_on_fare')?->value ?? 0,
+                'required_pin_to_start_trip' => (bool)$info->firstWhere('key_name', 'required_pin_to_start_trip')?->value ?? false,
+                'add_intermediate_points' => (bool)$info->firstWhere('key_name', 'add_intermediate_points')?->value ?? false,
+                'driver_completion_radius' => $info->firstWhere('key_name', 'driver_completion_radius')?->value ?? 10,
+                'otp_confirmation_for_trip' => (bool)$info->firstWhere('key_name', 'driver_otp_confirmation_for_trip')?->value == 1,
+                'review_status' => (bool)$info->firstWhere('key_name', DRIVER_REVIEW)?->value ?? null,
+                'level_status' => (bool)$info->firstWhere('key_name', DRIVER_LEVEL)?->value ?? null,
+                'conversion_status' => (bool)($loyaltyPoints['status'] ?? false),
+                'conversion_rate' => (double)($loyaltyPoints['points'] ?? 0),
+                'chatting_setup_status' => (bool)$info->firstWhere('key_name', 'chatting_setup_status')?->value == 1,
+                'driver_question_answer_status' => (bool)$info->firstWhere('key_name', 'chatting_setup_status')?->value == 1 && (bool)$info->firstWhere('key_name', 'driver_question_answer_status')?->value == 1,
+            ];
+
+            return response()->json($config)
+                ->header('Cache-Control', 'public, max-age=300')
+                ->header('X-Cache-TTL', '300');
+        });
+    }
+
+    /**
+     * OPTIMIZED: Safety features configuration
+     */
+    public function safetyConfig()
+    {
+        return Cache::remember('driver_config_safety', 300, function () {
+            $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
+            $safetyEnabled = (bool)$info->firstWhere('key_name', 'safety_feature_status')?->value == 1;
+
+            $config = [
+                'safety_feature_status' => $safetyEnabled,
+                'safety_feature_minimum_trip_delay_time' => $safetyEnabled ? convertTimeToSecond(
+                    $info->firstWhere('key_name', 'for_trip_delay')?->value['minimum_delay_time'],
+                    $info->firstWhere('key_name', 'for_trip_delay')?->value['time_format']
+                ) : null,
+                'safety_feature_minimum_trip_delay_time_type' => $safetyEnabled ? $info->firstWhere('key_name', 'for_trip_delay')?->value['time_format'] : null,
+                'after_trip_completed_safety_feature_active_status' => $safetyEnabled && (bool)$info->firstWhere('key_name', 'after_trip_complete')?->value['safety_feature_active_status'] == 1,
+                'after_trip_completed_safety_feature_set_time' => $info->firstWhere('key_name', 'after_trip_complete')?->value['safety_feature_active_status'] == 1 ? convertTimeToSecond(
+                    $info->firstWhere('key_name', 'after_trip_complete')?->value['set_time'],
+                    $info->firstWhere('key_name', 'after_trip_complete_time_format')?->value
+                ) : null,
+                'after_trip_completed_safety_feature_set_time_type' => $info->firstWhere('key_name', 'after_trip_complete')?->value['safety_feature_active_status'] == 1 ? $info->firstWhere('key_name', 'after_trip_complete_time_format')?->value : null,
+                'safety_feature_emergency_govt_number' => $info->firstWhere('key_name', 'emergency_number_for_call_status')?->value == 1 ? $info->firstWhere('key_name', 'emergency_govt_number_for_call')?->value : null,
+            ];
+
+            return response()->json($config)
+                ->header('Cache-Control', 'public, max-age=300')
+                ->header('X-Cache-TTL', '300');
+        });
+    }
+
+    /**
+     * OPTIMIZED: Parcel settings
+     */
+    public function parcelConfig()
+    {
+        return Cache::remember('driver_config_parcel', 300, function () {
+            $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
+
+            $config = [
+                'parcel_return_time_fee_status' => (bool)businessConfig('parcel_return_time_fee_status', PARCEL_SETTINGS)?->value ?? false,
+                'return_time_for_driver' => (int)businessConfig('return_time_for_driver', PARCEL_SETTINGS)?->value ?? 0,
+                'return_time_type_for_driver' => businessConfig('return_time_type_for_driver', PARCEL_SETTINGS)?->value ?? "day",
+                'return_fee_for_driver_time_exceed' => (double)businessConfig('return_fee_for_driver_time_exceed', PARCEL_SETTINGS)?->value ?? 0,
+                'maximum_parcel_request_accept_limit_status_for_driver' => (bool)$info->firstWhere('key_name', 'maximum_parcel_request_accept_limit')?->value['status'] == 1,
+                'maximum_parcel_request_accept_limit_for_driver' => (int)$info->firstWhere('key_name', 'maximum_parcel_request_accept_limit')?->value['limit'] ?? 0,
+                'parcel_weight_unit' => businessConfig(key: 'parcel_weight_unit', settingsType: PARCEL_SETTINGS)?->value ?? 'kg',
+            ];
+
+            return response()->json($config)
+                ->header('Cache-Control', 'public, max-age=300')
+                ->header('X-Cache-TTL', '300');
+        });
+    }
+
+    /**
+     * OPTIMIZED: Loyalty/Points configuration
+     * Used by: My Level screen, Wallet, Trip completion (points earned)
+     */
+    public function loyaltyConfig()
+    {
+        return Cache::remember('driver_config_loyalty', 300, function () {
+            $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
+            $loyaltyPoints = $info
+                ->where('key_name', 'loyalty_points')
+                ->firstWhere('settings_type', 'driver_settings')?->value;
+
+            $config = [
+                'level_status' => (bool)$info->firstWhere('key_name', DRIVER_LEVEL)?->value ?? false,
+                'conversion_status' => (bool)($loyaltyPoints['status'] ?? false),
+                'conversion_rate' => (double)($loyaltyPoints['points'] ?? 0),
+            ];
+
+            return response()->json($config)
+                ->header('Cache-Control', 'public, max-age=300')
+                ->header('X-Cache-TTL', '300');
+        });
+    }
+
+    /**
+     * OPTIMIZED: Business contact info
+     */
+    public function contactConfig()
+    {
+        return Cache::remember('driver_config_contact', 300, function () {
+            $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
+
+            $config = [
+                'business_address' => (string)$info->firstWhere('key_name', 'business_address')?->value ?? null,
+                'business_contact_phone' => (string)$info->firstWhere('key_name', 'business_contact_phone')?->value ?? null,
+                'business_contact_email' => (string)$info->firstWhere('key_name', 'business_contact_email')?->value ?? null,
+                'business_support_phone' => (string)$info->firstWhere('key_name', 'business_support_phone')?->value ?? null,
+                'business_support_email' => (string)$info->firstWhere('key_name', 'business_support_email')?->value ?? null,
+            ];
+
+            return response()->json($config)
+                ->header('Cache-Control', 'public, max-age=300')
+                ->header('X-Cache-TTL', '300');
+        });
+    }
+
+    /**
+     * Helper: Get app version from settings
+     */
+    private function getAppVersion(string $keyName): float
+    {
+        $appVersions = $this->businessSettingService->getBy(criteria: ['settings_type' => APP_VERSION]);
+        return (double)$appVersions->firstWhere('key_name', $keyName)?->value['minimum_app_version'] ?? 0;
+    }
+
+    /**
+     * Helper: Get app URL from settings
+     */
+    private function getAppUrl(string $keyName): ?string
+    {
+        $appVersions = $this->businessSettingService->getBy(criteria: ['settings_type' => APP_VERSION]);
+        return $appVersions->firstWhere('key_name', $keyName)?->value['app_url'] ?? null;
     }
 
     public function cancellationReasonList()

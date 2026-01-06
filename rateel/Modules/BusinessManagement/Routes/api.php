@@ -54,9 +54,21 @@ Route::group(['prefix' => 'customer'], function () {
 
 Route::group(['prefix' => 'driver'], function () {
     Route::controller(\Modules\BusinessManagement\Http\Controllers\Api\New\Driver\ConfigController::class)->group(function () {
+        // Legacy full configuration (backward compatibility)
         Route::get('configuration', 'configuration');
+
         Route::group(['prefix' => 'config'], function () {
-            // These config will found in Customer Config
+            // OPTIMIZED: Smaller, focused configuration endpoints
+            // Use these instead of /configuration for better performance
+            Route::get('core', 'coreConfig');           // Essential startup data (~2KB)
+            Route::get('auth', 'authConfig');           // Authentication settings
+            Route::get('trip', 'tripConfig');           // Trip/ride settings
+            Route::get('safety', 'safetyConfig');       // Safety features
+            Route::get('parcel', 'parcelConfig');       // Parcel settings
+            Route::get('contact', 'contactConfig');     // Business contact info
+            Route::get('loyalty', 'loyaltyConfig');     // Loyalty points/levels settings
+
+            // Utility endpoints
             Route::get('get-zone-id', 'getZone');
             Route::get('place-api-autocomplete', 'placeApiAutocomplete');
             Route::get('distance_api', 'distanceApi');
