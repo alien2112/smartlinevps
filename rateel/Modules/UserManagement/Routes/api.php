@@ -81,6 +81,13 @@ Route::group(['prefix' => 'customer'], function () {
 
         // Panic Alert / Emergency SOS
         Route::post('panic-alert/trigger', [PanicAlertController::class, 'trigger']);
+
+        // Support routes
+        Route::group(['prefix' => 'support'], function () {
+            Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Customer\SupportController::class)->group(function () {
+                Route::get('app-info', 'appInfo');
+            });
+        });
     });
 
 });
@@ -114,6 +121,18 @@ Route::group(['prefix' => 'driver'], function () {
             Route::get('travel-status', 'travelStatus');              // Get current travel approval status
             Route::post('request-travel', 'requestTravel');           // Request travel privilege (standalone)
             Route::post('cancel-travel-request', 'cancelTravelRequest'); // Cancel pending travel request
+        });
+        //new controller - Destination Preferences
+        Route::group(['prefix' => 'destination-preferences'], function () {
+            Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Driver\DriverDestinationPreferenceController::class)->group(function () {
+                Route::get('/', 'index');                               // Get all preferences
+                Route::post('/', 'store');                              // Add new preference
+                Route::put('/{id}', 'update');                          // Update preference
+                Route::delete('/{id}', 'destroy');                      // Remove preference
+                Route::patch('/toggle-filter', 'toggleFilter');         // Toggle filter on/off
+                Route::patch('/set-filter', 'setFilter');               // Set filter status
+                Route::patch('/set-radius', 'setRadius');               // Update radius
+            });
         });
         //new controller
         Route::group(['prefix' => 'level'], function () {
@@ -155,18 +174,17 @@ Route::group(['prefix' => 'driver'], function () {
                 Route::post('delete/{id}', 'destroy');
             });
         });
-
-        // KYC Verification routes
-        Route::group(['prefix' => 'verification', 'middleware' => 'throttle:10,1'], function () {
-            Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Driver\VerificationController::class)->group(function () {
-                Route::post('session', 'createSession');
-                Route::post('session/{id}/upload', 'uploadMedia');
-                Route::post('session/{id}/submit', 'submitSession');
-                Route::get('status', 'getStatus');
-            });
-        });
     });
 
+    // KYC Verification routes (No auth required - for onboarding flow)
+    Route::group(['prefix' => 'verification', 'middleware' => 'throttle:10,1'], function () {
+        Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Driver\VerificationController::class)->group(function () {
+            Route::post('session', 'createSession');
+            Route::post('session/{id}/upload', 'uploadMedia');
+            Route::post('session/{id}/submit', 'submitSession');
+            Route::get('status', 'getStatus');
+        });
+    });
 
 });
 

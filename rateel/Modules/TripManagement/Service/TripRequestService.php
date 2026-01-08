@@ -894,6 +894,23 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
 
     public function getPendingRides($attributes): mixed
     {
+        // Get driver's destination preferences
+        $driver = auth('api')->user();
+        $driverDetails = $driver->driverDetails ?? null;
+
+        // Add destination filter attributes
+        if ($driverDetails) {
+            $attributes['destination_filter_enabled'] = $driverDetails->destination_filter_enabled ?? false;
+            $attributes['destination_preferences'] = $driverDetails->destination_preferences ?? [];
+            $attributes['destination_radius_km'] = $driverDetails->destination_radius_km ?? 5.0;
+
+            \Log::info('TripRequestService::getPendingRides - Destination filter', [
+                'driver_id' => $driver->id,
+                'filter_enabled' => $attributes['destination_filter_enabled'],
+                'preferences_count' => count($attributes['destination_preferences']),
+            ]);
+        }
+
         return $this->tripRequestRepository->getPendingRides($attributes);
     }
 

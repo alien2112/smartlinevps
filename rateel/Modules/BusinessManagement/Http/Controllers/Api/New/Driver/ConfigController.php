@@ -175,7 +175,12 @@ class ConfigController extends Controller
             'after_trip_completed_safety_feature_set_time_type' => $info->firstWhere('key_name', 'after_trip_complete')?->value['safety_feature_active_status'] == 1 ? $info->firstWhere('key_name', 'after_trip_complete_time_format')?->value : null,
             'safety_feature_emergency_govt_number' => $info->firstWhere('key_name', 'emergency_number_for_call_status')?->value == 1 ? $info->firstWhere('key_name', 'emergency_govt_number_for_call')?->value : null,
             'otp_confirmation_for_trip' => (bool)$info->firstWhere('key_name', 'driver_otp_confirmation_for_trip')?->value == 1,
-            'fuel_types' => array_keys(FUEL_TYPES)
+            'fuel_types' => array_keys(FUEL_TYPES),
+            // Destination Preferences Configuration
+            'destination_preferences_enabled' => true,
+            'destination_preferences_max' => 3,
+            'destination_radius_min_km' => 1.0,
+            'destination_radius_max_km' => 15.0,
         ];
 
         return response()->json($configs)
@@ -189,8 +194,18 @@ class ConfigController extends Controller
      */
     public function coreConfig()
     {
-        return Cache::remember('driver_config_core', 300, function () {
+        return Cache::remember('driver_config_core_' . auth('api')->id(), 300, function () {
             $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
+
+            // Get driver's zone_id from their last location
+            $zoneId = null;
+            if (auth('api')->check()) {
+                $lastLocation = $this->userLastLocationService->findOneBy(
+                    criteria: ['user_id' => auth('api')->id()],
+                    orderBy: ['created_at' => 'desc']
+                );
+                $zoneId = $lastLocation?->zone_id;
+            }
 
             $config = [
                 'is_demo' => (bool)env('APP_MODE') != 'live',
@@ -199,6 +214,7 @@ class ConfigController extends Controller
                 'logo' => $info->firstWhere('key_name', 'header_logo')->value ?? null,
                 'country_code' => (string)$info->firstWhere('key_name', 'country_code')?->value ?? null,
                 'base_url' => url('/') . '/api/',
+                'zone_id' => $zoneId,
                 // Currency
                 'currency_code' => $info->firstWhere('key_name', 'currency_code')?->value ?? null,
                 'currency_symbol' => $info->firstWhere('key_name', 'currency_symbol')?->value ?? '$',

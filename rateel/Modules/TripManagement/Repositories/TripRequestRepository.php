@@ -294,6 +294,26 @@ class TripRequestRepository implements TripRequestInterfaces
      */
     public function getPendingRides($attributes): mixed
     {
+        // Auto-expire old pending rides (default: 60 minutes, configurable via PENDING_RIDE_EXPIRY_MINUTES)
+        $expiryMinutes = (int)env('PENDING_RIDE_EXPIRY_MINUTES', 60);
+
+        \Log::info('getPendingRides: Auto-expiring old pending rides', [
+            'expiry_minutes' => $expiryMinutes,
+            'cutoff_time' => now()->subMinutes($expiryMinutes)->toDateTimeString()
+        ]);
+
+        $expiredCount = $this->trip
+            ->where('current_status', PENDING)
+            ->where('created_at', '<', now()->subMinutes($expiryMinutes))
+            ->update([
+                'current_status' => 'cancelled',
+                'trip_cancellation_reason' => 'Ride request expired after ' . $expiryMinutes . ' minutes (auto-cancelled by system)'
+            ]);
+
+        if ($expiredCount > 0) {
+            \Log::info('getPendingRides: Auto-expired old rides', ['count' => $expiredCount]);
+        }
+
         $query = $this->trip
             ->when($attributes['relations'] ?? null, fn($query) => $query->with($attributes['relations']))
             ->with([
@@ -307,6 +327,7 @@ class TripRequestRepository implements TripRequestInterfaces
             )
             ->where('zone_id', $attributes['zone_id'])
             ->where('current_status', PENDING)
+            ->where('created_at', '>=', now()->subMinutes($expiryMinutes))
             ->where(function ($query) use ($attributes) {
                 // For new drivers (ride_count < 1), only show ride requests
                 if ($attributes['ride_count'] < 1) {
@@ -346,6 +367,54 @@ class TripRequestRepository implements TripRequestInterfaces
                     });
                 }
             });
+
+        // ============================================
+        // DESTINATION PREFERENCE FILTER
+        // ============================================
+        // Apply destination filter if driver has it enabled
+        // Only applies to 'ride_request' trips (NOT parcels)
+        if ($attributes['destination_filter_enabled'] ?? false) {
+            $preferences = $attributes['destination_preferences'] ?? [];
+
+            if (!empty($preferences)) {
+                \Log::info('getPendingRides: Applying destination preference filter', [
+                    'driver_id' => auth()->id(),
+                    'preferences_count' => count($preferences),
+                    'filter_enabled' => true
+                ]);
+
+                $query->where(function ($q) use ($preferences) {
+                    // Filter ride_request trips by destination
+                    $q->where(function ($rideQuery) use ($preferences) {
+                        $rideQuery->where('type', RIDE_REQUEST)
+                            ->whereHas('coordinate', function ($coordQuery) use ($preferences) {
+                                // Trip destination must be within radius of ANY preferred destination
+                                $coordQuery->where(function ($distanceQuery) use ($preferences) {
+                                    foreach ($preferences as $pref) {
+                                        $prefLat = $pref['latitude'];
+                                        $prefLng = $pref['longitude'];
+                                        $radiusMeters = ($pref['radius_km'] ?? 5.0) * 1000;
+
+                                        // Use ST_Distance_Sphere for efficient spatial query
+                                        $distanceQuery->orWhereRaw(
+                                            "ST_Distance_Sphere(
+                                                destination_coordinates,
+                                                ST_SRID(POINT(?, ?), 4326)
+                                            ) <= ?",
+                                            [$prefLng, $prefLat, $radiusMeters]
+                                        );
+                                    }
+                                });
+                            });
+                    });
+
+                    // Always include parcel requests regardless of destination filter
+                    $q->orWhere('type', PARCEL);
+                });
+
+                \Log::info('getPendingRides: Destination filter applied successfully');
+            }
+        }
 
         \Log::info('getPendingRides: Final query parameters', [
             'zone_id' => $attributes['zone_id'],

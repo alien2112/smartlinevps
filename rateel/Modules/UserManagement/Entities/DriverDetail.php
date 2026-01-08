@@ -45,6 +45,10 @@ class DriverDetail extends Model
         'travel_rejected_at',
         'travel_processed_by',
         'travel_rejection_reason',
+        // Destination preferences
+        'destination_preferences',
+        'destination_filter_enabled',
+        'destination_radius_km',
         'created_at',
         'updated_at',
     ];
@@ -62,6 +66,10 @@ class DriverDetail extends Model
         'travel_requested_at' => 'datetime',
         'travel_approved_at' => 'datetime',
         'travel_rejected_at' => 'datetime',
+        // Destination preferences casts
+        'destination_preferences' => 'array',
+        'destination_filter_enabled' => 'boolean',
+        'destination_radius_km' => 'decimal:2',
     ];
 
     /**
@@ -230,6 +238,164 @@ class DriverDetail extends Model
             'travel_rejection_reason' => $this->travel_rejection_reason,
             'can_request_travel' => $this->canRequestTravel(),
         ];
+    }
+
+    // ============================================
+    // DESTINATION PREFERENCE METHODS
+    // ============================================
+
+    /**
+     * Add or update a destination preference
+     *
+     * @param array $destination ['latitude', 'longitude', 'address', 'radius_km']
+     * @param int|null $id Destination ID to update (1-3), null to add new
+     * @return bool
+     */
+    public function setDestinationPreference(array $destination, ?int $id = null): bool
+    {
+        $preferences = $this->destination_preferences ?? [];
+
+        // Validate max 3 destinations
+        if ($id === null && count($preferences) >= 3) {
+            return false;
+        }
+
+        // Prepare destination data
+        $destinationData = [
+            'id' => $id ?? (count($preferences) + 1),
+            'latitude' => (float) $destination['latitude'],
+            'longitude' => (float) $destination['longitude'],
+            'address' => $destination['address'] ?? null,
+            'radius_km' => $destination['radius_km'] ?? $this->destination_radius_km ?? 5.0,
+            'created_at' => $destination['created_at'] ?? now()->toISOString(),
+        ];
+
+        if ($id !== null) {
+            // Update existing
+            $preferences = collect($preferences)->map(function ($pref) use ($id, $destinationData) {
+                return $pref['id'] === $id ? $destinationData : $pref;
+            })->toArray();
+        } else {
+            // Add new
+            $preferences[] = $destinationData;
+        }
+
+        $this->destination_preferences = $preferences;
+        return $this->save();
+    }
+
+    /**
+     * Remove a destination preference by ID
+     *
+     * @param int $id Destination ID (1-3)
+     * @return bool
+     */
+    public function removeDestinationPreference(int $id): bool
+    {
+        $preferences = collect($this->destination_preferences ?? [])
+            ->reject(fn($pref) => $pref['id'] === $id)
+            ->values()
+            ->toArray();
+
+        $this->destination_preferences = $preferences;
+        return $this->save();
+    }
+
+    /**
+     * Toggle destination filter on/off
+     *
+     * @return bool
+     */
+    public function toggleDestinationFilter(): bool
+    {
+        $this->destination_filter_enabled = !$this->destination_filter_enabled;
+        return $this->save();
+    }
+
+    /**
+     * Set destination filter status explicitly
+     *
+     * @param bool $enabled
+     * @return bool
+     */
+    public function setDestinationFilter(bool $enabled): bool
+    {
+        $this->destination_filter_enabled = $enabled;
+        return $this->save();
+    }
+
+    /**
+     * Update global destination radius
+     *
+     * @param float $radiusKm Radius in kilometers (1-15)
+     * @return bool
+     */
+    public function setDestinationRadius(float $radiusKm): bool
+    {
+        if ($radiusKm < 1 || $radiusKm > 15) {
+            return false;
+        }
+
+        $this->destination_radius_km = $radiusKm;
+        return $this->save();
+    }
+
+    /**
+     * Get destination preferences for API response
+     *
+     * @return array
+     */
+    public function getDestinationPreferencesInfo(): array
+    {
+        return [
+            'destinations' => $this->destination_preferences ?? [],
+            'filter_enabled' => $this->destination_filter_enabled ?? false,
+            'default_radius_km' => (float) ($this->destination_radius_km ?? 5.0),
+            'max_destinations' => 3,
+            'min_radius_km' => 1.0,
+            'max_radius_km' => 15.0,
+            'can_add_more' => count($this->destination_preferences ?? []) < 3,
+        ];
+    }
+
+    /**
+     * Check if a trip destination is within any preferred destinations
+     *
+     * @param float $destLat Trip destination latitude
+     * @param float $destLng Trip destination longitude
+     * @return bool True if destination matches any preference
+     */
+    public function matchesDestinationPreference(float $destLat, float $destLng): bool
+    {
+        // If filter is disabled, all destinations match
+        if (!$this->destination_filter_enabled) {
+            return true;
+        }
+
+        $preferences = $this->destination_preferences ?? [];
+
+        // If no preferences set, all destinations match
+        if (empty($preferences)) {
+            return true;
+        }
+
+        // Check if trip destination is within radius of ANY preferred destination
+        foreach ($preferences as $pref) {
+            $distance = haversineDistance(
+                $pref['latitude'],
+                $pref['longitude'],
+                $destLat,
+                $destLng
+            );
+
+            $radiusMeters = ($pref['radius_km'] ?? $this->destination_radius_km ?? 5.0) * 1000;
+
+            if ($distance <= $radiusMeters) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected static function newFactory()
