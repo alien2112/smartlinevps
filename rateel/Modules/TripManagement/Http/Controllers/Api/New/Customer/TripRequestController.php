@@ -710,7 +710,7 @@ class TripRequestController extends Controller
             'driver_id' => $driver->id,
             'otp' => $otp,
             'vehicle_id' => $driver->vehicle->id,
-            'current_status' => ACCEPTED,
+            'current_status' => ONGOING, // Changed from ACCEPTED to ONGOING to auto-start ride
             'vehicle_category_id' => $assignedVehicleCategoryId,
         ];
 
@@ -778,8 +778,12 @@ class TripRequestController extends Controller
                 $attributes['driver_arrival_time'] = (float)($driverArrivalTime[0]['duration']) / 60;
             }
 
-            //Trip update
+            //Trip update - update trip status and set ongoing timestamp
             $this->tripRequestservice->update(id: $request['trip_request_id'], data: $attributes);
+
+            // Update trip_status table with ongoing timestamp to mark ride as started
+            $trip->tripStatus()->update(['ongoing' => now()]);
+
             DB::commit();
 
             $push = getNotification('bid_accepted');
@@ -1062,8 +1066,8 @@ class TripRequestController extends Controller
         }
 
         $attributes['coordinate']['drop_coordinates'] = new Point(
-            $trip->driver->lastLocations->longitude,
-            $trip->driver->lastLocations->latitude
+            $trip->driver->lastLocations->latitude,
+            $trip->driver->lastLocations->longitude
         );
 
         // Set driver availability_status back to available

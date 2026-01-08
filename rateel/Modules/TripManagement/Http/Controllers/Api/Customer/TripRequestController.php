@@ -886,7 +886,7 @@ class TripRequestController extends Controller
             'driver_id' => $driver->id,
             'otp' => $otp,
             'vehicle_id' => $driver->vehicle->id,
-            'current_status' => ACCEPTED,
+            'current_status' => ONGOING, // Changed from ACCEPTED to ONGOING to auto-start ride
             'vehicle_category_id' => $assignedVehicleCategoryId,
         ];
 
@@ -980,6 +980,10 @@ class TripRequestController extends Controller
             $updateTripDiscount->discount_id = null;
             $updateTripDiscount->discount_amount = null;
             $updateTripDiscount->save();
+
+            // Update trip_status table with ongoing timestamp to mark ride as started
+            $trip->tripStatus()->update(['ongoing' => now()]);
+
             DB::commit();
 
             $otpRequired = (bool)businessConfig(key: 'driver_otp_confirmation_for_trip', settingsType: TRIP_SETTINGS)?->value == 1;
@@ -1148,7 +1152,7 @@ class TripRequestController extends Controller
             if ($request->status == 'cancelled') {
                 $attributes['fee']['cancelled_by'] = 'customer';
             }
-            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->longitude, $trip->driver->lastLocations->latitude);
+            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->latitude, $trip->driver->lastLocations->longitude);
 
             // Update driver availability (sync - quick)
             $driverDetails = $this->driverDetails->getBy(column: 'user_id', value: $trip->driver_id);

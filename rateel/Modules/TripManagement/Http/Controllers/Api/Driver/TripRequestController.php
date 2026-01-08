@@ -564,7 +564,7 @@ class TripRequestController extends Controller
                     }
                 }
             }
-            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->longitude, $trip->driver->lastLocations->latitude);
+            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->latitude, $trip->driver->lastLocations->longitude);
 
             //set driver availability_status as on_trip
             $driverDetails = $this->driverDetails->getBy(column: 'user_id', value: $user?->id);
@@ -641,10 +641,13 @@ class TripRequestController extends Controller
 
     /**
      * Trip otp submit.
+     * COMMENTED OUT: Ride now auto-starts when customer accepts fare
+     * OTP verification is no longer needed for starting the ride
      *
      * @param Request $request
      * @return JsonResponse
      */
+    /*
     public function matchOtp(Request $request): JsonResponse
     {
         // OBSERVABILITY: Log controller entry for OTP verification
@@ -655,9 +658,9 @@ class TripRequestController extends Controller
             auth('api')->id(),
             $request->input('trip_request_id')
         );
-        
+
         ObservabilityService::observeOtpVerification($request->input('trip_request_id') ?? 'unknown', 'received', auth('api')->id());
-        
+
         $validator = Validator::make($request->all(), [
             'trip_request_id' => 'required',
             'otp' => Rule::requiredIf(function () {
@@ -670,7 +673,7 @@ class TripRequestController extends Controller
             ObservabilityService::observeControllerExit('TripRequestController', 'matchOtp', $controllerStartTime, 'validation_failed');
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 403);
         }
-        
+
         ObservabilityService::observeOtpVerification($request['trip_request_id'], 'validated', auth('api')->id());
 
         // Load trip without relations for faster validation
@@ -681,7 +684,7 @@ class TripRequestController extends Controller
             ObservabilityService::observeControllerExit('TripRequestController', 'matchOtp', $controllerStartTime, 'trip_not_found');
             return response()->json(responseFormatter(TRIP_REQUEST_404), 403);
         }
-        
+
         // OBSERVABILITY: Log trip state before OTP check
         \Log::info('OBSERVE: OTP verification - trip found', [
             'trip_id' => $trip->id,
@@ -690,7 +693,7 @@ class TripRequestController extends Controller
             'requesting_driver_id' => auth('api')->id(),
             'trace_id' => ObservabilityService::getTraceId()
         ]);
-        
+
         if ($trip->driver_id != auth('api')->id()) {
             ObservabilityService::observeOtpVerification($trip->id, 'driver_mismatch', auth('api')->id(), 'Driver ID does not match trip driver');
             ObservabilityService::observeControllerExit('TripRequestController', 'matchOtp', $controllerStartTime, 'driver_mismatch', auth('api')->id(), $trip->id);
@@ -701,7 +704,7 @@ class TripRequestController extends Controller
             ObservabilityService::observeControllerExit('TripRequestController', 'matchOtp', $controllerStartTime, 'otp_mismatch', auth('api')->id(), $trip->id);
             return response()->json(responseFormatter(OTP_MISMATCH_404), 403);
         }
-        
+
         // OBSERVABILITY: Log OTP matched, starting DB update
         $dbStartTime = ObservabilityService::observeDbTransactionStart('matchOtp_update_status', $trip->id);
         ObservabilityService::observeTripStateChange($trip->id, $trip->current_status ?? 'accepted', ONGOING, $trip->driver_id, $trip->customer_id, 'otp_verified');
@@ -751,6 +754,7 @@ class TripRequestController extends Controller
             'message' => 'OTP verified. Trip started.'
         ]));
     }
+    */
 
     /**
      * @param Request $request
