@@ -172,7 +172,47 @@ class DriverApprovalController extends Controller
         // Get required documents for this vehicle type
         $requiredDocs = DriverDocument::getRequiredDocuments($driver->selected_vehicle_type);
 
-        return view('usermanagement::admin.driver.approvals.show', compact('driver', 'documents', 'requiredDocs'));
+        // Check for legacy documents (old system stored in users table)
+        $legacyDocs = [];
+        
+        // Check identification (National ID) - stored as JSON array or string
+        if (!empty($driver->identification_image) && $driver->identification_image != '[]' && $driver->identification_image != 'null') {
+            $legacyDocs['national_id'] = true;
+            $legacyDocs['id_front'] = true;
+            $legacyDocs['id_back'] = true;
+        }
+
+        // Check driving license
+        if (!empty($driver->driving_license) && $driver->driving_license != '[]' && $driver->driving_license != 'null') {
+            $legacyDocs['driving_license'] = true;
+            $legacyDocs['license_front'] = true;
+            $legacyDocs['license_back'] = true;
+        }
+
+        // Check vehicle license/registration
+        if (!empty($driver->vehicle_license) && $driver->vehicle_license != '[]' && $driver->vehicle_license != 'null') {
+            $legacyDocs['vehicle_registration'] = true;
+        }
+
+        // Check car front image
+        if (!empty($driver->car_front_image) && $driver->car_front_image != '[]' && $driver->car_front_image != 'null') {
+            $legacyDocs['car_front'] = true;
+            $legacyDocs['vehicle_photo'] = true;
+        }
+
+        // Check car back image
+        if (!empty($driver->car_back_image) && $driver->car_back_image != '[]' && $driver->car_back_image != 'null') {
+            $legacyDocs['car_back'] = true;
+            // Also mark vehicle_photo as available if either front or back exists
+            $legacyDocs['vehicle_photo'] = true;
+        }
+
+        // Check profile image
+        if (!empty($driver->profile_image)) {
+            $legacyDocs['profile_photo'] = true;
+        }
+
+        return view('usermanagement::admin.driver.approvals.show', compact('driver', 'documents', 'requiredDocs', 'legacyDocs'));
     }
 
     /**

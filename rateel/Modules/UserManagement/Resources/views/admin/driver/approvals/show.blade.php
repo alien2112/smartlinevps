@@ -114,14 +114,17 @@
                                         $docList = $documents->get($docType, collect());
                                         $isUploaded = $docList->isNotEmpty();
                                         $hasMultiple = $docList->count() > 1;
+                                        $hasLegacyDoc = isset($legacyDocs[$docType]) && $legacyDocs[$docType];
                                     @endphp
                                     
                                     <div class="col-md-6">
-                                        <div class="card border {{ !$isUploaded ? 'border-secondary' : 'border-primary' }}">
+                                        <div class="card border {{ (!$isUploaded && !$hasLegacyDoc) ? 'border-secondary' : 'border-primary' }}">
                                             <div class="card-header d-flex justify-content-between align-items-center py-2">
                                                 <h6 class="mb-0">{{ $docName }}</h6>
                                                 @if($isUploaded)
                                                     <span class="badge bg-info">{{ $docList->count() }} {{ translate('file(s)') }}</span>
+                                                @elseif($hasLegacyDoc)
+                                                    <span class="badge bg-success">{{ translate('Doc Uploaded') }}</span>
                                                 @else
                                                     <span class="badge bg-secondary">{{ translate('Not Uploaded') }}</span>
                                                 @endif
@@ -187,6 +190,14 @@
                                                             @endif
                                                         </div>
                                                     @endforeach
+                                                @elseif($hasLegacyDoc)
+                                                    <div class="py-4">
+                                                        <i class="bi bi-file-earmark-check fs-1 text-success"></i>
+                                                        <p class="text-success mb-2"><strong>{{ translate('Document Uploaded') }}</strong></p>
+                                                        <div class="alert alert-info py-2 small mb-0">
+                                                            <i class="bi bi-info-circle"></i> {{ translate('This document was uploaded using the legacy system and cannot be previewed here. Please verify separately if needed.') }}
+                                                        </div>
+                                                    </div>
                                                 @else
                                                     <div class="py-4">
                                                         <i class="bi bi-file-earmark-x fs-1 text-muted"></i>
