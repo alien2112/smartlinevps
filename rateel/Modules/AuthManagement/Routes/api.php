@@ -51,6 +51,33 @@ Route::controller(\Modules\AuthManagement\Http\Controllers\Api\New\AuthControlle
 // Key principle: Driver enters phone, API returns next_step, Flutter shows that screen.
 // ============================================
 
+// V2 Driver Onboarding API
+Route::group(['prefix' => 'v2/driver/onboarding'], function () {
+    Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Driver\V2\DriverOnboardingV2Controller::class)->group(function () {
+        // Step 1: Start - Enter phone number
+        Route::post('start', 'start')->name('driver.onboarding.v2.start');
+
+        // Step 2: Verify OTP
+        Route::post('verify-otp', 'verifyOtp')->name('driver.onboarding.v2.verify-otp');
+
+        // Step 3: Set password
+        Route::post('set-password', 'setPassword')->name('driver.onboarding.v2.set-password');
+
+        // Step 4: Registration info
+        Route::post('register-info', 'registerInfo')->name('driver.onboarding.v2.register-info');
+
+        // Step 5: Vehicle type selection
+        Route::post('vehicle-type', 'vehicleType')->name('driver.onboarding.v2.vehicle-type');
+
+        // Step 6: Document uploads
+        Route::post('upload/id', 'uploadId')->name('driver.onboarding.v2.upload.id');
+        Route::post('upload/license', 'uploadLicense')->name('driver.onboarding.v2.upload.license');
+        Route::post('upload/car_photo', 'uploadCarPhoto')->name('driver.onboarding.v2.upload.car_photo');
+        Route::post('upload/selfie', 'uploadSelfie')->name('driver.onboarding.v2.upload.selfie');
+    });
+});
+
+// V1 Driver Onboarding API (Backward Compatibility)
 Route::group(['prefix' => 'driver/auth'], function () {
     Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Driver\DriverOnboardingController::class)->group(function () {
         
@@ -68,10 +95,25 @@ Route::group(['prefix' => 'driver/auth'], function () {
         
         // Step 5: Vehicle type selection (car, taxi, scooter + travel_enabled)
         Route::post('vehicle-type', 'vehicleType')->name('driver.onboarding.vehicle-type');
-        
-        // Step 6: Document upload (id_front, id_back, license, car_photo, selfie)
-        Route::post('upload/{type}', 'uploadDocument')->name('driver.onboarding.upload');
-        
+
+        // Step 6: Document upload (multi-file uploads)
+        Route::post('upload/id', 'uploadId')->name('driver.onboarding.upload.id');
+        Route::post('upload/license', 'uploadLicense')->name('driver.onboarding.upload.license');
+        Route::post('upload/car_photo', 'uploadCarPhoto')->name('driver.onboarding.upload.car_photo');
+        Route::post('upload/selfie', 'uploadSelfie')->name('driver.onboarding.upload.selfie');
+
+        // Document retrieval (GET method - combined uploaded + missing)
+        Route::get('documents', 'getDocuments')->name('driver.onboarding.documents');
+
+        // Document update (re-upload documents)
+        Route::put('update/id', 'updateId')->name('driver.onboarding.update.id');
+        Route::put('update/license', 'updateLicense')->name('driver.onboarding.update.license');
+        Route::put('update/car_photo', 'updateCarPhoto')->name('driver.onboarding.update.car_photo');
+        Route::put('update/selfie', 'updateSelfie')->name('driver.onboarding.update.selfie');
+
+        // Step 7: Skip/Complete KYC verification
+        Route::post('skip-kyc', 'skipKycVerification')->name('driver.onboarding.skip-kyc');
+
         // Resume/Status endpoint - MOST IMPORTANT - Flutter calls this on app open
         Route::get('status', 'status')->name('driver.onboarding.status');
         

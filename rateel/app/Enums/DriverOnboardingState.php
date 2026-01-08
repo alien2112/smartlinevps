@@ -16,6 +16,7 @@ enum DriverOnboardingState: string
     case PROFILE_COMPLETE = 'profile_complete';
     case VEHICLE_SELECTED = 'vehicle_selected';
     case DOCUMENTS_PENDING = 'documents_pending';
+    case KYC_VERIFICATION = 'kyc_verification';
     case PENDING_APPROVAL = 'pending_approval';
     case APPROVED = 'approved';
     case REJECTED = 'rejected';
@@ -32,9 +33,10 @@ enum DriverOnboardingState: string
             self::PASSWORD_SET => 'submit_profile',
             self::PROFILE_COMPLETE => 'select_vehicle',
             self::VEHICLE_SELECTED => 'upload_documents',
-            self::DOCUMENTS_PENDING => 'submit_for_review',
+            self::DOCUMENTS_PENDING => 'submit_for_kyc',
+            self::KYC_VERIFICATION => 'wait_for_kyc',
             self::PENDING_APPROVAL => 'wait_for_approval',
-            self::APPROVED => 'go_online',
+            self::APPROVED => 'approved',
             self::REJECTED => 'fix_issues',
             self::SUSPENDED => 'contact_support',
         };
@@ -52,6 +54,7 @@ enum DriverOnboardingState: string
             self::PROFILE_COMPLETE => 'Profile Complete',
             self::VEHICLE_SELECTED => 'Vehicle Selected',
             self::DOCUMENTS_PENDING => 'Documents Uploaded',
+            self::KYC_VERIFICATION => 'KYC Verification',
             self::PENDING_APPROVAL => 'Pending Admin Approval',
             self::APPROVED => 'Approved',
             self::REJECTED => 'Application Rejected',
@@ -81,8 +84,9 @@ enum DriverOnboardingState: string
             self::PASSWORD_SET => [self::PROFILE_COMPLETE],
             self::PROFILE_COMPLETE => [self::VEHICLE_SELECTED],
             self::VEHICLE_SELECTED => [self::DOCUMENTS_PENDING],
-            self::DOCUMENTS_PENDING => [self::PENDING_APPROVAL, self::VEHICLE_SELECTED], // Can go back if doc rejected
-            self::PENDING_APPROVAL => [self::APPROVED, self::REJECTED, self::DOCUMENTS_PENDING],
+            self::DOCUMENTS_PENDING => [self::KYC_VERIFICATION, self::VEHICLE_SELECTED], // Can go back if doc rejected
+            self::KYC_VERIFICATION => [self::PENDING_APPROVAL, self::DOCUMENTS_PENDING], // Can go back if KYC fails
+            self::PENDING_APPROVAL => [self::APPROVED, self::REJECTED, self::KYC_VERIFICATION],
             self::APPROVED => [self::SUSPENDED],
             self::REJECTED => [self::OTP_PENDING], // Can restart the process
             self::SUSPENDED => [self::APPROVED], // Admin can unsuspend
@@ -110,7 +114,7 @@ enum DriverOnboardingState: string
      */
     public function requiresAdminAction(): bool
     {
-        return in_array($this, [self::PENDING_APPROVAL, self::REJECTED, self::SUSPENDED]);
+        return in_array($this, [self::KYC_VERIFICATION, self::PENDING_APPROVAL, self::REJECTED, self::SUSPENDED]);
     }
 
     /**
@@ -119,6 +123,7 @@ enum DriverOnboardingState: string
     public function isOnboardingComplete(): bool
     {
         return in_array($this, [
+            self::KYC_VERIFICATION,
             self::PENDING_APPROVAL,
             self::APPROVED,
             self::REJECTED,
@@ -138,6 +143,7 @@ enum DriverOnboardingState: string
             self::PROFILE_COMPLETE => 'vehicle',
             self::VEHICLE_SELECTED => 'documents',
             self::DOCUMENTS_PENDING => 'submit',
+            self::KYC_VERIFICATION => 'kyc',
             default => null,
         };
     }
@@ -153,7 +159,8 @@ enum DriverOnboardingState: string
             self::PASSWORD_SET => 30,
             self::PROFILE_COMPLETE => 50,
             self::VEHICLE_SELECTED => 70,
-            self::DOCUMENTS_PENDING => 85,
+            self::DOCUMENTS_PENDING => 80,
+            self::KYC_VERIFICATION => 90,
             self::PENDING_APPROVAL => 95,
             self::APPROVED => 100,
             self::REJECTED => 95,

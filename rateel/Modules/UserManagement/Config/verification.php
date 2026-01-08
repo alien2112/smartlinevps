@@ -3,6 +3,18 @@
 return [
     /*
     |--------------------------------------------------------------------------
+    | KYC Verification Feature Flags
+    |--------------------------------------------------------------------------
+    |
+    | enabled: Enable or disable KYC verification feature
+    | required_for_approval: If false, drivers can be approved even without KYC
+    |
+    */
+    'enabled' => env('KYC_VERIFICATION_ENABLED', true),
+    'required_for_approval' => env('KYC_REQUIRED_FOR_APPROVAL', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Verification Thresholds
     |--------------------------------------------------------------------------
     |

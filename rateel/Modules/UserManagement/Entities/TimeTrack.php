@@ -47,9 +47,11 @@ class TimeTrack extends Model
 
         static::creating(function ($item){
             $details = DriverDetail::query()->firstWhere('user_id', $item->user_id);
-            $details->availability_status = 'available';
-            $details->is_online = true;
-            $details->save();
+            if ($details) {
+                $details->availability_status = 'available';
+                $details->is_online = true;
+                $details->save();
+            }
         });
     }
 }

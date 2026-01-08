@@ -193,45 +193,64 @@ class DriverOnboardingController extends Controller
         $passwordConfig = config('driver_onboarding.password', []);
 
         $rules = [
+            'phone' => 'required|string|min:10|max:20',
             'password' => [
                 'required',
                 'string',
                 'min:8',
                 'max:128',
-                'confirmed',
                 'regex:/^[a-zA-Z0-9]+$/', // Only letters and digits, no special characters
             ],
         ];
 
         $validator = Validator::make($request->all(), $rules, [
+            'phone.required' => translate('Phone number is required.'),
             'password.regex' => translate('Password can only contain letters and numbers. No special characters allowed.'),
             'password.min' => translate('Password must be at least 8 characters long.'),
             'password.required' => translate('Password is required.'),
-            'password.confirmed' => translate('Password confirmation does not match.'),
-            'first_name.regex' => translate('First name must contain only letters and spaces. No numbers or special characters allowed.'),
-            'first_name.max' => translate('First name must not exceed 50 characters.'),
-            'last_name.regex' => translate('Last name must contain only letters and spaces. No numbers or special characters allowed.'),
-            'last_name.max' => translate('Last name must not exceed 50 characters.'),
         ]);
 
         if ($validator->fails()) {
             return $this->validationError($validator);
         }
 
-        $driver = $request->user();
+        // Find driver by phone
+        $phone = $this->normalizePhone($request->phone);
+        $driver = \Modules\UserManagement\Entities\User::where('phone', $phone)
+            ->where('user_type', 'driver')
+            ->first();
+
+        if (!$driver) {
+            return response()->json([
+                'success' => false,
+                'message' => translate('Driver not found'),
+                'error' => [
+                    'code' => 'DRIVER_NOT_FOUND',
+                    'message' => translate('Driver not found with this phone number'),
+                ],
+            ], 404);
+        }
+
         $result = $this->onboardingService->setPassword($driver, $request->password);
 
         if (!$result['success']) {
+            $statusCode = $result['error']['code'] === 'INVALID_PASSWORD' ? 401 : 409;
             return response()->json([
                 'success' => false,
                 'message' => $result['error']['message'],
                 'error' => $result['error'],
-            ], 409);
+            ], $statusCode);
         }
+
+        // Check if this was a returning driver login or new password setup
+        $isReturning = $result['data']['is_returning'] ?? false;
+        $message = $isReturning
+            ? translate('Login successful. Welcome back!')
+            : translate('Password set successfully');
 
         return response()->json([
             'success' => true,
-            'message' => translate('Password set successfully'),
+            'message' => $message,
             'data' => $result['data'],
         ]);
     }
@@ -503,5 +522,23 @@ class DriverOnboardingController extends Controller
             'DATABASE_ERROR', 'UNEXPECTED_ERROR', 'VERIFICATION_ERROR' => 500,
             default => 400,
         };
+    }
+
+    /**
+     * Normalize phone number to +20 format
+     */
+    private function normalizePhone(string $phone): string
+    {
+        $phone = preg_replace('/[^0-9+]/', '', $phone);
+
+        if (!str_starts_with($phone, '+')) {
+            if (str_starts_with($phone, '0')) {
+                $phone = '+20' . substr($phone, 1);
+            } elseif (str_starts_with($phone, '20')) {
+                $phone = '+' . $phone;
+            }
+        }
+
+        return $phone;
     }
 }

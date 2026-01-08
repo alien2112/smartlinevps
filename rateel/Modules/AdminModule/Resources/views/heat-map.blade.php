@@ -147,7 +147,14 @@
     <script src="{{asset('public/assets/admin-module/js/maps/map-init-overview.js')}}?v={{ time() }}"></script>
 
     <script>
+        console.log('=== HEAT MAP PAGE LOADED ===');
+        console.log('jQuery loaded:', typeof $ !== 'undefined');
+        console.log('Leaflet loaded:', typeof L !== 'undefined');
+        console.log('Heat layer loaded:', typeof L.heatLayer !== 'undefined');
+        console.log('Map element exists:', !!document.getElementById('map'));
+        
         $(function () {
+            console.log('Document ready fired');
             $('#dateRange').on('apply.daterangepicker', function (ev, picker) {
                 $('#dateRangeForm').submit();
             });
@@ -196,6 +203,18 @@
             }).get();
             heatMapOverview(selectedValues);
         }
+        
+        // Force map initialization on page load after short delay
+        setTimeout(function() {
+            console.log('=== FORCING MAP INIT ===');
+            console.log('initializeOverviewMaps available:', typeof window.initializeOverviewMaps);
+            if (typeof window.initializeOverviewMaps === 'function') {
+                console.log('Calling initializeOverviewMaps...');
+                window.initializeOverviewMaps();
+            } else {
+                console.error('initializeOverviewMaps function not found!');
+            }
+        }, 1000);
 
         function heatMapOverview(zoneIds) {
             const dateRange = $('#dateRange').val();

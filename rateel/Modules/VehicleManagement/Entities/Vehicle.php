@@ -31,6 +31,7 @@ class Vehicle extends Model
         'documents',
         'is_active',
         'is_primary',
+        'has_pending_primary_request',
         'deleted_at',
         'created_at',
         'updated_at',
@@ -49,6 +50,7 @@ class Vehicle extends Model
         'documents' => 'array',
         'is_active' => 'boolean',
         'is_primary' => 'boolean',
+        'has_pending_primary_request' => 'boolean',
         'vehicle_request_status' => 'string',
         'draft' => 'array',
     ];

@@ -28,12 +28,17 @@ class BannerSetupService extends BaseService implements Interface\BannerSetupSer
             'description'=>$data['short_desc'],
             'display_position'=>$data['display_position'] ?? null,
             'time_period'=>$data['time_period'],
-            'redirect_link'=>$data['redirect_link'],
+            'redirect_link'=>$data['redirect_link'] ?? null,
             'banner_group'=>$data['banner_group'] ?? null,
             'start_date'=>$data['start_date'] ?? null,
             'end_date'=>$data['end_date'] ?? null,
             'image'=>fileUploader('promotion/banner/', 'webp', $data['banner_image']),
             'target_audience' => $data['target_audience'],
+            'banner_type' => $data['banner_type'] ?? 'ad',
+            'coupon_code' => $data['coupon_code'] ?? null,
+            'discount_code' => $data['discount_code'] ?? null,
+            'is_promotion' => $data['is_promotion'] ?? false,
+            'coupon_id' => $data['coupon_id'] ?? null,
         ];
         return parent::create($storeData);
     }
@@ -46,11 +51,16 @@ class BannerSetupService extends BaseService implements Interface\BannerSetupSer
             'description'=>$data['short_desc'],
             'display_position'=>$data['display_position'] ?? null,
             'time_period'=>$data['time_period'],
-            'redirect_link'=>$data['redirect_link'],
+            'redirect_link'=>$data['redirect_link'] ?? null,
             'banner_group'=>$data['banner_group'] ?? null,
             'start_date'=>$data['start_date'] ?? null,
             'end_date'=>$data['end_date'] ?? null,
             'target_audience' => $data['target_audience'],
+            'banner_type' => $data['banner_type'] ?? 'ad',
+            'coupon_code' => $data['coupon_code'] ?? null,
+            'discount_code' => $data['discount_code'] ?? null,
+            'is_promotion' => $data['is_promotion'] ?? false,
+            'coupon_id' => $data['coupon_id'] ?? null,
         ];
         if (array_key_exists('banner_image', $data)) {
             $updateData = array_merge($updateData,[

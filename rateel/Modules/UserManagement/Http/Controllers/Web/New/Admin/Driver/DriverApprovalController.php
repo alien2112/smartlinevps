@@ -2,12 +2,14 @@
 
 namespace Modules\UserManagement\Http\Controllers\Web\New\Admin\Driver;
 
+use App\Enums\DriverOnboardingState;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\UserManagement\Entities\DriverDocument;
 use Modules\UserManagement\Entities\User;
+use Modules\VehicleManagement\Service\Interface\VehicleServiceInterface;
 
 /**
  * DriverApprovalController
@@ -17,12 +19,24 @@ use Modules\UserManagement\Entities\User;
  */
 class DriverApprovalController extends Controller
 {
+    protected $vehicleService;
+
+    public function __construct(VehicleServiceInterface $vehicleService)
+    {
+        $this->vehicleService = $vehicleService;
+    }
+
     /**
      * Display pending driver applications
      */
     public function index(Request $request)
     {
         $status = $request->get('status', 'pending_approval');
+        
+        // Handle vehicle changes tab
+        if ($status === 'vehicle_changes') {
+            return $this->vehicleChanges($request);
+        }
         
         $query = User::where('user_type', 'driver')
             ->with(['driverDetails', 'vehicle']);
@@ -74,9 +88,66 @@ class DriverApprovalController extends Controller
                       ->orWhereNotIn('onboarding_step', ['pending_approval', 'approved']); // Legacy support
                 })
                 ->count(),
+            'vehicle_changes' => DB::table('vehicles')
+                ->where('vehicle_request_status', 'pending')
+                ->where('has_pending_primary_request', 1)
+                ->count(),
         ];
 
         return view('usermanagement::admin.driver.approvals.index', compact('drivers', 'status', 'counts'));
+    }
+    
+    /**
+     * Show pending vehicle change requests
+     */
+    protected function vehicleChanges(Request $request)
+    {
+        // Get drivers with pending vehicle changes
+        $driversWithChanges = DB::table('vehicles')
+            ->select('driver_id')
+            ->where('vehicle_request_status', 'pending')
+            ->where('has_pending_primary_request', 1)
+            ->distinct()
+            ->pluck('driver_id');
+        
+        $drivers = User::where('user_type', 'driver')
+            ->whereIn('id', $driversWithChanges)
+            ->with(['driverDetails', 'vehicles' => function($query) {
+                $query->where('vehicle_request_status', 'pending')
+                      ->orWhere('is_primary', 1);
+            }, 'vehicles.brand', 'vehicles.model', 'vehicles.category'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
+        
+        // Get counts for tabs
+        $counts = [
+            'pending' => User::where('user_type', 'driver')
+                ->where(function($q) {
+                    $q->where('onboarding_state', DriverOnboardingState::PENDING_APPROVAL->value)
+                      ->orWhere('onboarding_step', 'pending_approval');
+                })
+                ->count(),
+            'approved' => User::where('user_type', 'driver')
+                ->where(function($q) {
+                    $q->where('onboarding_state', DriverOnboardingState::APPROVED->value)
+                      ->orWhere('onboarding_step', 'approved');
+                })
+                ->count(),
+            'in_progress' => User::where('user_type', 'driver')
+                ->where(function($q) {
+                    $q->whereNotIn('onboarding_state', [
+                        DriverOnboardingState::PENDING_APPROVAL->value,
+                        DriverOnboardingState::APPROVED->value
+                    ])
+                      ->orWhereNotIn('onboarding_step', ['pending_approval', 'approved']);
+                })
+                ->count(),
+            'vehicle_changes' => count($driversWithChanges),
+        ];
+        
+        $status = 'vehicle_changes';
+        
+        return view('usermanagement::admin.driver.approvals.vehicle-changes', compact('drivers', 'status', 'counts'));
     }
 
     /**
@@ -85,13 +156,18 @@ class DriverApprovalController extends Controller
     public function show(string $id)
     {
         $driver = User::where('user_type', 'driver')
-            ->with(['driverDetails', 'vehicle'])
+            ->with(['driverDetails', 'vehicle', 'vehicles.brand', 'vehicles.model', 'vehicles.category'])
             ->findOrFail($id);
 
-        // Get all uploaded documents
-        $documents = DriverDocument::where('driver_id', $driver->id)
-            ->get()
-            ->keyBy('type');
+        // Get all uploaded documents - show ALL active documents (including multiple per type)
+        $allDocuments = DriverDocument::where('driver_id', $driver->id)
+            ->where('is_active', 1)
+            ->orderBy('type')
+            ->orderBy('created_at', 'desc')
+            ->get();
+        
+        // Group by type - keep ALL documents per type (for front/back pairs)
+        $documents = $allDocuments->groupBy('type');
 
         // Get required documents for this vehicle type
         $requiredDocs = DriverDocument::getRequiredDocuments($driver->selected_vehicle_type);
@@ -101,18 +177,39 @@ class DriverApprovalController extends Controller
 
     /**
      * Approve driver application
+     *
+     * NOTE: KYC verification is NOT checked here. Drivers can be approved regardless
+     * of their kyc_status. This is controlled by KYC_REQUIRED_FOR_APPROVAL env variable.
      */
     public function approve(Request $request, string $id)
     {
         $driver = User::where('user_type', 'driver')
-            ->where('onboarding_step', 'pending_approval')
+            ->where(function($query) {
+                $query->where('onboarding_state', DriverOnboardingState::PENDING_APPROVAL->value)
+                      ->orWhere('onboarding_step', 'pending_approval');
+            })
             ->findOrFail($id);
 
         try {
             DB::beginTransaction();
 
+            // Approve driver regardless of KYC status (unless explicitly required in config)
+            // KYC runs in parallel but doesn't block approval
+            if (config('verification.required_for_approval', false)) {
+                // Only check KYC if explicitly required
+                if (!in_array($driver->kyc_status ?? 'not_required', ['verified', 'not_required'])) {
+                    DB::rollBack();
+                    return back()->with('error', 'Driver KYC verification must be completed before approval');
+                }
+            }
+
+            // Update both state and step for compatibility
+            $driver->onboarding_state = DriverOnboardingState::APPROVED->value;
+            $driver->onboarding_state_version = ($driver->onboarding_state_version ?? 0) + 1;
             $driver->onboarding_step = 'approved';
             $driver->is_active = true;
+            $driver->is_approved = true;
+            $driver->approved_at = now();
             $driver->save();
 
             // Mark all documents as verified
@@ -334,6 +431,9 @@ class DriverApprovalController extends Controller
 
     /**
      * API endpoint for approving driver (for mobile admin app)
+     *
+     * NOTE: KYC verification is NOT checked here. Drivers can be approved regardless
+     * of their kyc_status. This is controlled by KYC_REQUIRED_FOR_APPROVAL env variable.
      */
     public function apiApprove(Request $request, string $id)
     {
@@ -347,10 +447,21 @@ class DriverApprovalController extends Controller
         try {
             DB::beginTransaction();
 
+            // Check KYC only if required by config (default: false)
+            if (config('verification.required_for_approval', false)) {
+                if (!in_array($driver->kyc_status ?? 'not_required', ['verified', 'not_required'])) {
+                    DB::rollBack();
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Driver KYC verification must be completed before approval',
+                    ], 400);
+                }
+            }
+
             // Update to new state machine
             $currentState = DriverOnboardingState::fromString($driver->onboarding_state ?? $driver->onboarding_step ?? 'pending_approval');
             $newState = DriverOnboardingState::APPROVED;
-            
+
             if (!$currentState->canTransitionTo($newState)) {
                 return response()->json([
                     'status' => 'error',
@@ -501,5 +612,192 @@ class DriverApprovalController extends Controller
                 'documents' => $documents,
             ],
         ]);
+    }
+
+    /**
+     * Approve individual vehicle
+     */
+    public function approveVehicle(Request $request, string $driverId, string $vehicleId)
+    {
+        try {
+            DB::beginTransaction();
+
+            $vehicle = $this->vehicleService->findOne($vehicleId);
+
+            if (!$vehicle || $vehicle->driver_id !== $driverId) {
+                return back()->with('error', 'Vehicle not found');
+            }
+
+            // If vehicle has draft changes, apply them
+            if ($vehicle->draft) {
+                $this->vehicleService->approveVehicleUpdate($vehicleId);
+            } else {
+                // Just approve the vehicle
+                $this->vehicleService->update($vehicleId, [
+                    'vehicle_request_status' => APPROVED,
+                    'is_active' => true
+                ]);
+            }
+
+            // If this vehicle has a pending primary request, also approve it
+            if ($vehicle->has_pending_primary_request) {
+                $this->vehicleService->approvePrimaryVehicleChange($vehicleId);
+                $message = 'Vehicle approved and set as primary successfully';
+            } else {
+                $message = 'Vehicle approved successfully';
+            }
+
+            DB::commit();
+
+            Log::info('Vehicle approved', [
+                'vehicle_id' => $vehicleId,
+                'driver_id' => $driverId,
+                'approved_by' => auth()->id(),
+                'set_as_primary' => $vehicle->has_pending_primary_request,
+            ]);
+
+            return back()->with('success', $message);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Vehicle approval failed', [
+                'vehicle_id' => $vehicleId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', 'Failed to approve vehicle: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Reject individual vehicle
+     */
+    public function rejectVehicle(Request $request, string $driverId, string $vehicleId)
+    {
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $vehicle = $this->vehicleService->findOne($vehicleId);
+
+            if (!$vehicle || $vehicle->driver_id !== $driverId) {
+                return back()->with('error', 'Vehicle not found');
+            }
+
+            // Reject the vehicle
+            $this->vehicleService->update($vehicleId, [
+                'vehicle_request_status' => REJECTED,
+                'deny_note' => $request->reason,
+                'is_active' => false,
+                'draft' => null // Clear any pending updates
+            ]);
+
+            DB::commit();
+
+            Log::info('Vehicle rejected', [
+                'vehicle_id' => $vehicleId,
+                'driver_id' => $driverId,
+                'rejected_by' => auth()->id(),
+                'reason' => $request->reason,
+            ]);
+
+            return back()->with('success', 'Vehicle rejected');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Vehicle rejection failed', [
+                'vehicle_id' => $vehicleId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', 'Failed to reject vehicle: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Approve primary vehicle change request
+     */
+    public function approvePrimaryVehicleChange(Request $request, string $driverId, string $vehicleId)
+    {
+        try {
+            DB::beginTransaction();
+
+            $vehicle = $this->vehicleService->findOne($vehicleId);
+
+            if (!$vehicle || $vehicle->driver_id !== $driverId) {
+                return back()->with('error', 'Vehicle not found');
+            }
+
+            if (!$vehicle->has_pending_primary_request) {
+                return back()->with('error', 'No pending primary vehicle change request for this vehicle');
+            }
+
+            // Apply the primary vehicle change
+            $this->vehicleService->approvePrimaryVehicleChange($vehicleId);
+
+            DB::commit();
+
+            Log::info('Primary vehicle change approved', [
+                'vehicle_id' => $vehicleId,
+                'driver_id' => $driverId,
+                'approved_by' => auth()->id(),
+            ]);
+
+            return back()->with('success', 'Primary vehicle changed successfully');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Primary vehicle change approval failed', [
+                'vehicle_id' => $vehicleId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', 'Failed to approve primary vehicle change: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Reject primary vehicle change request
+     */
+    public function rejectPrimaryVehicleChange(Request $request, string $driverId, string $vehicleId)
+    {
+        try {
+            DB::beginTransaction();
+
+            $vehicle = $this->vehicleService->findOne($vehicleId);
+
+            if (!$vehicle || $vehicle->driver_id !== $driverId) {
+                return back()->with('error', 'Vehicle not found');
+            }
+
+            if (!$vehicle->has_pending_primary_request) {
+                return back()->with('error', 'No pending primary vehicle change request for this vehicle');
+            }
+
+            // Reject the primary vehicle change request
+            $this->vehicleService->denyPrimaryVehicleChange($vehicleId);
+
+            DB::commit();
+
+            Log::info('Primary vehicle change rejected', [
+                'vehicle_id' => $vehicleId,
+                'driver_id' => $driverId,
+                'rejected_by' => auth()->id(),
+            ]);
+
+            return back()->with('success', 'Primary vehicle change request rejected');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Primary vehicle change rejection failed', [
+                'vehicle_id' => $vehicleId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', 'Failed to reject primary vehicle change: ' . $e->getMessage());
+        }
     }
 }

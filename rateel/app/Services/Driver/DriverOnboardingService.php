@@ -96,6 +96,45 @@ class DriverOnboardingService
                 ->where('user_type', 'driver')
                 ->first();
 
+            // Check if phone is already verified
+            if ($existingUser && $existingUser->is_phone_verified && $existingUser->phone_verified_at) {
+                Log::info('Driver phone already verified, checking password requirement', [
+                    'driver_id' => $existingUser->id,
+                    'phone_masked' => $this->maskPhone($normalizedPhone),
+                    'phone_verified_at' => $existingUser->phone_verified_at,
+                    'has_password' => !empty($existingUser->password),
+                ]);
+
+                // If driver has a password set, require password authentication
+                if (!empty($existingUser->password)) {
+                    return [
+                        'success' => true,
+                        'data' => [
+                            'phone_verified' => true,
+                            'phone_masked' => $this->maskPhone($normalizedPhone),
+                            'requires_password' => true,
+                            'next_step' => 'password',
+                            'message' => translate('Please enter your password to continue'),
+                        ],
+                    ];
+                }
+
+                // Phone verified but no password set yet - continue onboarding
+                $currentState = DriverOnboardingState::fromString($existingUser->onboarding_state ?? 'otp_verified');
+
+                return [
+                    'success' => true,
+                    'data' => [
+                        'phone_verified' => true,
+                        'phone_masked' => $this->maskPhone($normalizedPhone),
+                        'next_step' => $currentState->nextStep(),
+                        'onboarding_state' => $currentState->value,
+                        'state_version' => $existingUser->onboarding_state_version,
+                        'message' => translate('Phone number already verified'),
+                    ],
+                ];
+            }
+
             // Generate OTP
             $otp = $this->generateOtp();
             $otpHash = Hash::make($otp);
@@ -327,7 +366,7 @@ class DriverOnboardingService
             }
 
             // Add missing documents if relevant
-            if (in_array($currentState->value, ['vehicle_selected', 'documents_pending'])) {
+            if (in_array($currentState->value, ['vehicle_selected', 'documents_pending', 'kyc_verification'])) {
                 $responseData['missing_documents'] = $this->getMissingDocuments($driver->id);
             }
 
@@ -546,9 +585,75 @@ class DriverOnboardingService
      */
     public function setPassword(\Modules\UserManagement\Entities\User $driver, string $password): array
     {
+        // Check if driver already has a password (returning driver - login scenario)
+        if (!empty($driver->password)) {
+            // Verify the provided password
+            if (!Hash::check($password, $driver->password)) {
+                return [
+                    'success' => false,
+                    'error' => [
+                        'code' => 'INVALID_PASSWORD',
+                        'message' => translate('Invalid password. Please try again.'),
+                    ],
+                ];
+            }
+
+            // Password is correct - authenticate and continue
+            $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
+            
+            // Fix state for approved drivers with incorrect onboarding_state
+            if ($driver->is_approved && $currentState !== DriverOnboardingState::APPROVED) {
+                $driver->update([
+                    'onboarding_state' => DriverOnboardingState::APPROVED->value,
+                ]);
+                $currentState = DriverOnboardingState::APPROVED;
+                Log::info('Fixed onboarding state for approved driver', [
+                    'driver_id' => $driver->id,
+                    'old_state' => $driver->getOriginal('onboarding_state'),
+                    'new_state' => $currentState->value,
+                ]);
+            }
+            
+            $nextStep = $currentState->nextStep();
+
+            // Use driver scope token for approved drivers
+            $tokenScope = $driver->is_approved ? ['driver'] : ['onboarding'];
+            $token = $driver->createToken('driver-onboarding', $tokenScope)->accessToken;
+            $tokenExpiresAt = now()->addHours(config('driver_onboarding.session.token_ttl_hours', 48));
+
+            Log::info('Returning driver authenticated via password', [
+                'driver_id' => $driver->id,
+                'phone_masked' => $this->maskPhone($driver->phone),
+                'onboarding_state' => $currentState->value,
+                'is_approved' => $driver->is_approved,
+            ]);
+
+            return [
+                'success' => true,
+                'data' => [
+                    'authenticated' => true,
+                    'is_returning' => true,
+                    'token' => $token,
+                    'token_type' => 'Bearer',
+                    'token_expires_at' => $tokenExpiresAt->toIso8601String(),
+                    'next_step' => $nextStep,
+                    'onboarding_state' => $currentState->value,
+                    'state_version' => $driver->onboarding_state_version,
+                    'driver' => [
+                        'id' => $driver->id,
+                        'first_name' => $driver->first_name,
+                        'last_name' => $driver->last_name,
+                        'phone' => $driver->phone,
+                        'is_approved' => $driver->is_approved ?? false,
+                    ],
+                ],
+            ];
+        }
+
+        // New driver - set password for the first time
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
 
-        // Validate state
+        // Validate state for new drivers
         if ($currentState !== DriverOnboardingState::OTP_VERIFIED) {
             return [
                 'success' => false,
@@ -563,9 +668,16 @@ class DriverOnboardingService
             'onboarding_state_version' => $driver->onboarding_state_version + 1,
         ]);
 
+        Log::info('New driver password set', [
+            'driver_id' => $driver->id,
+            'phone_masked' => $this->maskPhone($driver->phone),
+        ]);
+
         return [
             'success' => true,
             'data' => [
+                'authenticated' => false,
+                'is_returning' => false,
                 'next_step' => DriverOnboardingState::PASSWORD_SET->nextStep(),
                 'onboarding_state' => DriverOnboardingState::PASSWORD_SET->value,
                 'state_version' => $driver->onboarding_state_version,
@@ -725,8 +837,8 @@ class DriverOnboardingService
     {
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
 
-        // Allow upload in vehicle_selected or documents_pending states
-        if (!in_array($currentState, [DriverOnboardingState::VEHICLE_SELECTED, DriverOnboardingState::DOCUMENTS_PENDING])) {
+        // Allow upload in vehicle_selected, documents_pending, or kyc_verification states
+        if (!in_array($currentState, [DriverOnboardingState::VEHICLE_SELECTED, DriverOnboardingState::DOCUMENTS_PENDING, DriverOnboardingState::KYC_VERIFICATION])) {
             return [
                 'success' => false,
                 'error' => [
@@ -802,9 +914,16 @@ class DriverOnboardingService
                 ->where('is_active', true)
                 ->update(['is_active' => false]);
 
-            // Store file
-            $storagePath = config('driver_onboarding.documents.storage_path', 'driver-documents');
-            $filePath = $file->store("{$storagePath}/{$driver->id}", config('driver_onboarding.documents.storage_disk', 'public'));
+            // Get old file path if exists for deletion by fileUploader
+            $oldDocument = DB::table('driver_documents')
+                ->where('driver_id', $driver->id)
+                ->where('type', $type)
+                ->orderBy('created_at', 'desc')
+                ->first();
+
+            // Store file using fileUploader helper (same as vehicle images)
+            $extension = $file->getClientOriginalExtension();
+            $fileName = fileUploader('driver/document/', $extension, $file, $oldDocument?->file_path ?? null);
             $fileHash = hash_file('sha256', $file->getRealPath());
 
             // Create document record
@@ -814,7 +933,7 @@ class DriverOnboardingService
                 'uuid' => $docId,
                 'driver_id' => $driver->id,
                 'type' => $type,
-                'file_path' => $filePath,
+                'file_path' => $fileName,
                 'original_name' => $file->getClientOriginalName(),
                 'mime_type' => $file->getMimeType(),
                 'file_size' => $file->getSize(),
@@ -832,12 +951,25 @@ class DriverOnboardingService
             $allUploaded = empty($missingDocs);
 
             // Update state if all documents uploaded
-            if ($allUploaded && $driver->onboarding_state === DriverOnboardingState::VEHICLE_SELECTED->value) {
-                $driver->update([
-                    'documents_completed_at' => now(),
-                    'onboarding_state' => DriverOnboardingState::DOCUMENTS_PENDING->value,
-                    'onboarding_state_version' => $driver->onboarding_state_version + 1,
-                ]);
+            if ($allUploaded) {
+                if ($driver->onboarding_state === DriverOnboardingState::VEHICLE_SELECTED->value) {
+                    // First time all docs uploaded - move to DOCUMENTS_PENDING then to KYC
+                    $driver->update([
+                        'documents_completed_at' => now(),
+                        'onboarding_state' => DriverOnboardingState::KYC_VERIFICATION->value,
+                        'onboarding_state_version' => $driver->onboarding_state_version + 1,
+                    ]);
+
+                    Log::info('Driver documents completed, moving to KYC verification', [
+                        'driver_id' => $driver->id,
+                    ]);
+                } elseif ($driver->onboarding_state === DriverOnboardingState::DOCUMENTS_PENDING->value) {
+                    // Re-upload after rejection - move to KYC
+                    $driver->update([
+                        'onboarding_state' => DriverOnboardingState::KYC_VERIFICATION->value,
+                        'onboarding_state_version' => $driver->onboarding_state_version + 1,
+                    ]);
+                }
             }
 
             $currentState = DriverOnboardingState::fromString($driver->fresh()->onboarding_state);
@@ -863,9 +995,9 @@ class DriverOnboardingService
     }
 
     /**
-     * Submit application for review
+     * Submit application for KYC verification
      */
-    public function submitForReview(\Modules\UserManagement\Entities\User $driver, bool $termsAccepted, bool $privacyAccepted): array
+    public function submitForKyc(\Modules\UserManagement\Entities\User $driver): array
     {
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
 
@@ -873,6 +1005,54 @@ class DriverOnboardingService
             return [
                 'success' => false,
                 'error' => $this->buildStateError($currentState, DriverOnboardingState::DOCUMENTS_PENDING),
+            ];
+        }
+
+        // Verify all required documents are uploaded
+        $missingDocs = $this->getMissingDocuments($driver->id);
+        if (!empty($missingDocs)) {
+            return [
+                'success' => false,
+                'error' => [
+                    'code' => 'DOCUMENTS_INCOMPLETE',
+                    'message' => translate('Please upload all required documents'),
+                    'missing_documents' => $missingDocs,
+                ],
+            ];
+        }
+
+        $driver->update([
+            'onboarding_state' => DriverOnboardingState::KYC_VERIFICATION->value,
+            'onboarding_state_version' => $driver->onboarding_state_version + 1,
+        ]);
+
+        Log::info('Driver submitted for KYC verification', [
+            'driver_id' => $driver->id,
+            'phone' => $this->maskPhone($driver->phone),
+        ]);
+
+        return [
+            'success' => true,
+            'data' => [
+                'next_step' => DriverOnboardingState::KYC_VERIFICATION->nextStep(),
+                'onboarding_state' => DriverOnboardingState::KYC_VERIFICATION->value,
+                'state_version' => $driver->onboarding_state_version,
+                'message' => translate('Please proceed to KYC verification'),
+            ],
+        ];
+    }
+
+    /**
+     * Submit application for final approval (after KYC)
+     */
+    public function submitForReview(\Modules\UserManagement\Entities\User $driver, bool $termsAccepted, bool $privacyAccepted): array
+    {
+        $currentState = DriverOnboardingState::fromString($driver->onboarding_state);
+
+        if ($currentState !== DriverOnboardingState::KYC_VERIFICATION) {
+            return [
+                'success' => false,
+                'error' => $this->buildStateError($currentState, DriverOnboardingState::KYC_VERIFICATION),
             ];
         }
 

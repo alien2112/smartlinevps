@@ -14,8 +14,9 @@ class BannerSetupRepository extends BaseRepository implements BannerSetupReposit
     }
     public function list($data, $limit, $offset)
     {
-        return $this->model->where('is_active', 1)
-        ->where('target_audience', 'customer')
+        return $this->model->with('coupon')
+            ->where('is_active', 1)
+            ->where('target_audience', 'customer')
             ->where(function ($query) use ($data) {
                 $query->where('time_period', '!=', 'period') // Exclude rows where time_period is not "period"
                     ->orWhere(function ($periodQuery) use ($data) {

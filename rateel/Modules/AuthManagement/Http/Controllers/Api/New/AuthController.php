@@ -551,7 +551,9 @@ class AuthController extends Controller
 
         // ============================================================
         // OLD REFERRAL SYSTEM: Wallet-based rewards (legacy support)
+        // COMMENTED OUT - Now using NEW referral system (loyalty points)
         // ============================================================
+        /*
         if ($isCustomer) {
             if (referralEarningSetting('referral_earning_status', CUSTOMER)?->value) {
                 $referralCustomerData = [
@@ -616,6 +618,7 @@ class AuthController extends Controller
                 }
             }
         }
+        */
     }
 
     public function firebaseOtpVerification(Request $request)

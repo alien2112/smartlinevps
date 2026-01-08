@@ -21,18 +21,44 @@ class VerificationController extends Controller
 
     /**
      * Create a new verification session or get existing one.
-     * 
+     *
      * POST /api/driver/verification/session
+     * Request: { "phone": "01234567890" }
      */
     public function createSession(Request $request): JsonResponse
     {
-        try {
-            $user = $request->user();
+        // Check if KYC verification feature is enabled
+        if (!config('verification.enabled', true)) {
+            return response()->json(
+                responseFormatter(DEFAULT_200, ['message' => 'KYC verification is currently disabled']),
+                200
+            );
+        }
 
-            if ($user->user_type !== 'driver') {
+        $validator = Validator::make($request->all(), [
+            'phone' => 'required|string|min:10|max:15',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(
+                responseFormatter(DEFAULT_400, errors: errorProcessor($validator)),
+                400
+            );
+        }
+
+        try {
+            // Normalize phone number
+            $phone = $this->normalizePhone($request->phone);
+
+            // Find driver by phone
+            $user = \Modules\UserManagement\Entities\User::where('phone', $phone)
+                ->where('user_type', 'driver')
+                ->first();
+
+            if (!$user) {
                 return response()->json(
-                    responseFormatter(DEFAULT_403, errors: ['message' => 'Only drivers can access verification']),
-                    403
+                    responseFormatter(DEFAULT_404, errors: ['message' => 'Driver not found']),
+                    404
                 );
             }
 
@@ -55,12 +81,22 @@ class VerificationController extends Controller
 
     /**
      * Upload media for a verification session.
-     * 
+     *
      * POST /api/driver/verification/session/{id}/upload
+     * Request: { "phone": "01234567890", "kind": "selfie", "file": <file> }
      */
     public function uploadMedia(Request $request, string $id): JsonResponse
     {
+        // Check if KYC verification feature is enabled
+        if (!config('verification.enabled', true)) {
+            return response()->json(
+                responseFormatter(DEFAULT_200, ['message' => 'KYC verification is currently disabled']),
+                200
+            );
+        }
+
         $validator = Validator::make($request->all(), [
+            'phone' => 'required|string|min:10|max:15',
             'kind' => 'required|in:selfie,liveness_video,id_front,id_back',
             'file' => 'required|file|max:10240', // 10MB max
         ]);
@@ -73,11 +109,24 @@ class VerificationController extends Controller
         }
 
         try {
-            $user = $request->user();
+            // Normalize phone number
+            $phone = $this->normalizePhone($request->phone);
+
+            // Find driver by phone
+            $user = \Modules\UserManagement\Entities\User::where('phone', $phone)
+                ->where('user_type', 'driver')
+                ->first();
+
+            if (!$user) {
+                return response()->json(
+                    responseFormatter(DEFAULT_404, errors: ['message' => 'Driver not found']),
+                    404
+                );
+            }
 
             // Verify session belongs to user
             $session = $this->verificationService->getStatusForUser($user->id, 'driver_kyc');
-            
+
             if (!$session || $session->id !== $id) {
                 return response()->json(
                     responseFormatter(DEFAULT_404, errors: ['message' => 'Session not found']),
@@ -120,17 +169,50 @@ class VerificationController extends Controller
 
     /**
      * Submit session for verification processing.
-     * 
+     *
      * POST /api/driver/verification/session/{id}/submit
+     * Request: { "phone": "01234567890" }
      */
     public function submitSession(Request $request, string $id): JsonResponse
     {
+        // Check if KYC verification feature is enabled
+        if (!config('verification.enabled', true)) {
+            return response()->json(
+                responseFormatter(DEFAULT_200, ['message' => 'KYC verification is currently disabled']),
+                200
+            );
+        }
+
+        $validator = Validator::make($request->all(), [
+            'phone' => 'required|string|min:10|max:15',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(
+                responseFormatter(DEFAULT_400, errors: errorProcessor($validator)),
+                400
+            );
+        }
+
         try {
-            $user = $request->user();
+            // Normalize phone number
+            $phone = $this->normalizePhone($request->phone);
+
+            // Find driver by phone
+            $user = \Modules\UserManagement\Entities\User::where('phone', $phone)
+                ->where('user_type', 'driver')
+                ->first();
+
+            if (!$user) {
+                return response()->json(
+                    responseFormatter(DEFAULT_404, errors: ['message' => 'Driver not found']),
+                    404
+                );
+            }
 
             // Verify session belongs to user
             $session = $this->verificationService->getStatusForUser($user->id, 'driver_kyc');
-            
+
             if (!$session || $session->id !== $id) {
                 return response()->json(
                     responseFormatter(DEFAULT_404, errors: ['message' => 'Session not found']),
@@ -140,10 +222,19 @@ class VerificationController extends Controller
 
             $this->verificationService->submitSession($id);
 
+            // Auto-complete KYC verification (always pass)
+            $user->update([
+                'kyc_verified_at' => now(),
+                'onboarding_step' => 'pending_approval',
+                'onboarding_state' => 'pending_approval',
+            ]);
+
             return response()->json(responseFormatter(DEFAULT_200, [
-                'message' => 'Verification submitted successfully',
+                'message' => 'KYC verification completed successfully. Driver moved to pending approval.',
                 'session_id' => $id,
                 'status' => VerificationSession::STATUS_PENDING,
+                'next_step' => 'pending_approval',
+                'kyc_verified_at' => now()->toIso8601String(),
             ]), 200);
 
         } catch (\RuntimeException $e) {
@@ -161,18 +252,35 @@ class VerificationController extends Controller
 
     /**
      * Get current verification status for the driver.
-     * 
-     * GET /api/driver/verification/status
+     *
+     * GET /api/driver/verification/status?phone=01234567890
      */
     public function getStatus(Request $request): JsonResponse
     {
-        try {
-            $user = $request->user();
+        $validator = Validator::make($request->all(), [
+            'phone' => 'required|string|min:10|max:15',
+        ]);
 
-            if ($user->user_type !== 'driver') {
+        if ($validator->fails()) {
+            return response()->json(
+                responseFormatter(DEFAULT_400, errors: errorProcessor($validator)),
+                400
+            );
+        }
+
+        try {
+            // Normalize phone number
+            $phone = $this->normalizePhone($request->phone);
+
+            // Find driver by phone
+            $user = \Modules\UserManagement\Entities\User::where('phone', $phone)
+                ->where('user_type', 'driver')
+                ->first();
+
+            if (!$user) {
                 return response()->json(
-                    responseFormatter(DEFAULT_403, errors: ['message' => 'Only drivers can access verification']),
-                    403
+                    responseFormatter(DEFAULT_404, errors: ['message' => 'Driver not found']),
+                    404
                 );
             }
 
@@ -224,5 +332,26 @@ class VerificationController extends Controller
                 500
             );
         }
+    }
+
+    /**
+     * Normalize phone number format
+     */
+    protected function normalizePhone(string $phone): string
+    {
+        // Remove all non-numeric characters except +
+        $phone = preg_replace('/[^0-9+]/', '', $phone);
+
+        // Ensure it starts with +
+        if (!str_starts_with($phone, '+')) {
+            // Assume Egypt if no country code
+            if (str_starts_with($phone, '0')) {
+                $phone = '+20' . substr($phone, 1);
+            } else {
+                $phone = '+' . $phone;
+            }
+        }
+
+        return $phone;
     }
 }

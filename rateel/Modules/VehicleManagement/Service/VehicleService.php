@@ -51,12 +51,26 @@ class VehicleService extends BaseService implements VehicleServiceInterface
     public function create(array $data): ?Model
     {
         $documents = [];
+        
+        // Handle car_front and car_back images
+        if (isset($data['car_front'])) {
+            $extension = $data['car_front']->getClientOriginalExtension();
+            $documents[] = fileUploader('vehicle/document/', $extension, $data['car_front']);
+        }
+        
+        if (isset($data['car_back'])) {
+            $extension = $data['car_back']->getClientOriginalExtension();
+            $documents[] = fileUploader('vehicle/document/', $extension, $data['car_back']);
+        }
+        
+        // Handle other documents
         if (array_key_exists('other_documents', $data)) {
             foreach ($data['other_documents'] as $doc) {
                 $extension = $doc->getClientOriginalExtension();
                 $documents[] = fileUploader('vehicle/document/', $extension, $doc);
             }
         }
+        
         $storeData = [
             'brand_id' => $data['brand_id'],
             'model_id' => $data['model_id'],
@@ -140,94 +154,144 @@ class VehicleService extends BaseService implements VehicleServiceInterface
 
     public function updatedByDriver(int|string $id, array $data): ?Model
     {
+        // Find vehicle by ID (not driver_id)
+        $vehicle = $this->vehicleRepository->findOne($id);
 
-        $vehicle = $this->vehicleRepository->findOneBy(['driver_id' => $id]);
-        $vehicleLicenseExpireDate = Carbon::parse($vehicle->licence_expire_date)->format('Y-m-d');
-        $updateVehicleValue = businessConfig(key: 'update_vehicle', settingsType: DRIVER_SETTINGS)?->value ?? [];
-        $draftData = null;
-        if ($vehicle->vehicle_request_status == APPROVED) {
-            $updateVehicleStatus = businessConfig(key: 'update_vehicle_status', settingsType: DRIVER_SETTINGS)?->value ?? 0;
-            if ($updateVehicleStatus == 1) {
-                if ($vehicle->draft) {
-                    $draftData = $vehicle->draft;
-                    foreach (UPDATE_VEHICLE as $updateVehicle) {
-                        if (in_array($updateVehicle, $updateVehicleValue, true)) {
-                            if ($updateVehicle == 'vehicle_brand' && $vehicle?->brand_id != $data['brand_id'] && !array_key_exists('brand_id', $vehicle->draft)) {
-                                $draftData['brand_id'] = $vehicle?->brand_id;
-                                $draftData['brand'] = $vehicle?->brand?->name;
-                                $draftData['model_id'] = $vehicle?->model_id;
-                                $draftData['model'] = $vehicle?->model?->name;
-                            }
-                            if ($updateVehicle == 'vehicle_category' && $vehicle?->category_id != $data['category_id'] && !array_key_exists('category_id', $vehicle->draft)) {
-                                $draftData['category_id'] = $vehicle?->category_id;
-                                $draftData['category'] = $vehicle?->category?->name;
-                            }
-                            if ($updateVehicle == 'license_plate_number' && $vehicle?->licence_plate_number != $data['licence_plate_number']&& !array_key_exists('licence_plate_number', $vehicle->draft)) {
-                                $draftData['licence_plate_number'] = $vehicle?->licence_plate_number;
-                            }
-                            if ($updateVehicle == 'license_expiry_date' && $vehicleLicenseExpireDate != $data['licence_expire_date']&& !array_key_exists('licence_expire_date', $vehicle->draft)) {
-                                $draftData['licence_expire_date'] = $vehicleLicenseExpireDate;
-                            }
-                        }
-                    }
-                } else {
-                    foreach (UPDATE_VEHICLE as $updateVehicle) {
-                        if (in_array($updateVehicle, $updateVehicleValue, true)) {
-                            if ($updateVehicle == 'vehicle_brand' && $vehicle?->brand_id != $data['brand_id']) {
-                                $draftData['brand_id'] = $vehicle?->brand_id;
-                                $draftData['brand'] = $vehicle?->brand?->name;
-                                $draftData['model_id'] = $vehicle?->model_id;
-                                $draftData['model'] = $vehicle?->model?->name;
-                            }
-                            if ($updateVehicle == 'vehicle_category' && $vehicle?->category_id != $data['category_id']) {
-                                $draftData['category_id'] = $vehicle?->category_id;
-                                $draftData['category'] = $vehicle?->category?->name;
-                            }
-                            if ($updateVehicle == 'license_plate_number' && $vehicle?->licence_plate_number != $data['licence_plate_number']) {
-                                $draftData['licence_plate_number'] = $vehicle?->licence_plate_number;
-                            }
-                            if ($updateVehicle == 'license_expiry_date' && $vehicleLicenseExpireDate != $data['licence_expire_date']) {
-                                $draftData['licence_expire_date'] = $vehicleLicenseExpireDate;
-                            }
-                        }
-                    }
-
-                }
-            }
+        if (!$vehicle) {
+            return null;
         }
 
-        $updateData = [
-            'brand_id' => $data['brand_id'],
-            'model_id' => $data['model_id'],
-            'category_id' => $data['category_id'],
-            'licence_plate_number' => $data['licence_plate_number'],
-            'licence_expire_date' => $data['licence_expire_date'],
-            'vin_number' => $data['vin_number'],
-            'transmission' => $data['transmission'],
-            'parcel_weight_capacity' => $data['parcel_weight_capacity'],
-            'fuel_type' => $data['fuel_type'],
-            'ownership' => $data['ownership'],
-            'draft' => $draftData,
-        ];
-        if ($vehicle->vehicle_request_status == DENIED) {
-            $updateData['vehicle_request_status'] = PENDING;
+        // Store NEW values in draft for admin approval
+        // Keep CURRENT values in the vehicle record until admin approves
+        $draftData = [];
+
+        // Always store new values in draft - they will be applied only after admin approval
+        if (isset($data['brand_id']) && $vehicle->brand_id != $data['brand_id']) {
+            $draftData['brand_id'] = $data['brand_id'];
+            $draftData['model_id'] = $data['model_id'] ?? $vehicle->model_id;
         }
+
+        if (isset($data['category_id']) && $vehicle->category_id != $data['category_id']) {
+            $draftData['category_id'] = $data['category_id'];
+        }
+
+        if (isset($data['licence_plate_number']) && $vehicle->licence_plate_number != $data['licence_plate_number']) {
+            $draftData['licence_plate_number'] = $data['licence_plate_number'];
+        }
+
+        if (isset($data['licence_expire_date']) && $vehicle->licence_expire_date != $data['licence_expire_date']) {
+            $draftData['licence_expire_date'] = $data['licence_expire_date'];
+        }
+
+        if (isset($data['vin_number']) && $vehicle->vin_number != $data['vin_number']) {
+            $draftData['vin_number'] = $data['vin_number'];
+        }
+
+        if (isset($data['transmission']) && $vehicle->transmission != $data['transmission']) {
+            $draftData['transmission'] = $data['transmission'];
+        }
+
+        if (isset($data['parcel_weight_capacity']) && $vehicle->parcel_weight_capacity != $data['parcel_weight_capacity']) {
+            $draftData['parcel_weight_capacity'] = $data['parcel_weight_capacity'];
+        }
+
+        if (isset($data['fuel_type']) && $vehicle->fuel_type != $data['fuel_type']) {
+            $draftData['fuel_type'] = $data['fuel_type'];
+        }
+
+        if (isset($data['ownership']) && $vehicle->ownership != $data['ownership']) {
+            $draftData['ownership'] = $data['ownership'];
+        }
+
+        // If there are changes, store them in draft and set status to PENDING
+        if (!empty($draftData)) {
+            $updateData = [
+                'draft' => $draftData,
+                'vehicle_request_status' => PENDING
+            ];
+        } else {
+            // No changes detected, just keep current data
+            $updateData = [];
+        }
+
+        // Only update if there are changes
+        if (!empty($updateData)) {
+            return $this->vehicleRepository->update($vehicle->id, $updateData);
+        }
+
+        return $vehicle;
+    }
+
+    public function approveVehicleUpdate(int|string $id): ?Model
+    {
+        $vehicle = $this->vehicleRepository->findOne($id);
+
+        if (!$vehicle || !$vehicle->draft) {
+            return $vehicle;
+        }
+
+        // Apply draft changes to the vehicle
+        $draftData = $vehicle->draft;
+        $updateData = [];
+
+        // Apply each field from draft to the actual vehicle
+        if (isset($draftData['brand_id'])) {
+            $updateData['brand_id'] = $draftData['brand_id'];
+        }
+
+        if (isset($draftData['model_id'])) {
+            $updateData['model_id'] = $draftData['model_id'];
+        }
+
+        if (isset($draftData['category_id'])) {
+            $updateData['category_id'] = $draftData['category_id'];
+        }
+
+        if (isset($draftData['licence_plate_number'])) {
+            $updateData['licence_plate_number'] = $draftData['licence_plate_number'];
+        }
+
+        if (isset($draftData['licence_expire_date'])) {
+            $updateData['licence_expire_date'] = $draftData['licence_expire_date'];
+        }
+
+        if (isset($draftData['vin_number'])) {
+            $updateData['vin_number'] = $draftData['vin_number'];
+        }
+
+        if (isset($draftData['transmission'])) {
+            $updateData['transmission'] = $draftData['transmission'];
+        }
+
+        if (isset($draftData['parcel_weight_capacity'])) {
+            $updateData['parcel_weight_capacity'] = $draftData['parcel_weight_capacity'];
+        }
+
+        if (isset($draftData['fuel_type'])) {
+            $updateData['fuel_type'] = $draftData['fuel_type'];
+        }
+
+        if (isset($draftData['ownership'])) {
+            $updateData['ownership'] = $draftData['ownership'];
+        }
+
+        // Clear draft and ensure status remains APPROVED
+        $updateData['draft'] = null;
+        $updateData['vehicle_request_status'] = APPROVED;
+
         return $this->vehicleRepository->update($vehicle->id, $updateData);
     }
 
     public function deniedVehicleUpdateByAdmin(int|string $id, array $data = []): ?Model
     {
-        $draftData = [];
-        foreach ($data as $key => $value) {
-            $draftData = $value;
-        }
-
+        // When denying update, just clear the draft and keep vehicle status as APPROVED
+        // The vehicle itself is still approved, just the pending update is rejected
         $updateData = [
-            'draft' => NULL,
+            'draft' => null,
+            'vehicle_request_status' => APPROVED
         ];
 
-        $data = array_merge($updateData, $draftData);
-        return $this->vehicleRepository->update($id, $data);
+        return $this->vehicleRepository->update($id, $updateData);
     }
 
     public function exportUpdateVehicle(array $criteria = [], array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, array $withCountQuery = []): Collection|LengthAwarePaginator|\Illuminate\Support\Collection
@@ -260,5 +324,43 @@ class VehicleService extends BaseService implements VehicleServiceInterface
                 'After Edit' => json_encode($afterEdit),
             ];
         });
+    }
+
+    public function approvePrimaryVehicleChange(int|string $id): ?Model
+    {
+        $vehicle = $this->vehicleRepository->findOne($id);
+
+        if (!$vehicle || !$vehicle->has_pending_primary_request) {
+            return $vehicle;
+        }
+
+        // Unset current primary vehicle for this driver
+        $currentPrimary = $this->vehicleRepository->getBy(
+            criteria: ['driver_id' => $vehicle->driver_id, 'is_primary' => true]
+        )->first();
+
+        if ($currentPrimary) {
+            $this->vehicleRepository->update($currentPrimary->id, ['is_primary' => false]);
+        }
+
+        // Set this vehicle as primary and clear the pending request flag
+        return $this->vehicleRepository->update($vehicle->id, [
+            'is_primary' => true,
+            'has_pending_primary_request' => false
+        ]);
+    }
+
+    public function denyPrimaryVehicleChange(int|string $id): ?Model
+    {
+        $vehicle = $this->vehicleRepository->findOne($id);
+
+        if (!$vehicle || !$vehicle->has_pending_primary_request) {
+            return $vehicle;
+        }
+
+        // Just clear the pending request flag
+        return $this->vehicleRepository->update($vehicle->id, [
+            'has_pending_primary_request' => false
+        ]);
     }
     }

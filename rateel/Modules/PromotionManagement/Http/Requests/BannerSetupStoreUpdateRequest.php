@@ -20,7 +20,21 @@ class BannerSetupStoreUpdateRequest extends FormRequest
             'banner_title' => 'required|max:255',
             'short_desc' => 'required|max:900',
             'time_period' => 'required',
-            'redirect_link' => 'required|max:255',
+            'banner_type' => 'required|in:ad,coupon,discount,promotion',
+            'redirect_link' => [
+                Rule::requiredIf($this->input('banner_type') === 'ad'),
+                'max:255'
+            ],
+            'coupon_code' => [
+                Rule::requiredIf($this->input('banner_type') === 'coupon'),
+                'max:255'
+            ],
+            'discount_code' => [
+                Rule::requiredIf($this->input('banner_type') === 'discount'),
+                'max:255'
+            ],
+            'coupon_id' => 'nullable|exists:coupon_setups,id',
+            'is_promotion' => 'nullable|boolean',
             'start_date' => 'exclude_if:time_period,all_time|required|after_or_equal:today',
             'end_date' => 'exclude_if:time_period,all_time|required|after_or_equal:start_date',
             'target_audience' => 'required|in:driver,customer',
@@ -30,7 +44,7 @@ class BannerSetupStoreUpdateRequest extends FormRequest
                 'mimes:png,jpg,jpeg,webp',
                 'max:5000']
         ];
-        
+
     }
 
     /**

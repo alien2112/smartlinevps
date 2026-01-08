@@ -28,6 +28,9 @@ Route::prefix('v2/driver/onboarding')->group(function () {
     // Resend OTP
     Route::post('resend-otp', [DriverOnboardingController::class, 'resendOtp']);
 
+    // Set/Verify password (works for both new and returning drivers)
+    Route::post('password', [DriverOnboardingController::class, 'setPassword']);
+
     // Get available cities (zones) for profile selection
     Route::get('cities', [DriverOnboardingController::class, 'getCities']);
 });
@@ -36,9 +39,6 @@ Route::prefix('v2/driver/onboarding')->group(function () {
 Route::prefix('v2/driver/onboarding')->middleware(['auth:api', 'onboarding'])->group(function () {
     // Get current onboarding status
     Route::get('status', [DriverOnboardingController::class, 'status']);
-
-    // Set password
-    Route::post('password', [DriverOnboardingController::class, 'setPassword']);
 
     // Submit profile information
     Route::post('profile', [DriverOnboardingController::class, 'submitProfile']);
@@ -57,4 +57,9 @@ Route::prefix('v2/driver/onboarding')->middleware(['auth:api', 'onboarding'])->g
 Route::prefix('v2/driver/auth')->group(function () {
     // Login for approved drivers
     Route::post('login', [DriverAuthController::class, 'login']);
+
+    // Forgot Password Flow
+    Route::post('forgot-password', [DriverAuthController::class, 'forgotPassword']);
+    Route::post('verify-forgot-password-otp', [DriverAuthController::class, 'verifyForgotPasswordOtp']);
+    Route::post('reset-password', [DriverAuthController::class, 'resetPassword']);
 });

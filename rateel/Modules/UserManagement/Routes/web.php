@@ -188,6 +188,10 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
                 Route::post('/reject/{id}', 'reject')->name('reject');            // Reject driver
                 Route::post('/document/verify/{driverId}/{documentId}', 'verifyDocument')->name('document.verify'); // Verify individual document
                 Route::post('/document/reject/{driverId}/{documentId}', 'rejectDocument')->name('document.reject'); // Reject individual document
+                Route::post('/vehicle/approve/{driverId}/{vehicleId}', 'approveVehicle')->name('vehicle.approve'); // Approve individual vehicle
+                Route::post('/vehicle/reject/{driverId}/{vehicleId}', 'rejectVehicle')->name('vehicle.reject'); // Reject individual vehicle
+                Route::post('/vehicle/approve-primary/{driverId}/{vehicleId}', 'approvePrimaryVehicleChange')->name('vehicle.approve-primary'); // Approve primary vehicle change
+                Route::post('/vehicle/reject-primary/{driverId}/{vehicleId}', 'rejectPrimaryVehicleChange')->name('vehicle.reject-primary'); // Reject primary vehicle change
                 Route::post('/deactivate/{id}', 'deactivate')->name('deactivate'); // Deactivate driver
                 Route::post('/reactivate/{id}', 'reactivate')->name('reactivate'); // Reactivate driver
             });

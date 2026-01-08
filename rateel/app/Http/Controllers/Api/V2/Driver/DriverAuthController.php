@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\V2\Driver;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use Modules\UserManagement\Entities\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -147,6 +147,233 @@ class DriverAuthController extends Controller
                 'next_step' => $this->getNextStep($onboardingState),
                 'state_version' => $driver->onboarding_state_version ?? 1,
             ],
+        ]);
+    }
+
+    /**
+     * Forgot Password - Request OTP
+     * POST /api/v2/driver/auth/forgot-password
+     */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'phone' => 'required|string|min:10|max:20',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => translate('Validation failed'),
+                'errors' => $validator->errors()->toArray(),
+            ], 422);
+        }
+
+        $phone = $this->normalizePhone($request->phone);
+
+        // Find driver
+        $driver = User::where('phone', $phone)
+            ->where('user_type', 'driver')
+            ->first();
+
+        if (!$driver) {
+            // Don't reveal if user exists or not (security)
+            return response()->json([
+                'success' => true,
+                'message' => translate('If this phone number is registered, you will receive a verification code.'),
+            ]);
+        }
+
+        // Generate OTP and store in cache
+        $otp = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+        $cacheKey = 'forgot_password_otp:' . $phone;
+
+        Cache::put($cacheKey, [
+            'otp' => $otp,
+            'phone' => $phone,
+            'attempts' => 0,
+            'created_at' => now(),
+        ], now()->addMinutes(5));
+
+        // Send OTP via SMS (using BeOn service)
+        try {
+            $beonService = app(\App\Services\BeOnOtpService::class);
+            $result = $beonService->sendOtp($phone, $otp);
+
+            if (!$result['success']) {
+                throw new \Exception($result['message'] ?? 'Failed to send OTP');
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to send forgot password OTP', [
+                'phone' => $this->maskPhone($phone),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => translate('Failed to send verification code. Please try again.'),
+            ], 500);
+        }
+
+        Log::info('Forgot password OTP sent', [
+            'phone' => $this->maskPhone($phone),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => translate('Verification code sent to your phone'),
+            'data' => [
+                'phone_masked' => $this->maskPhone($phone),
+                'expires_in_seconds' => 300,
+            ],
+        ]);
+    }
+
+    /**
+     * Verify Forgot Password OTP
+     * POST /api/v2/driver/auth/verify-forgot-password-otp
+     */
+    public function verifyForgotPasswordOtp(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'phone' => 'required|string|min:10|max:20',
+            'otp' => 'required|string|size:4',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => translate('Validation failed'),
+                'errors' => $validator->errors()->toArray(),
+            ], 422);
+        }
+
+        $phone = $this->normalizePhone($request->phone);
+        $cacheKey = 'forgot_password_otp:' . $phone;
+        $data = Cache::get($cacheKey);
+
+        if (!$data) {
+            return response()->json([
+                'success' => false,
+                'message' => translate('Verification code expired or not found. Please request a new one.'),
+            ], 400);
+        }
+
+        // Check attempts
+        if ($data['attempts'] >= 3) {
+            Cache::forget($cacheKey);
+            return response()->json([
+                'success' => false,
+                'message' => translate('Too many failed attempts. Please request a new verification code.'),
+            ], 429);
+        }
+
+        // Verify OTP
+        if ($data['otp'] !== $request->otp) {
+            $data['attempts']++;
+            Cache::put($cacheKey, $data, now()->addMinutes(5));
+
+            return response()->json([
+                'success' => false,
+                'message' => translate('Invalid verification code. Please try again.'),
+                'data' => [
+                    'attempts_remaining' => 3 - $data['attempts'],
+                ],
+            ], 401);
+        }
+
+        // OTP verified - generate reset token
+        $resetToken = bin2hex(random_bytes(32));
+        $resetCacheKey = 'password_reset_token:' . $resetToken;
+
+        Cache::put($resetCacheKey, [
+            'phone' => $phone,
+            'verified_at' => now(),
+        ], now()->addMinutes(15));
+
+        // Clear OTP cache
+        Cache::forget($cacheKey);
+
+        Log::info('Forgot password OTP verified', [
+            'phone' => $this->maskPhone($phone),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => translate('Verification successful'),
+            'data' => [
+                'reset_token' => $resetToken,
+                'expires_in_seconds' => 900,
+            ],
+        ]);
+    }
+
+    /**
+     * Reset Password
+     * POST /api/v2/driver/auth/reset-password
+     */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'reset_token' => 'required|string|size:64',
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'max:128',
+                'regex:/^[a-zA-Z0-9]+$/',
+            ],
+        ], [
+            'password.regex' => translate('Password can only contain letters and numbers. No special characters allowed.'),
+            'password.min' => translate('Password must be at least 8 characters long.'),
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => translate('Validation failed'),
+                'errors' => $validator->errors()->toArray(),
+            ], 422);
+        }
+
+        $resetCacheKey = 'password_reset_token:' . $request->reset_token;
+        $data = Cache::get($resetCacheKey);
+
+        if (!$data) {
+            return response()->json([
+                'success' => false,
+                'message' => translate('Reset token expired or invalid. Please start over.'),
+            ], 400);
+        }
+
+        // Find driver
+        $driver = User::where('phone', $data['phone'])
+            ->where('user_type', 'driver')
+            ->first();
+
+        if (!$driver) {
+            Cache::forget($resetCacheKey);
+            return response()->json([
+                'success' => false,
+                'message' => translate('Driver not found'),
+            ], 404);
+        }
+
+        // Update password
+        $driver->update([
+            'password' => Hash::make($request->password),
+        ]);
+
+        // Clear reset token
+        Cache::forget($resetCacheKey);
+
+        Log::info('Password reset successful', [
+            'driver_id' => $driver->id,
+            'phone' => $this->maskPhone($driver->phone),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => translate('Password reset successfully. You can now login with your new password.'),
         ]);
     }
 

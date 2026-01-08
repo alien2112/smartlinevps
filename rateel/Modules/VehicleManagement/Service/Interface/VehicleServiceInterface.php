@@ -18,8 +18,14 @@ interface VehicleServiceInterface extends BaseServiceInterface
 
     public function updatedByDriver(int|string $id, array $data): ?Model;
 
+    public function approveVehicleUpdate(int|string $id): ?Model;
+
     public function deniedVehicleUpdateByAdmin(int|string $id, array $data = []): ?Model;
 
     public function exportUpdateVehicle(array $criteria = [], array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, array $withCountQuery = []): Collection|LengthAwarePaginator|\Illuminate\Support\Collection;
+
+    public function approvePrimaryVehicleChange(int|string $id): ?Model;
+
+    public function denyPrimaryVehicleChange(int|string $id): ?Model;
 
 }

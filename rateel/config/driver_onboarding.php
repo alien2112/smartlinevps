@@ -94,41 +94,47 @@ return [
     'documents' => [
         // Required document types for driver approval
         'required' => [
-            'national_id' => [
-                'label' => 'National ID (Front & Back)',
+            'id_front' => [
+                'label' => 'National ID (Front)',
                 'max_size_mb' => 5,
                 'allowed_mimes' => ['image/jpeg', 'image/png', 'application/pdf'],
                 'required' => true,
             ],
-            'driving_license' => [
-                'label' => 'Driving License',
+            'id_back' => [
+                'label' => 'National ID (Back)',
                 'max_size_mb' => 5,
                 'allowed_mimes' => ['image/jpeg', 'image/png', 'application/pdf'],
                 'required' => true,
             ],
-            'vehicle_registration' => [
-                'label' => 'Vehicle Registration',
+            'license_front' => [
+                'label' => 'Driving License (Front)',
                 'max_size_mb' => 5,
                 'allowed_mimes' => ['image/jpeg', 'image/png', 'application/pdf'],
                 'required' => true,
             ],
-            'vehicle_photo' => [
-                'label' => 'Vehicle Photo',
+            'license_back' => [
+                'label' => 'Driving License (Back)',
+                'max_size_mb' => 5,
+                'allowed_mimes' => ['image/jpeg', 'image/png', 'application/pdf'],
+                'required' => true,
+            ],
+            'car_front' => [
+                'label' => 'Vehicle Photo (Front)',
                 'max_size_mb' => 10,
                 'allowed_mimes' => ['image/jpeg', 'image/png'],
                 'required' => true,
             ],
-            'profile_photo' => [
-                'label' => 'Profile Photo',
-                'max_size_mb' => 5,
+            'car_back' => [
+                'label' => 'Vehicle Photo (Back)',
+                'max_size_mb' => 10,
                 'allowed_mimes' => ['image/jpeg', 'image/png'],
                 'required' => true,
             ],
-            'criminal_record' => [
-                'label' => 'Criminal Record Certificate',
+            'selfie' => [
+                'label' => 'Profile Photo / Selfie',
                 'max_size_mb' => 5,
-                'allowed_mimes' => ['image/jpeg', 'image/png', 'application/pdf'],
-                'required' => false, // Optional based on region
+                'allowed_mimes' => ['image/jpeg', 'image/png'],
+                'required' => false,
             ],
         ],
 

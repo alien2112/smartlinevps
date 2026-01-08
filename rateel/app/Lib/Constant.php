@@ -13,6 +13,7 @@ const RETURNING = 'returning';
 const RETURNED = 'returned';
 const APPROVED = 'approved';
 const DENIED = 'denied';
+const REJECTED = 'rejected';
 const REFUNDED = 'refunded';
 const SETTLED = 'settled';
 const PAID = 'paid';

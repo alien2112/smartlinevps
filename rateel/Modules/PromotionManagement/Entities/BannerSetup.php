@@ -28,16 +28,27 @@ class BannerSetup extends Model
         'created_at',
         'updated_at',
         'target_audience',
+        'banner_type',
+        'coupon_code',
+        'discount_code',
+        'is_promotion',
+        'coupon_id',
     ];
 
     protected $casts = [
         'total_redirection' => 'float',
-        'is_active' => 'boolean'
+        'is_active' => 'boolean',
+        'is_promotion' => 'boolean'
     ];
 
     public function logs()
     {
         return $this->morphMany(ActivityLog::class, 'logable');
+    }
+
+    public function coupon()
+    {
+        return $this->belongsTo(\Modules\PromotionManagement\Entities\CouponSetup::class, 'coupon_id');
     }
 
     protected function scopeOfStatus($query, $status = 1)

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Heat Map Test</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <style>
+        body { margin: 0; padding: 20px; font-family: Arial; }
+        #map { height: 600px; width: 100%; border: 2px solid #333; }
+    </style>
+</head>
+<body>
+    <h1>Heat Map Test</h1>
+    <div id="map" 
+         data-lat="30.0444" 
+         data-lng="31.2357"
+         data-markers='[{"position":{"lat":30.0444,"lng":31.2357},"title":"Cairo Center"},{"position":{"lat":30.0500,"lng":31.2400},"title":"Point 2"}]'
+         data-polygon='[]'>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script src="/public/assets/admin-module/js/maps/map-init-overview.js"></script>
+    
+    <script>
+        console.log('Test page loaded');
+        setTimeout(function() {
+            console.log('Calling initializeOverviewMaps...');
+            if (typeof window.initializeOverviewMaps === 'function') {
+                window.initializeOverviewMaps();
+            } else {
+                console.error('initializeOverviewMaps not available');
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

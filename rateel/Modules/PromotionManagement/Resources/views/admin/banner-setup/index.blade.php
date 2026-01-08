@@ -35,11 +35,60 @@
                                             <span>{{translate('0/800')}}</span>
                                         </div>
                                     </div>
+
                                     <div class="mb-4">
-                                        <label for="redirect_link" class="mb-2">{{ translate('redirect_link') }} <span class="text-danger">*</span></label>
+                                        <label for="banner_type" class="mb-2">{{ translate('banner_type') }} <span class="text-danger">*</span></label>
+                                        <select name="banner_type" class="form-control js-select" id="banner_type"
+                                                aria-label="{{ translate('banner_type') }}" required onchange="toggleBannerTypeFields()">
+                                            <option value="" disabled selected>{{ translate('select_banner_type') }}</option>
+                                            <option value="ad" {{ old('banner_type') == 'ad' ? 'selected' : '' }}>{{ translate('advertisement') }}</option>
+                                            <option value="coupon" {{ old('banner_type') == 'coupon' ? 'selected' : '' }}>{{ translate('coupon') }}</option>
+                                            <option value="discount" {{ old('banner_type') == 'discount' ? 'selected' : '' }}>{{ translate('discount') }}</option>
+                                            <option value="promotion" {{ old('banner_type') == 'promotion' ? 'selected' : '' }}>{{ translate('promotion') }}</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="mb-4" id="redirect_link_container">
+                                        <label for="redirect_link" class="mb-2">{{ translate('redirect_link') }} <span class="text-danger" id="redirect_required">*</span></label>
                                         <input type="text" class="form-control" value="{{ old('redirect_link') }}"
-                                               id="redirect_link" name="redirect_link" placeholder="Ex: www.google.com"
-                                               required>
+                                               id="redirect_link" name="redirect_link" placeholder="Ex: www.google.com">
+                                    </div>
+
+                                    <div class="mb-4" id="coupon_code_container" style="display: none;">
+                                        <label for="coupon_code" class="mb-2">{{ translate('coupon_code') }} <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" value="{{ old('coupon_code') }}"
+                                               id="coupon_code" name="coupon_code" placeholder="Ex: SAVE50">
+                                    </div>
+
+                                    <div class="mb-4" id="discount_code_container" style="display: none;">
+                                        <label for="discount_code" class="mb-2">{{ translate('discount_code') }} <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" value="{{ old('discount_code') }}"
+                                               id="discount_code" name="discount_code" placeholder="Ex: DISCOUNT20">
+                                    </div>
+
+                                    <div class="mb-4" id="coupon_id_container" style="display: none;">
+                                        <label for="coupon_id" class="mb-2">{{ translate('link_to_coupon') }} ({{ translate('optional') }})</label>
+                                        <select name="coupon_id" class="form-control js-select" id="coupon_id">
+                                            <option value="">{{ translate('select_coupon') }}</option>
+                                            @php
+                                                $coupons = \Modules\PromotionManagement\Entities\CouponSetup::where('is_active', 1)->get();
+                                            @endphp
+                                            @foreach($coupons as $coupon)
+                                                <option value="{{ $coupon->id }}" {{ old('coupon_id') == $coupon->id ? 'selected' : '' }}>
+                                                    {{ $coupon->name }} ({{ $coupon->coupon_code }})
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+
+                                    <div class="mb-4" id="is_promotion_container">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" value="1" id="is_promotion"
+                                                   name="is_promotion" {{ old('is_promotion') ? 'checked' : '' }}>
+                                            <label class="form-check-label" for="is_promotion">
+                                                {{ translate('mark_as_promotion') }}
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
@@ -195,12 +244,13 @@
                                 <th>{{ translate('SL') }}</th>
                                 <th class="text-capitalize name">{{ translate('banner_title') }}</th>
                                 <th class="text-capitalize banner_image">{{ translate('banner_image') }}</th>
+                                <th class="text-capitalize banner_type">{{ translate('banner_type') }}</th>
                                 <th class="text-capitalize redirect_link">{{ translate('redirect_link') }}</th>
                                 <th class="text-capitalize redirection_count">{{ translate('number_of') }}
                                     <br> {{ translate('total_direction') }}
                                 </th>
                                 <th class="text-capitalize time_period">{{ translate('time_period') }}</th>
-                                <th class="text-capitalize target_audience">{{ translate('target_audience') }}</th> <!-- Added target_audience -->
+                                <th class="text-capitalize target_audience">{{ translate('target_audience') }}</th>
                                 <th class="status">{{ translate('status') }}</th>
                                 <th class="text-center action">{{ translate('action') }}</th>
                             </tr>
@@ -219,8 +269,22 @@
                                             ) }}"
                                              class="custom-box-size-banner rounded dark-support" alt="">
                                     </td>
+                                    <td class="banner_type">
+                                        <span class="badge badge-soft-{{ $banner->banner_type == 'ad' ? 'primary' : ($banner->banner_type == 'coupon' ? 'success' : ($banner->banner_type == 'discount' ? 'warning' : 'info')) }}">
+                                            {{ translate($banner->banner_type ?? 'ad') }}
+                                        </span>
+                                        @if($banner->is_promotion)
+                                            <br><span class="badge badge-soft-info mt-1">{{ translate('promotion') }}</span>
+                                        @endif
+                                        @if($banner->banner_type == 'coupon' && $banner->coupon_code)
+                                            <br><small class="text-muted">{{ $banner->coupon_code }}</small>
+                                        @endif
+                                        @if($banner->banner_type == 'discount' && $banner->discount_code)
+                                            <br><small class="text-muted">{{ $banner->discount_code }}</small>
+                                        @endif
+                                    </td>
                                     <td class="redirect_link"><span
-                                            class="fs-10 text-break">{{ $banner->redirect_link }}</span></td>
+                                            class="fs-10 text-break">{{ $banner->redirect_link ?? '-' }}</span></td>
                                     <td class="redirection_count">{{ (int) $banner->total_redirection }}</td>
                                     @if ($banner->time_period == 'period')
                                         <td class="time_period">{{ $banner->start_date }} {{ translate('to') }}
@@ -319,8 +383,51 @@
             }
         }
 
+        function toggleBannerTypeFields() {
+            var bannerType = document.getElementById('banner_type').value;
+            var redirectLinkContainer = document.getElementById('redirect_link_container');
+            var couponCodeContainer = document.getElementById('coupon_code_container');
+            var discountCodeContainer = document.getElementById('discount_code_container');
+            var couponIdContainer = document.getElementById('coupon_id_container');
+            var redirectLink = document.getElementById('redirect_link');
+            var couponCode = document.getElementById('coupon_code');
+            var discountCode = document.getElementById('discount_code');
+
+            // Hide all conditional fields
+            redirectLinkContainer.style.display = 'none';
+            couponCodeContainer.style.display = 'none';
+            discountCodeContainer.style.display = 'none';
+            couponIdContainer.style.display = 'none';
+
+            // Remove required attribute from all
+            redirectLink.removeAttribute('required');
+            couponCode.removeAttribute('required');
+            discountCode.removeAttribute('required');
+
+            // Show fields based on banner type
+            if (bannerType === 'ad') {
+                redirectLinkContainer.style.display = 'block';
+                redirectLink.setAttribute('required', 'required');
+            } else if (bannerType === 'coupon') {
+                couponCodeContainer.style.display = 'block';
+                couponIdContainer.style.display = 'block';
+                couponCode.setAttribute('required', 'required');
+            } else if (bannerType === 'discount') {
+                discountCodeContainer.style.display = 'block';
+                discountCode.setAttribute('required', 'required');
+            } else if (bannerType === 'promotion') {
+                redirectLinkContainer.style.display = 'block';
+            }
+        }
+
+        // Initialize on page load
+        $(document).ready(function() {
+            toggleBannerTypeFields();
+        });
+
         $('#banner_form').submit(function (e) {
             var timePeriod = $('#time_period').val();
+            var bannerType = $('#banner_type').val();
 
             if (timePeriod === 'period' && $('#start_date').val() === '') {
                 toastr.error('{{ translate('please_select_start_date') }}');
@@ -334,6 +441,27 @@
 
             if (!timePeriod) {
                 toastr.error('{{ translate('please_select_time_period') }}');
+                e.preventDefault();
+            }
+
+            if (!bannerType) {
+                toastr.error('{{ translate('please_select_banner_type') }}');
+                e.preventDefault();
+            }
+
+            // Validate based on banner type
+            if (bannerType === 'ad' && !$('#redirect_link').val()) {
+                toastr.error('{{ translate('please_enter_redirect_link') }}');
+                e.preventDefault();
+            }
+
+            if (bannerType === 'coupon' && !$('#coupon_code').val()) {
+                toastr.error('{{ translate('please_enter_coupon_code') }}');
+                e.preventDefault();
+            }
+
+            if (bannerType === 'discount' && !$('#discount_code').val()) {
+                toastr.error('{{ translate('please_enter_discount_code') }}');
                 e.preventDefault();
             }
         });

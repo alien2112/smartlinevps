@@ -37,7 +37,7 @@ class ReportController extends Controller
                 SUM(CASE WHEN current_status = "cancelled" THEN 1 ELSE 0 END) as cancelled_trips,
                 SUM(CASE WHEN payment_status = ? THEN paid_fare ELSE 0 END) as total_earnings,
                 SUM(CASE WHEN current_status = "completed" THEN COALESCE(estimated_distance, 0) ELSE 0 END) as total_distance,
-                SUM(CASE WHEN current_status = "completed" THEN COALESCE(actual_time, 0) ELSE 0 END) as total_duration
+                SUM(CASE WHEN current_status = "completed" THEN COALESCE(total_duration, 0) ELSE 0 END) as total_duration
             ', [PAID])
             ->first();
 

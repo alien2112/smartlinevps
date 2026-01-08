@@ -160,7 +160,7 @@ class LostItemController extends Controller
     public function updateStatus(string $id, Request $request): JsonResponse
     {
         $request->validate([
-            'status' => 'required|in:found,returned,closed',
+            'status' => 'required|in:found,not_found,returned,closed',
         ]);
 
         $lostItem = $this->lostItemService->findOne(id: $id);
@@ -208,12 +208,14 @@ class LostItemController extends Controller
         try {
             $titleMap = [
                 'found' => 'Lost Item Found!',
+                'not_found' => 'Item Not Found',
                 'returned' => 'Item Returned',
                 'closed' => 'Report Closed',
             ];
-            
+
             $descriptionMap = [
                 'found' => 'Great news! The driver has found your lost item. Please arrange pickup.',
+                'not_found' => 'The driver has checked but could not find your lost item.',
                 'returned' => 'Your lost item has been returned successfully.',
                 'closed' => 'Your lost item report has been closed.',
             ];

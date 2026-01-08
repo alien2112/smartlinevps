@@ -20,16 +20,20 @@ class DriverDocument extends Model
     // Document type constants
     public const TYPE_ID_FRONT = 'id_front';
     public const TYPE_ID_BACK = 'id_back';
-    public const TYPE_LICENSE = 'license';
-    public const TYPE_CAR_PHOTO = 'car_photo';
+    public const TYPE_LICENSE_FRONT = 'license_front';
+    public const TYPE_LICENSE_BACK = 'license_back';
+    public const TYPE_CAR_FRONT = 'car_front';
+    public const TYPE_CAR_BACK = 'car_back';
     public const TYPE_SELFIE = 'selfie';
 
     // Required documents for onboarding completion
     public const REQUIRED_DOCUMENTS = [
         self::TYPE_ID_FRONT,
         self::TYPE_ID_BACK,
-        self::TYPE_LICENSE,
-        self::TYPE_CAR_PHOTO,
+        self::TYPE_LICENSE_FRONT,
+        self::TYPE_LICENSE_BACK,
+        self::TYPE_CAR_FRONT,
+        self::TYPE_CAR_BACK,
         self::TYPE_SELFIE,
     ];
 
@@ -38,21 +42,33 @@ class DriverDocument extends Model
         'car' => [
             self::TYPE_ID_FRONT,
             self::TYPE_ID_BACK,
-            self::TYPE_LICENSE,
-            self::TYPE_CAR_PHOTO,
+            self::TYPE_LICENSE_FRONT,
+            self::TYPE_LICENSE_BACK,
+            self::TYPE_CAR_FRONT,
+            self::TYPE_CAR_BACK,
             self::TYPE_SELFIE,
         ],
         'taxi' => [
             self::TYPE_ID_FRONT,
             self::TYPE_ID_BACK,
-            self::TYPE_LICENSE,
-            self::TYPE_CAR_PHOTO,
+            self::TYPE_LICENSE_FRONT,
+            self::TYPE_LICENSE_BACK,
+            self::TYPE_CAR_FRONT,
+            self::TYPE_CAR_BACK,
+            self::TYPE_SELFIE,
+        ],
+        'motor_bike' => [
+            self::TYPE_ID_FRONT,
+            self::TYPE_ID_BACK,
+            self::TYPE_LICENSE_FRONT,
+            self::TYPE_LICENSE_BACK,
             self::TYPE_SELFIE,
         ],
         'scooter' => [
             self::TYPE_ID_FRONT,
             self::TYPE_ID_BACK,
-            self::TYPE_LICENSE,
+            self::TYPE_LICENSE_FRONT,
+            self::TYPE_LICENSE_BACK,
             self::TYPE_SELFIE,
         ],
     ];
@@ -87,6 +103,7 @@ class DriverDocument extends Model
     protected $appends = [
         'file_url',
         'status',
+        'uploaded_at',
     ];
     
     protected static function boot()
@@ -123,8 +140,8 @@ class DriverDocument extends Model
             return null;
         }
 
-        // For now, return direct URL. In production, use signed URLs
-        return asset('storage/' . $this->file_path);
+        // Use getMediaUrl helper to match vehicle image format
+        return getMediaUrl($this->file_path, 'driver/document');
     }
 
     /**
@@ -141,6 +158,14 @@ class DriverDocument extends Model
         }
         
         return 'pending';
+    }
+
+    /**
+     * Get uploaded_at timestamp (uses created_at)
+     */
+    public function getUploadedAtAttribute(): ?string
+    {
+        return $this->created_at?->toDateTimeString();
     }
 
     /**
@@ -179,15 +204,33 @@ class DriverDocument extends Model
     
     /**
      * Get required documents based on vehicle type
+     * Returns an associative array with type => display name
+     * Supports both old and new document type naming conventions
      */
     public static function getRequiredDocuments(?string $vehicleType = null): array
     {
-        if ($vehicleType && isset(self::DOCUMENTS_BY_VEHICLE_TYPE[$vehicleType])) {
-            return self::DOCUMENTS_BY_VEHICLE_TYPE[$vehicleType];
-        }
+        // New document types (actually used in database)
+        $newTypes = [
+            'national_id' => 'National ID',
+            'driving_license' => 'Driving License',
+            'vehicle_registration' => 'Vehicle Registration',
+            'vehicle_photo' => 'Vehicle Photo',
+            'profile_photo' => 'Profile Photo',
+        ];
         
-        // Default to car if unknown
-        return self::DOCUMENTS_BY_VEHICLE_TYPE['car'];
+        // Old document types (for backward compatibility)
+        $oldTypes = [
+            'id_front' => 'ID Front',
+            'id_back' => 'ID Back',
+            'license_front' => 'License Front',
+            'license_back' => 'License Back',
+            'car_front' => 'Car Front',
+            'car_back' => 'Car Back',
+            'selfie' => 'Selfie',
+        ];
+        
+        // Merge both to support old and new types
+        return array_merge($newTypes, $oldTypes);
     }
 
     /**

@@ -357,6 +357,7 @@ class AccountController extends Controller
             'driver_id' => $driver->id,
             'old_phone' => $driver->phone,
             'new_phone' => $request->new_phone,
+            'otp_code' => $otp, // Store plain OTP for sending
             'otp_hash' => Hash::make($otp), // Store hash, not plain text
             'otp_attempts' => 0, // Track failed attempts
             'old_phone_verified' => false,
@@ -631,8 +632,9 @@ class AccountController extends Controller
         }
 
         // Create deletion request (30-day grace period)
-        $requestId = DB::table('account_deletion_requests')->insertGetId([
-            'id' => \Illuminate\Support\Str::uuid(),
+        $requestId = \Illuminate\Support\Str::uuid();
+        DB::table('account_deletion_requests')->insert([
+            'id' => $requestId,
             'driver_id' => $driver->id,
             'reason' => $request->reason,
             'additional_comments' => $request->input('additional_comments'),

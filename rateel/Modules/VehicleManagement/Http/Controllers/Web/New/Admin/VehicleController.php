@@ -254,7 +254,8 @@ class VehicleController extends BaseController
     public function approvedVehicleUpdate($id)
     {
         $this->authorize('vehicle_edit');
-        $model = $this->vehicleService->update(id: $id, data: ['draft' => NULL]);
+        // Apply draft changes and clear draft
+        $model = $this->vehicleService->approveVehicleUpdate(id: $id);
         if ($model && $model?->driver->fcm_token) {
             sendDeviceNotification(
                 fcm_token: $model?->driver->fcm_token,

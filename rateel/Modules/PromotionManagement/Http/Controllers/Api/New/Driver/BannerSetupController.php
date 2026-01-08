@@ -38,7 +38,8 @@ class BannerSetupController extends Controller
         // تحويل offset إلى رقم الصفحة (paginate يعتمد على رقم الصفحة وليس الإزاحة المباشرة)
         $page = floor($offset / $limit) + 1;
     
-        $banners = BannerSetup::where('is_active', 1)
+        $banners = BannerSetup::with('coupon')
+            ->where('is_active', 1)
             ->where('target_audience', 'driver')
             ->where(function ($query) use ($today) {
                 $query->where('time_period', '!=', 'period')
