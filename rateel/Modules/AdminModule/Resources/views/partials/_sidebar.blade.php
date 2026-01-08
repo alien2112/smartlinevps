@@ -83,6 +83,14 @@
                             <span class="link-title">{{ translate('Fleet View') }}</span>
                         </a>
                     </li>
+                    {{-- Trip Tracking - Hidden until map loading issue is resolved
+                    <li class="{{Request::is('admin/trip-tracking*') ?'active open':''}}">
+                        <a href="{{route('admin.trip-tracking')}}">
+                            <i class="bi bi-map"></i>
+                            <span class="link-title">{{ translate('trip_tracking') }}</span>
+                        </a>
+                    </li>
+                    --}}
                     <li class="{{Request::is('admin/dispatch/honeycomb*') ?'active open':''}}">
                         <a href="{{route('admin.dispatch.honeycomb.index')}}">
                             <i class="bi bi-hexagon-fill"></i>
@@ -399,13 +407,29 @@
                         <!-- End Sub Menu -->
                     </li>
                     <li class="has-sub-item {{Request::is('admin/driver') || Request::is('admin/driver/create') || Request::is('admin/driver/edit/*') || Request::is('admin/driver/show*') || Request::is('admin/driver/trash')
-                    || Request::is('admin/driver/edit/*') || Request::is('admin/driver/profile-update-request-list') || Request::is('admin/driver/log*') || Request::is('admin/driver/cash*')  ? 'active sub-menu-opened' : ''}}">
+                    || Request::is('admin/driver/edit/*') || Request::is('admin/driver/profile-update-request-list') || Request::is('admin/driver/log*') || Request::is('admin/driver/cash*') || Request::is('admin/driver/approvals*') ? 'active sub-menu-opened' : ''}}">
                         <a href="#">
                             <i class="bi bi-people-fill"></i>
                             <span class="link-title text-capitalize">{{ translate('driver_setup')}}</span>
                         </a>
                         <!-- Sub Menu -->
                         <ul class="nav sub-menu">
+                            <li class="{{Request::is('admin/driver/approvals*') ? 'active open' : ''}}">
+                                <a class="text-capitalize" href="{{route('admin.driver.approvals.index')}}">
+                                    <i class="bi bi-file-earmark-check"></i>
+                                    {{translate('Driver_Approvals')}}
+                                    @php
+                                        $pendingApprovalsCount = \Modules\UserManagement\Entities\User::where('user_type', 'driver')
+                                            ->where(function($q) {
+                                                $q->where('onboarding_state', 'pending_approval')
+                                                  ->orWhere('onboarding_step', 'pending_approval');
+                                            })->count();
+                                    @endphp
+                                    @if($pendingApprovalsCount > 0)
+                                        <span class="badge bg-danger text-white ms-1">{{$pendingApprovalsCount}}</span>
+                                    @endif
+                                </a>
+                            </li>
                             <li class="{{Request::is('admin/driver') || Request::is('admin/driver/edit/*') || Request::is('admin/driver/log*') || Request::is('admin/driver/cash*') ? 'active open' : ''}}">
                                 <a class="text-capitalize" href="{{route('admin.driver.index')}}">
                                     <i class="bi bi-dash-lg"></i>

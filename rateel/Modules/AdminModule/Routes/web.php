@@ -8,6 +8,7 @@ use Modules\AdminModule\Http\Controllers\Web\New\Admin\ReportController;
 use Modules\AdminModule\Http\Controllers\Web\New\Admin\SettingController;
 use Modules\AdminModule\Http\Controllers\Web\New\Admin\SharedController;
 use Modules\AdminModule\Http\Controllers\Web\New\Admin\FleetMapViewController;
+use Modules\AdminModule\Http\Controllers\Web\New\Admin\TripTrackingController;
 use Modules\AdminModule\Http\Controllers\Web\New\Admin\NotificationController;
 use Modules\AdminModule\Http\Controllers\Web\Admin\AiChatbotController;
 
@@ -37,6 +38,12 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
         Route::get('fleet-map-view-using-ajax', 'fleetMapViewUsingAjax')->name('fleet-map-view-using-ajax');
         Route::get('fleet-map-safety-alert-icon-in-map', 'fleetMapSafetyAlertIconInMap')->name('fleet-map-safety-alert-icon-in-map');
         Route::get('fleet-map-zone-message', 'fleetMapZoneMessage')->name('fleet-map-zone-message');
+    });
+
+    // Trip Tracking Routes
+    Route::controller(TripTrackingController::class)->group(function() {
+        Route::get('trip-tracking', 'index')->name('trip-tracking');
+        Route::get('trip-tracking-data', 'tripTrackingData')->name('trip-tracking-data');
     });
 
     Route::controller(DashboardController::class)->group(function () {
