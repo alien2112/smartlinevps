@@ -1,0 +1,993 @@
+{
+    "info": {
+        "_postman_id": "smartline-api-2026-01",
+        "name": "SmartLine API - Complete Collection (2026-01-06)",
+        "description": "Complete API collection for SmartLine ride-sharing app including customer, driver, and admin endpoints",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "https://smartline-it.com/api"
+        },
+        {
+            "key": "token",
+            "value": ""
+        },
+        {
+            "key": "zone_id",
+            "value": ""
+        }
+    ],
+    "item": [
+        {
+            "name": "Customer - Auth",
+            "item": [
+                {
+                    "name": "Register",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/customer/auth/registration",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"first_name\": \"أحمد\",\n  \"last_name\": \"محمد\",\n  \"email\": \"test@example.com\",\n  \"phone\": \"01011111111\",\n  \"password\": \"password123\",\n  \"gender\": \"male\",\n  \"referral_code\": \"optional_ref_code\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Login",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/customer/auth/login",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone_or_email\": \"01011111111\",\n  \"password\": \"password123\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "OTP Verification",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/customer/auth/otp-verification",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone_or_email\": \"01011111111\",\n  \"otp\": \"1234\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Send OTP",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/customer/auth/send-otp",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone_or_email\": \"01011111111\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Forget Password",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/customer/auth/forget-password",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone_or_email\": \"01011111111\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Reset Password",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/customer/auth/reset-password",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone_or_email\": \"01011111111\",\n  \"otp\": \"1234\",\n  \"password\": \"newpassword123\"\n}"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Customer - Config (NEW - Optimized)",
+            "description": "New broken-down config endpoints for faster loading",
+            "item": [
+                {
+                    "name": "Core Config (App Startup)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/config/core",
+                        "description": "Essential data for app startup - ~2.8KB. Call this first on launch."
+                    }
+                },
+                {
+                    "name": "Auth Config (Login/Register)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/config/auth",
+                        "description": "Authentication settings - call before login/registration screens"
+                    }
+                },
+                {
+                    "name": "Trip Config (Booking)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/config/trip",
+                        "description": "Trip/ride settings + payment gateways - call when booking"
+                    }
+                },
+                {
+                    "name": "Loyalty Config (Points)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/config/loyalty",
+                        "description": "Loyalty points settings - call for wallet/level screens"
+                    }
+                },
+                {
+                    "name": "Safety Config",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/config/safety",
+                        "description": "Safety features - call for safety screen"
+                    }
+                },
+                {
+                    "name": "Parcel Config",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/config/parcel",
+                        "description": "Parcel delivery settings"
+                    }
+                },
+                {
+                    "name": "Contact Config",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/config/contact",
+                        "description": "Business contact info - call for support screen"
+                    }
+                },
+                {
+                    "name": "External Config (Mart)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/config/external",
+                        "description": "External/Mart integration - only if using mart feature"
+                    }
+                },
+                {
+                    "name": "Full Config (Legacy)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/configuration",
+                        "description": "Full config - legacy endpoint for backward compatibility (~15KB)"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Customer - Pages",
+            "item": [
+                {
+                    "name": "About Us",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/pages/about_us"
+                    }
+                },
+                {
+                    "name": "Privacy Policy",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/pages/privacy_and_policy"
+                    }
+                },
+                {
+                    "name": "Terms & Conditions",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/pages/terms_and_conditions"
+                    }
+                },
+                {
+                    "name": "Legal",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/pages/legal"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Customer - Profile",
+            "item": [
+                {
+                    "name": "Get Profile Info",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/info",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Update Profile",
+                    "request": {
+                        "method": "PUT",
+                        "url": "{{base_url}}/customer/update/profile",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"first_name\": \"أحمد\",\n  \"last_name\": \"محمد\",\n  \"email\": \"updated@example.com\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Update FCM Token",
+                    "request": {
+                        "method": "PUT",
+                        "url": "{{base_url}}/customer/update/fcm-token",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"fcm_token\": \"your_fcm_token_here\"\n}"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Customer - Loyalty Points",
+            "item": [
+                {
+                    "name": "Get Points History",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/loyalty-points/list?limit=10&offset=0",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Convert Points to Wallet",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/customer/loyalty-points/convert",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"points\": 100\n}"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Customer - Wallet",
+            "item": [
+                {
+                    "name": "Get Balance",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/wallet/balance",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Add Fund",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/customer/wallet/add-fund",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"amount\": 100,\n  \"payment_method\": \"kashier\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Transaction History",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/wallet/transactions?limit=10&offset=0",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Customer - Referral",
+            "item": [
+                {
+                    "name": "Get My Code",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/referral/my-code",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Get Stats",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/referral/stats",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Get History",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/referral/history",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Validate Code (Public)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/referral/validate-code?code=ABC123"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Customer - Trip",
+            "item": [
+                {
+                    "name": "Get Estimated Fare",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/customer/ride/get-estimated-fare",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "zoneId",
+                                "value": "{{zone_id}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"pickup_coordinates\": [30.0444, 31.2357],\n  \"destination_coordinates\": [30.0626, 31.2497],\n  \"pickup_address\": \"Cairo\",\n  \"destination_address\": \"Maadi\",\n  \"type\": \"ride_request\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Create Ride Request",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/customer/ride/create",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "zoneId",
+                                "value": "{{zone_id}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"pickup_coordinates\": [30.0444, 31.2357],\n  \"destination_coordinates\": [30.0626, 31.2497],\n  \"customer_coordinates\": [30.0444, 31.2357],\n  \"pickup_address\": \"Cairo\",\n  \"destination_address\": \"Maadi\",\n  \"estimated_fare\": 50,\n  \"encoded_polyline\": \"abc123\",\n  \"vehicle_category_id\": \"category_id_here\",\n  \"payment_method\": \"cash\",\n  \"note\": \"optional note\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Ride List",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/ride/list?limit=10&offset=0",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Ride Details",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/ride/details/{trip_id}",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Resume Status (Ongoing Ride)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/ride/ride-resume-status",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Drivers Near Me",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/ride/nearby-driver?latitude=30.0444&longitude=31.2357",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "zoneId",
+                                "value": "{{zone_id}}"
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Customer - Address",
+            "item": [
+                {
+                    "name": "Get All Addresses",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/customer/address/all-address",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Add Address",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/customer/address/add",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"label\": \"home\",\n  \"address\": \"Cairo, Egypt\",\n  \"latitude\": 30.0444,\n  \"longitude\": 31.2357\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Address",
+                    "request": {
+                        "method": "DELETE",
+                        "url": "{{base_url}}/customer/address/delete?id={address_id}",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "name": "User - Account",
+            "item": [
+                {
+                    "name": "Logout",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/user/logout",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Delete Account",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/user/delete",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "description": "Soft deletes account. Blocked if ongoing trips or pending payments."
+                    }
+                },
+                {
+                    "name": "Change Password",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/user/change-password",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"current_password\": \"oldpassword\",\n  \"new_password\": \"newpassword123\"\n}"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Driver - Config (NEW - Optimized)",
+            "description": "New broken-down config endpoints for faster loading (Driver App)",
+            "item": [
+                {
+                    "name": "Core Config (App Startup)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/driver/config/core",
+                        "description": "Essential data for app startup - ~2.5KB. Call this first on launch."
+                    }
+                },
+                {
+                    "name": "Auth Config (Login/Register)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/driver/config/auth",
+                        "description": "Authentication settings - call before login/registration screens"
+                    }
+                },
+                {
+                    "name": "Trip Config (Going Online)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/driver/config/trip",
+                        "description": "Trip/ride settings - call when driver goes online"
+                    }
+                },
+                {
+                    "name": "Loyalty Config (Points)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/driver/config/loyalty",
+                        "description": "Loyalty points settings - call for earnings/level screens"
+                    }
+                },
+                {
+                    "name": "Safety Config",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/driver/config/safety",
+                        "description": "Safety features - call for safety screen"
+                    }
+                },
+                {
+                    "name": "Parcel Config",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/driver/config/parcel",
+                        "description": "Parcel delivery settings - call when accepting parcels"
+                    }
+                },
+                {
+                    "name": "Contact Config",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/driver/config/contact",
+                        "description": "Business contact info - call for support screen"
+                    }
+                },
+                {
+                    "name": "Full Config (Legacy)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/driver/configuration",
+                        "description": "Full config - legacy endpoint for backward compatibility (~15KB)"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Driver - Onboarding V2 (Uber-Style)",
+            "description": "New Uber-style unified driver onboarding flow. Single entry point - backend determines next step based on driver state.",
+            "item": [
+                {
+                    "name": "Step 1: Start (Enter Phone)",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/driver/auth/start",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone\": \"01099999999\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Step 2: Verify OTP",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/driver/auth/verify-otp",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone\": \"01099999999\",\n  \"otp\": \"1234\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Step 3: Set Password",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/driver/auth/set-password",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone\": \"01099999999\",\n  \"password\": \"password123\",\n  \"password_confirmation\": \"password123\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Step 4: Register Info",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/driver/auth/register-info",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone\": \"01099999999\",\n  \"first_name_ar\": \"أحمد\",\n  \"last_name_ar\": \"محمد\",\n  \"national_id\": \"12345678901234\",\n  \"city_id\": \"1\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Step 5: Vehicle Type",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/driver/auth/vehicle-type",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone\": \"01099999999\",\n  \"vehicle_category_id\": \"category_id_here\",\n  \"travel_enabled\": false\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Step 6: Upload Document",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/driver/auth/upload/{type}",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "multipart/form-data"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "phone",
+                                    "value": "01099999999",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "file",
+                                    "type": "file"
+                                }
+                            ]
+                        },
+                        "description": "Types: id_front, id_back, license_front, license_back, car_front, car_back, selfie"
+                    }
+                },
+                {
+                    "name": "Get Status (Resume)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/driver/auth/status?phone=01099999999",
+                        "description": "Check onboarding status - Flutter calls this on app open"
+                    }
+                },
+                {
+                    "name": "Login (Approved Only)",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/driver/auth/login",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone\": \"01099999999\",\n  \"password\": \"password123\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Resend OTP",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/driver/auth/resend-otp",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"phone\": \"01099999999\"\n}"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Driver - Profile",
+            "item": [
+                {
+                    "name": "Get Profile Info",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/driver/info",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Update Profile",
+                    "request": {
+                        "method": "PUT",
+                        "url": "{{base_url}}/driver/update/profile",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "Select Vehicle",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/driver/select-vehicle",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"vehicle_category_id\": \"category_id\",\n  \"request_travel\": false\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Travel Status",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/driver/travel-status",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "name": "AI Chatbot",
+            "item": [
+                {
+                    "name": "Send Message",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/chatbot/chat",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"message\": \"أريد حجز رحلة\",\n  \"session_id\": \"optional_session_id\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Health Check",
+                    "request": {
+                        "method": "GET",
+                        "url": "http://localhost:3001/health"
+                    }
+                }
+            ]
+        }
+    ]
+}

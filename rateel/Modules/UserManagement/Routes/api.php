@@ -153,6 +153,7 @@ Route::group(['prefix' => 'driver'], function () {
                 Route::get('balance', 'getBalance');
                 Route::get('earnings', 'earnings');
                 Route::get('summary', 'summary');
+                Route::get('daily-balance', 'dailyBalance');
             });
         });
         //new controller

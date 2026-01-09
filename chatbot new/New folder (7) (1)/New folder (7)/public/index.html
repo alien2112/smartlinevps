@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, maximum-scale=1.0, user-scalable=no">
+    <title>RideAI Support - Demo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --bg-hover: #22222f;
+            --accent-primary: #00d4aa;
+            --accent-secondary: #00b894;
+            --accent-glow: rgba(0, 212, 170, 0.3);
+            --accent-subtle: rgba(0, 212, 170, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --text-muted: #606070;
+            --danger: #ff6b6b;
+            --danger-subtle: rgba(255, 107, 107, 0.1);
+            --warning: #ffd93d;
+            --warning-subtle: rgba(255, 217, 61, 0.1);
+            --success: #00d4aa;
+            --success-subtle: rgba(0, 212, 170, 0.1);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(255, 255, 255, 0.15);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --transition-fast: 0.15s ease;
+            --transition-normal: 0.25s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Animated background */
+        .bg-pattern {
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 20% 20%, rgba(0, 212, 170, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(0, 184, 148, 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, transparent 0%, var(--bg-primary) 100%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 28px;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 28px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+            margin-bottom: 4px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: var(--radius-md);
+            display: grid;
+            place-items: center;
+            font-size: 24px;
+            box-shadow: 0 4px 16px var(--accent-glow);
+        }
+
+        .logo-text h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-text span {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 18px;
+            background: var(--success-subtle);
+            border: 1px solid rgba(0, 212, 170, 0.3);
+            border-radius: 24px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: var(--transition-normal);
+        }
+
+        .status-badge.disconnected {
+            background: var(--danger-subtle);
+            border-color: rgba(255, 107, 107, 0.3);
+        }
+
+        .status-badge.disconnected .status-dot {
+            background: var(--danger);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.5;
+                transform: scale(0.9);
+            }
+        }
+
+        /* Phone Mockup */
+        .phone-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding-top: 10px;
+            position: sticky;
+            top: 24px;
+        }
+
+        .phone {
+            width: 380px;
+            height: 760px;
+            background: var(--bg-secondary);
+            border-radius: 48px;
+            border: 3px solid #2a2a35;
+            box-shadow: var(--shadow-lg), inset 0 0 0 2px rgba(255, 255, 255, 0.05);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .phone-notch {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 28px;
+            background: #000;
+            border-radius: 20px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .phone-notch::before {
+            content: '';
+            width: 10px;
+            height: 10px;
+            background: #1a1a25;
+            border-radius: 50%;
+        }
+
+        .phone-screen {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding-top: 52px;
+        }
+
+        .chat-header {
+            padding: 18px 22px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .chat-avatar {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            font-size: 20px;
+            position: relative;
+        }
+
+        .chat-avatar::after {
+            content: '';
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            width: 12px;
+            height: 12px;
+            background: var(--success);
+            border: 2px solid var(--bg-tertiary);
+            border-radius: 50%;
+        }
+
+        .chat-info h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .chat-info span {
+            font-size: 13px;
+            color: var(--accent-primary);
+        }
+
+        /* Language indicator in header */
+        .chat-lang-indicator {
+            margin-left: auto;
+            padding: 6px 12px;
+            background: var(--bg-primary);
+            border-radius: 20px;
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: var(--transition-fast);
+        }
+
+        .chat-lang-indicator.active {
+            color: var(--text-primary);
+            background: var(--accent-subtle);
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            scroll-behavior: smooth;
+        }
+
+        .message {
+            max-width: 88%;
+            padding: 14px 18px;
+            border-radius: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+            animation: messageIn 0.3s ease-out;
+            position: relative;
+        }
+
+        @keyframes messageIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: #000;
+            border-bottom-right-radius: 6px;
+            font-weight: 500;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-bottom-left-radius: 6px;
+        }
+
+        .message-text {
+            margin-bottom: 0;
+        }
+
+        .message.assistant .message-text {
+            margin-bottom: 10px;
+        }
+
+        /* Improved Message Metadata - Horizontal Layout */
+        .message-meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+
+        .meta-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 500;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+
+        .confidence-high {
+            background: var(--success-subtle);
+            color: var(--success);
+        }
+
+        .confidence-medium {
+            background: var(--warning-subtle);
+            color: var(--warning);
+        }
+
+        .confidence-low {
+            background: var(--danger-subtle);
+            color: var(--danger);
+        }
+
+        .handoff-badge {
+            background: var(--danger-subtle);
+            color: var(--danger);
+        }
+
+        .lang-badge {
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .lang-badge.ar {
+            background: rgba(0, 150, 136, 0.15);
+            color: #4db6ac;
+            border-color: rgba(0, 150, 136, 0.3);
+        }
+
+        .lang-badge.en {
+            background: rgba(33, 150, 243, 0.15);
+            color: #64b5f6;
+            border-color: rgba(33, 150, 243, 0.3);
+        }
+
+        .lang-badge.arabizi {
+            background: rgba(156, 39, 176, 0.15);
+            color: #ba68c8;
+            border-color: rgba(156, 39, 176, 0.3);
+        }
+
+        .model-badge {
+            background: var(--bg-primary);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+        }
+
+        .meta-separator {
+            width: 1px;
+            height: 14px;
+            background: var(--border);
+            margin: 0 2px;
+        }
+
+        .typing-indicator {
+            display: none;
+            align-self: flex-start;
+            padding: 18px 22px;
+            background: var(--bg-tertiary);
+            border-radius: 20px;
+            border-bottom-left-radius: 6px;
+            gap: 6px;
+        }
+
+        .typing-indicator.show {
+            display: flex;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            animation: typingBounce 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typingBounce {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-8px);
+            }
+        }
+
+        .chat-input-container {
+            padding: 18px 20px 32px;
+            background: var(--bg-tertiary);
+            border-top: 1px solid var(--border);
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 14px 18px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: var(--transition-fast);
+        }
+
+        .chat-input:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px var(--accent-subtle);
+        }
+
+        .chat-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .send-btn {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: grid;
+            place-items: center;
+            transition: var(--transition-fast);
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover {
+            transform: scale(1.08);
+            box-shadow: 0 4px 20px var(--accent-glow);
+        }
+
+        .send-btn:active {
+            transform: scale(0.95);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .send-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: #000;
+        }
+
+        /* Control Panel */
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-height: calc(100vh - 140px);
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            transition: var(--transition-normal);
+        }
+
+        .panel:hover {
+            border-color: var(--border-hover);
+        }
+
+        .panel-header {
+            padding: 16px 22px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            user-select: none;
+            transition: var(--transition-fast);
+        }
+
+        .panel-header:hover {
+            background: var(--bg-hover);
+        }
+
+        .panel-header h2 {
+            font-size: 14px;
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .panel-header .icon {
+            font-size: 18px;
+        }
+
+        .panel-toggle {
+            font-size: 12px;
+            color: var(--text-muted);
+            transition: var(--transition-fast);
+        }
+
+        .panel.collapsed .panel-content {
+            display: none;
+        }
+
+        .panel.collapsed .panel-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .panel-content {
+            padding: 20px 22px;
+        }
+
+        /* Form Elements */
+        .config-group {
+            margin-bottom: 18px;
+        }
+
+        .config-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .config-label {
+            display: block;
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .config-input,
+        .config-select {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: 'JetBrains Mono', monospace;
+            outline: none;
+            transition: var(--transition-fast);
+        }
+
+        .config-input:focus,
+        .config-select:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px var(--accent-subtle);
+        }
+
+        .config-select {
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        /* Info Box */
+        .info-box {
+            padding: 12px 16px;
+            background: var(--accent-subtle);
+            border: 1px solid rgba(0, 212, 170, 0.2);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 18px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .info-box .icon {
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        /* Ride Card */
+        .ride-card {
+            background: var(--bg-primary);
+            border-radius: var(--radius-md);
+            padding: 18px;
+            border: 1px solid var(--border);
+        }
+
+        .ride-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: var(--success-subtle);
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent-primary);
+            margin-bottom: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .ride-status.pending {
+            background: var(--warning-subtle);
+            color: var(--warning);
+        }
+
+        .ride-status.completed {
+            background: rgba(160, 160, 176, 0.1);
+            color: var(--text-secondary);
+        }
+
+        .ride-details {
+            display: grid;
+            gap: 14px;
+        }
+
+        .ride-detail {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .ride-detail-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-sm);
+            display: grid;
+            place-items: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .ride-detail-text {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .ride-detail-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
+        }
+
+        .ride-detail-value {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        /* Buttons */
+        .action-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .action-btn {
+            padding: 12px 16px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: var(--transition-fast);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .action-btn:active {
+            transform: scale(0.97);
+        }
+
+        .action-btn.primary {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: #000;
+        }
+
+        .action-btn.primary:hover {
+            box-shadow: 0 4px 16px var(--accent-glow);
+        }
+
+        .action-btn.secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .action-btn.secondary:hover {
+            background: var(--bg-hover);
+            border-color: var(--border-hover);
+        }
+
+        .action-btn.danger {
+            background: var(--danger-subtle);
+            color: var(--danger);
+            border: 1px solid rgba(255, 107, 107, 0.3);
+        }
+
+        .action-btn.danger:hover {
+            background: rgba(255, 107, 107, 0.2);
+        }
+
+        .action-btn.full {
+            grid-column: 1 / -1;
+        }
+
+        /* Quick Messages Grid - Improved */
+        .quick-messages {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .quick-btn {
+            padding: 12px 14px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: var(--transition-fast);
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .quick-btn:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--accent-primary);
+            color: var(--text-primary);
+            transform: translateY(-1px);
+        }
+
+        .quick-btn:active {
+            transform: translateY(0);
+        }
+
+        .quick-btn .emoji {
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        /* API Log */
+        .api-log {
+            max-height: 280px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .log-entry {
+            padding: 12px 14px;
+            background: var(--bg-primary);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+        }
+
+        .log-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .log-entry .method {
+            color: var(--accent-primary);
+            font-weight: 600;
+        }
+
+        .log-entry .endpoint {
+            color: var(--text-secondary);
+        }
+
+        .log-entry .status {
+            font-weight: 600;
+        }
+
+        .log-entry .status.success {
+            color: var(--success);
+        }
+
+        .log-entry .status.error {
+            color: var(--danger);
+        }
+
+        .log-entry .duration {
+            color: var(--text-muted);
+        }
+
+        .log-entry .timestamp {
+            color: var(--text-muted);
+            font-size: 10px;
+            margin-left: auto;
+        }
+
+        .log-entry pre {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 120px;
+            font-size: 10px;
+        }
+
+        .log-entry.collapsed pre {
+            display: none;
+        }
+
+        .log-toggle {
+            padding: 4px 8px;
+            background: var(--bg-tertiary);
+            border: none;
+            border-radius: 4px;
+            color: var(--text-muted);
+            font-size: 10px;
+            cursor: pointer;
+            transition: var(--transition-fast);
+        }
+
+        .log-toggle:hover {
+            background: var(--bg-hover);
+            color: var(--text-secondary);
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 12px;
+        }
+
+        .toast {
+            padding: 14px 22px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow);
+            animation: toastIn 0.3s ease-out;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+            max-width: 360px;
+        }
+
+        .toast.success {
+            border-left: 4px solid var(--success);
+        }
+
+        .toast.error {
+            border-left: 4px solid var(--danger);
+        }
+
+        .toast.warning {
+            border-left: 4px solid var(--warning);
+        }
+
+        @keyframes toastIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* Responsive */
+        @media (max-width: 960px) {
+            .container {
+                grid-template-columns: 1fr;
+                padding: 16px;
+                gap: 20px;
+            }
+
+            .phone-container {
+                order: -1;
+                position: relative;
+                top: 0;
+            }
+
+            .phone {
+                width: 100%;
+                max-width: 380px;
+                height: 620px;
+            }
+
+            .control-panel {
+                max-height: none;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 16px;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-pattern"></div>
+
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">🚗</div>
+                <div class="logo-text">
+                    <h1>RideAI Support</h1>
+                    <span>Backend Demo Interface</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <div class="status-badge" id="statusBadge">
+                    <div class="status-dot"></div>
+                    <span>API Connected</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Phone Mockup -->
+        <div class="phone-container">
+            <div class="phone">
+                <div class="phone-notch"></div>
+                <div class="phone-screen">
+                    <div class="chat-header">
+                        <div class="chat-avatar">🤖</div>
+                        <div class="chat-info">
+                            <h3>AI Support</h3>
+                            <span>Online</span>
+                        </div>
+                        <div class="chat-lang-indicator" id="chatLangIndicator">
+                            <span>🌐</span>
+                            <span>Auto-detect</span>
+                        </div>
+                    </div>
+
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="message assistant">
+                            <div class="message-text">Hello! How can I assist you with your ride today?</div>
+                            <div class="message-meta">
+                                <span class="meta-badge confidence-high">85%</span>
+                                <span class="meta-badge lang-badge en">🇬🇧 EN</span>
+                                <span class="meta-badge model-badge">🦙 System</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="typing-indicator" id="typingIndicator">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+
+                    <div class="chat-input-container">
+                        <div class="chat-input-wrapper">
+                            <input type="text" class="chat-input" id="messageInput"
+                                placeholder="Type in English or Arabic..."
+                                maxlength="500">
+                            <button class="send-btn" id="sendBtn">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <!-- User Config -->
+            <div class="panel" id="panelConfig">
+                <div class="panel-header" onclick="togglePanel('panelConfig')">
+                    <span class="icon">👤</span>
+                    <h2>User Configuration</h2>
+                    <span class="panel-toggle">▼</span>
+                </div>
+                <div class="panel-content">
+                    <div class="info-box">
+                        <span class="icon">💡</span>
+                        <span>Language is auto-detected from your message. Supports English, Arabic, and Arabizi (Arabic written in English letters).</span>
+                    </div>
+                    <div class="config-group">
+                        <label class="config-label">User ID</label>
+                        <input type="text" class="config-input" id="userId" value="u_demo_123">
+                    </div>
+                    <div class="config-group">
+                        <label class="config-label">AI Model</label>
+                        <select class="config-select" id="aiModel">
+                            <option value="llama-3.3-70b">🦙 Llama 3.3 70B - Best Quality</option>
+                            <option value="llama-3.1-8b">⚡ Llama 3.1 8B - Fastest</option>
+                        </select>
+                    </div>
+                    <div class="action-buttons" style="margin-top: 18px;">
+                        <button class="action-btn secondary" onclick="clearMemory()">🗑️ Clear Memory</button>
+                        <button class="action-btn secondary" onclick="unblockUser()">🔓 Unblock</button>
+                        <button class="action-btn primary full" onclick="resetUser()">🔄 Full Reset</button>
+                        <button class="action-btn danger full" onclick="resetAllUsers()">⚠️ Reset ALL Users</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ride Simulation -->
+            <div class="panel" id="panelRide">
+                <div class="panel-header" onclick="togglePanel('panelRide')">
+                    <span class="icon">🚕</span>
+                    <h2>Active Ride</h2>
+                    <span class="panel-toggle">▼</span>
+                </div>
+                <div class="panel-content">
+                    <div class="ride-card">
+                        <div class="ride-status" id="rideStatusBadge">
+                            <span>●</span> ongoing
+                        </div>
+                        <div class="ride-details">
+                            <div class="ride-detail">
+                                <div class="ride-detail-icon">👨‍✈️</div>
+                                <div class="ride-detail-text">
+                                    <div class="ride-detail-label">Driver</div>
+                                    <div class="ride-detail-value" id="driverName">Ahmed</div>
+                                </div>
+                            </div>
+                            <div class="ride-detail">
+                                <div class="ride-detail-icon">📍</div>
+                                <div class="ride-detail-text">
+                                    <div class="ride-detail-label">Pickup</div>
+                                    <div class="ride-detail-value" id="pickup">Mall of Arabia</div>
+                                </div>
+                            </div>
+                            <div class="ride-detail">
+                                <div class="ride-detail-icon">🏁</div>
+                                <div class="ride-detail-text">
+                                    <div class="ride-detail-label">Destination</div>
+                                    <div class="ride-detail-value" id="destination">Cairo Airport</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="action-buttons" style="margin-top: 16px;">
+                        <button class="action-btn primary full" onclick="createRide()">➕ Create/Update Ride</button>
+                    </div>
+                    <div class="action-buttons" style="margin-top: 10px;">
+                        <button class="action-btn secondary" onclick="updateRideStatus('ongoing')">🚗 Ongoing</button>
+                        <button class="action-btn secondary" onclick="updateRideStatus('completed')">✅ Complete</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Messages English -->
+            <div class="panel" id="panelEnglish">
+                <div class="panel-header" onclick="togglePanel('panelEnglish')">
+                    <span class="icon">🇬🇧</span>
+                    <h2>Quick Test - English</h2>
+                    <span class="panel-toggle">▼</span>
+                </div>
+                <div class="panel-content">
+                    <div class="quick-messages">
+                        <button class="quick-btn" onclick="sendQuickMessage('Hello')">
+                            <span class="emoji">👋</span> Hello
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('Where is my driver?')">
+                            <span class="emoji">🔍</span> Where is driver?
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('Driver is late')">
+                            <span class="emoji">⏰</span> Driver late
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('I want to cancel')">
+                            <span class="emoji">❌</span> Cancel
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('Book a ride')">
+                            <span class="emoji">🚕</span> Book ride
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('I need a refund')">
+                            <span class="emoji">💰</span> Refund
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('I had an accident')">
+                            <span class="emoji">🚨</span> Emergency
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('Thank you')">
+                            <span class="emoji">🙏</span> Thanks
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Messages Arabic -->
+            <div class="panel" id="panelArabic">
+                <div class="panel-header" onclick="togglePanel('panelArabic')">
+                    <span class="icon">🇪🇬</span>
+                    <h2>Quick Test - العربية</h2>
+                    <span class="panel-toggle">▼</span>
+                </div>
+                <div class="panel-content">
+                    <div class="quick-messages">
+                        <button class="quick-btn" onclick="sendQuickMessage('مرحبا')">
+                            <span class="emoji">👋</span> مرحبا
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('فين السواق')">
+                            <span class="emoji">🔍</span> فين السواق
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('السواق اتأخر')">
+                            <span class="emoji">⏰</span> السواق اتأخر
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('عايز الغي الرحلة')">
+                            <span class="emoji">❌</span> إلغاء
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('عايز احجز رحلة')">
+                            <span class="emoji">🚕</span> حجز رحلة
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('عايز استرداد فلوسي')">
+                            <span class="emoji">💰</span> استرداد
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('عندي مشكلة')">
+                            <span class="emoji">😠</span> مشكلة
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('شكراً')">
+                            <span class="emoji">🙏</span> شكراً
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Messages Arabizi -->
+            <div class="panel" id="panelArabizi">
+                <div class="panel-header" onclick="togglePanel('panelArabizi')">
+                    <span class="icon">🔤</span>
+                    <h2>Quick Test - Arabizi</h2>
+                    <span class="panel-toggle">▼</span>
+                </div>
+                <div class="panel-content">
+                    <div class="info-box">
+                        <span class="icon">ℹ️</span>
+                        <span>Arabizi is Arabic written using English letters and numbers (e.g., 3 = ع, 7 = ح)</span>
+                    </div>
+                    <div class="quick-messages">
+                        <button class="quick-btn" onclick="sendQuickMessage('marhaba')">
+                            <span class="emoji">👋</span> marhaba
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('feen el driver')">
+                            <span class="emoji">🔍</span> feen el driver
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('3ayez a7gez re7la')">
+                            <span class="emoji">🚕</span> 3ayez a7gez
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('el sawa2 et2a5ar')">
+                            <span class="emoji">⏰</span> et2a5ar
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('3ayez alghy')">
+                            <span class="emoji">❌</span> alghy
+                        </button>
+                        <button class="quick-btn" onclick="sendQuickMessage('shokran')">
+                            <span class="emoji">🙏</span> shokran
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- API Log -->
+            <div class="panel collapsed" id="panelLog">
+                <div class="panel-header" onclick="togglePanel('panelLog')">
+                    <span class="icon">📋</span>
+                    <h2>API Log</h2>
+                    <span class="panel-toggle">▼</span>
+                </div>
+                <div class="panel-content">
+                    <div class="api-log" id="apiLog">
+                        <div class="empty-state">Waiting for API calls...</div>
+                    </div>
+                    <button class="action-btn danger full" style="margin-top: 14px;" onclick="clearLog()">
+                        🗑️ Clear Log
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000';
+        const $ = id => document.getElementById(id);
+
+        const chatMessages = $('chatMessages');
+        const messageInput = $('messageInput');
+        const sendBtn = $('sendBtn');
+        const typingIndicator = $('typingIndicator');
+        const apiLog = $('apiLog');
+        const toastContainer = $('toastContainer');
+        const statusBadge = $('statusBadge');
+        const chatLangIndicator = $('chatLangIndicator');
+
+        let currentRideId = 'r_demo_456';
+        let isFirstLog = true;
+        let isSending = false;
+        let currentSessionLang = null;
+
+        // Initialize user_id
+        function getOrCreateUserId() {
+            let userId = localStorage.getItem('chat_user_id');
+            if (!userId) {
+                userId = 'u_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('chat_user_id', userId);
+            }
+            $('userId').value = userId;
+            return userId;
+        }
+
+        getOrCreateUserId();
+
+        // Event Listeners
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Panel toggle
+        function togglePanel(id) {
+            $(id).classList.toggle('collapsed');
+        }
+
+        // Language helpers
+        function getLanguageDisplay(langObj) {
+            if (!langObj) return { flag: '🌐', code: 'UN', name: 'Unknown', class: '' };
+            
+            const lang = typeof langObj === 'string' ? langObj : langObj.primary;
+            
+            const langMap = {
+                'ar': { flag: '🇪🇬', code: 'AR', name: 'Arabic', class: 'ar' },
+                'en': { flag: '🇬🇧', code: 'EN', name: 'English', class: 'en' },
+                'arabizi': { flag: '🔤', code: 'ARZ', name: 'Arabizi', class: 'arabizi' },
+                'mixed': { flag: '🔀', code: 'MIX', name: 'Mixed', class: '' },
+                'unknown': { flag: '🌐', code: 'UN', name: 'Unknown', class: '' }
+            };
+            
+            return langMap[lang] || langMap['unknown'];
+        }
+
+        function updateLanguageIndicator(langObj) {
+            const display = getLanguageDisplay(langObj);
+            chatLangIndicator.innerHTML = `<span>${display.flag}</span><span>${display.name}</span>`;
+            chatLangIndicator.classList.toggle('active', langObj && langObj.primary !== 'unknown');
+        }
+
+        function detectTextDirection(text) {
+            const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/;
+            return arabicRegex.test(text);
+        }
+
+        async function sendMessage() {
+            if (isSending) return;
+
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            isSending = true;
+            const userId = getOrCreateUserId();
+            sendBtn.disabled = true;
+            messageInput.disabled = true;
+
+            addMessage(message, 'user');
+            messageInput.value = '';
+
+            typingIndicator.classList.add('show');
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            try {
+                const startTime = Date.now();
+
+                const response = await fetch(`${API_BASE}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                    body: JSON.stringify({ user_id: userId, message })
+                });
+
+                const data = await response.json();
+                const duration = Date.now() - startTime;
+
+                typingIndicator.classList.remove('show');
+
+                // Parse language info
+                let languageObj = data.language;
+                if (typeof languageObj === 'string') {
+                    languageObj = { primary: languageObj, confidence: 0.8 };
+                } else if (!languageObj || !languageObj.primary) {
+                    languageObj = { primary: 'en', confidence: 0.8 };
+                }
+
+                // Update session language indicator
+                if (languageObj.primary !== 'unknown') {
+                    currentSessionLang = languageObj;
+                    updateLanguageIndicator(languageObj);
+                }
+
+                addMessage(
+                    data.reply,
+                    'assistant',
+                    data.confidence,
+                    data.handoff,
+                    languageObj,
+                    data.model
+                );
+
+                logApiCall('POST', '/chat', { user_id: userId, message }, data, duration, response.status);
+
+                if (data.handoff) {
+                    showToast('Human support recommended', 'warning');
+                }
+
+            } catch (error) {
+                typingIndicator.classList.remove('show');
+                addMessage(
+                    'Connection error. Please check if the server is running.',
+                    'assistant',
+                    0.1,
+                    true,
+                    { primary: 'en', confidence: 1 },
+                    'System'
+                );
+                showToast('API Error: ' + error.message, 'error');
+                logApiCall('POST', '/chat', { user_id: userId, message }, { error: error.message }, 0, 'ERR');
+            } finally {
+                isSending = false;
+                sendBtn.disabled = false;
+                messageInput.disabled = false;
+                messageInput.focus();
+            }
+        }
+
+        function sendQuickMessage(message) {
+            messageInput.value = message;
+            sendMessage();
+        }
+
+        function addMessage(content, role, confidence = null, handoff = false, languageObj = null, modelInfo = null) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+
+            // Detect RTL for Arabic text
+            const isRTL = detectTextDirection(content);
+            if (isRTL) {
+                messageDiv.style.direction = 'rtl';
+                messageDiv.style.textAlign = 'right';
+            }
+
+            // Format content preserving newlines
+            const formattedContent = content.replace(/\n/g, '<br>');
+            let html = `<div class="message-text">${formattedContent}</div>`;
+
+            // Add metadata for assistant messages
+            if (role === 'assistant' && confidence !== null) {
+                const confClass = confidence >= 0.7 ? 'high' : confidence >= 0.4 ? 'medium' : 'low';
+                const confPercent = (confidence * 100).toFixed(0);
+
+                // Language display
+                const langDisplay = getLanguageDisplay(languageObj);
+
+                // Model info
+                let modelName = 'Unknown';
+                if (typeof modelInfo === 'string') {
+                    modelName = modelInfo;
+                } else if (modelInfo && modelInfo.name) {
+                    modelName = modelInfo.name;
+                }
+
+                html += `
+                    <div class="message-meta" style="direction: ltr; text-align: left;">
+                        <span class="meta-badge confidence-${confClass}">${confPercent}%</span>
+                        ${handoff ? '<span class="meta-badge handoff-badge">⚠️ Handoff</span>' : ''}
+                        <span class="meta-badge lang-badge ${langDisplay.class}">${langDisplay.flag} ${langDisplay.code}</span>
+                        <span class="meta-badge model-badge">🦙 ${modelName}</span>
+                    </div>
+                `;
+            }
+
+            messageDiv.innerHTML = html;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // API Functions
+        async function apiCall(endpoint, body = {}, method = 'POST') {
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                logApiCall(method, endpoint, body, data, 0, response.status);
+                return { success: true, data, status: response.status };
+            } catch (error) {
+                logApiCall(method, endpoint, body, { error: error.message }, 0, 'ERR');
+                return { success: false, error: error.message };
+            }
+        }
+
+        async function createRide() {
+            const userId = $('userId').value;
+            const result = await apiCall('/admin/create-ride', {
+                ride_id: currentRideId,
+                user_id: userId,
+                driver_name: $('driverName').textContent,
+                pickup: $('pickup').textContent,
+                destination: $('destination').textContent,
+                status: 'ongoing'
+            });
+
+            if (result.success) {
+                showToast('Ride created successfully!', 'success');
+                updateRideStatusBadge('ongoing');
+            } else {
+                showToast('Failed to create ride', 'error');
+            }
+        }
+
+        async function updateRideStatus(status) {
+            const userId = getOrCreateUserId();
+            const result = await apiCall('/admin/update-ride', { user_id: userId, status });
+            if (result.success) {
+                showToast(`Ride status: ${status}`, 'success');
+                updateRideStatusBadge(status);
+            } else {
+                showToast('Failed to update ride', 'error');
+            }
+        }
+
+        function updateRideStatusBadge(status) {
+            const badge = $('rideStatusBadge');
+            badge.innerHTML = `<span>●</span> ${status}`;
+            badge.className = 'ride-status ' + status;
+        }
+
+        async function clearMemory() {
+            const result = await apiCall('/admin/clear-memory', { user_id: $('userId').value });
+            if (result.success) {
+                showToast('Memory cleared!', 'success');
+                resetChatUI();
+            } else {
+                showToast('Failed to clear memory', 'error');
+            }
+        }
+
+        async function unblockUser() {
+            const result = await apiCall('/admin/unblock', { user_id: $('userId').value });
+            showToast(result.success ? 'User unblocked!' : 'Failed to unblock', result.success ? 'success' : 'error');
+        }
+
+        async function resetUser() {
+            const result = await apiCall('/admin/reset-user', { user_id: $('userId').value });
+            if (result.success) {
+                showToast('User fully reset!', 'success');
+                resetChatUI();
+            } else {
+                showToast('Failed to reset user', 'error');
+            }
+        }
+
+        async function resetAllUsers() {
+            if (!confirm('Reset ALL users? This clears all data.')) return;
+
+            const result = await apiCall('/admin/reset-all', {});
+            if (result.success) {
+                showToast('All users reset!', 'success');
+                resetChatUI();
+            } else {
+                showToast('Failed to reset', 'error');
+            }
+        }
+
+        function resetChatUI() {
+            chatMessages.innerHTML = `
+                <div class="message assistant">
+                    <div class="message-text">Hello! How can I assist you with your ride today?</div>
+                    <div class="message-meta">
+                        <span class="meta-badge confidence-high">85%</span>
+                        <span class="meta-badge lang-badge en">🇬🇧 EN</span>
+                        <span class="meta-badge model-badge">🦙 System</span>
+                    </div>
+                </div>
+            `;
+            currentSessionLang = null;
+            updateLanguageIndicator(null);
+        }
+
+        function logApiCall(method, endpoint, request, response, duration, status) {
+            if (isFirstLog) {
+                apiLog.innerHTML = '';
+                isFirstLog = false;
+            }
+
+            const entry = document.createElement('div');
+            entry.className = 'log-entry collapsed';
+
+            const time = new Date().toLocaleTimeString();
+            const isSuccess = status >= 200 && status < 300;
+
+            entry.innerHTML = `
+                <div class="log-header">
+                    <span class="method">${method}</span>
+                    <span class="endpoint">${endpoint}</span>
+                    <span class="status ${isSuccess ? 'success' : 'error'}">[${status}]</span>
+                    ${duration ? `<span class="duration">${duration}ms</span>` : ''}
+                    <span class="timestamp">${time}</span>
+                    <button class="log-toggle" onclick="this.parentElement.parentElement.classList.toggle('collapsed')">
+                        Details
+                    </button>
+                </div>
+                <pre>${JSON.stringify(response, null, 2)}</pre>
+            `;
+
+            apiLog.insertBefore(entry, apiLog.firstChild);
+
+            while (apiLog.children.length > 20) {
+                apiLog.removeChild(apiLog.lastChild);
+            }
+        }
+
+        function clearLog() {
+            apiLog.innerHTML = '<div class="empty-state">Waiting for API calls...</div>';
+            isFirstLog = true;
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+
+            const icons = { success: '✓', error: '✕', warning: '⚠' };
+            toast.innerHTML = `<span>${icons[type] || '•'}</span><span>${message}</span>`;
+
+            toastContainer.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+
+                if (data.status === 'ok') {
+                    showToast('Connected to API server', 'success');
+                    statusBadge.classList.remove('disconnected');
+                    statusBadge.innerHTML = '<div class="status-dot"></div><span>API Connected</span>';
+                }
+            } catch (error) {
+                showToast('Cannot connect to API server', 'error');
+                statusBadge.classList.add('disconnected');
+                statusBadge.innerHTML = '<div class="status-dot"></div><span>Disconnected</span>';
+            }
+        }
+
+        // Initialize
+        checkHealth();
+        messageInput.focus();
+    </script>
+</body>
+
+</html>

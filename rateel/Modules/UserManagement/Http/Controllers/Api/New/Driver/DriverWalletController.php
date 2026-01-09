@@ -217,4 +217,112 @@ class DriverWalletController extends Controller
             'currency' => businessConfig('currency_code')?->value ?? 'EGP',
         ]));
     }
+
+    /**
+     * Get driver daily balance/earnings for a specific date
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function dailyBalance(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'date' => 'sometimes|date|date_format:Y-m-d',
+            'include_hourly' => 'sometimes|boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(responseFormatter(DEFAULT_400, null, errorProcessor($validator)), 400);
+        }
+
+        $driver = auth('api')->user();
+
+        if ($driver->user_type !== DRIVER) {
+            return response()->json(responseFormatter(DEFAULT_403), 403);
+        }
+
+        $date = $request->date ? \Carbon\Carbon::parse($request->date) : today();
+        $includeHourly = $request->boolean('include_hourly', false);
+
+        // Get earnings for the date
+        $earnings = Transaction::where('user_id', $driver->id)
+            ->where('account', 'receivable_balance')
+            ->whereDate('created_at', $date)
+            ->sum('credit');
+
+        // Get payable (commission) for the date
+        $payable = Transaction::where('user_id', $driver->id)
+            ->where('account', 'payable_balance')
+            ->whereDate('created_at', $date)
+            ->sum('credit');
+
+        // Get trips completed for the date
+        $trips = \Modules\TripManagement\Entities\TripRequest::where('driver_id', $driver->id)
+            ->where('current_status', 'completed')
+            ->whereDate('created_at', $date)
+            ->count();
+
+        // Get transaction count
+        $transactionCount = Transaction::where('user_id', $driver->id)
+            ->whereIn('account', ['receivable_balance', 'payable_balance'])
+            ->whereDate('created_at', $date)
+            ->count();
+
+        $netEarnings = $earnings - $payable;
+
+        $response = [
+            'date' => $date->format('Y-m-d'),
+            'day_name' => $date->format('l'),
+            'is_today' => $date->isToday(),
+            'total_earnings' => (float) $earnings,
+            'formatted_earnings' => getCurrencyFormat($earnings),
+            'total_trips' => $trips,
+            'total_payable' => (float) $payable,
+            'formatted_payable' => getCurrencyFormat($payable),
+            'net_earnings' => (float) $netEarnings,
+            'formatted_net' => getCurrencyFormat($netEarnings),
+            'transaction_count' => $transactionCount,
+            'currency' => businessConfig('currency_code')?->value ?? 'EGP',
+        ];
+
+        // Add hourly breakdown if requested
+        if ($includeHourly) {
+            $hourlyData = Transaction::where('user_id', $driver->id)
+                ->where('account', 'receivable_balance')
+                ->whereDate('created_at', $date)
+                ->selectRaw('HOUR(created_at) as hour, SUM(credit) as earnings, COUNT(*) as transactions')
+                ->groupBy('hour')
+                ->orderBy('hour')
+                ->get()
+                ->keyBy('hour');
+
+            $hourlyTrips = \Modules\TripManagement\Entities\TripRequest::where('driver_id', $driver->id)
+                ->where('current_status', 'completed')
+                ->whereDate('created_at', $date)
+                ->selectRaw('HOUR(created_at) as hour, COUNT(*) as trips')
+                ->groupBy('hour')
+                ->get()
+                ->keyBy('hour');
+
+            $hourlyBreakdown = [];
+            for ($h = 0; $h < 24; $h++) {
+                $hourData = $hourlyData->get($h);
+                $tripData = $hourlyTrips->get($h);
+                
+                if ($hourData || $tripData) {
+                    $hourlyBreakdown[] = [
+                        'hour' => sprintf('%02d:00', $h),
+                        'earnings' => (float) ($hourData->earnings ?? 0),
+                        'formatted_earnings' => getCurrencyFormat($hourData->earnings ?? 0),
+                        'trips' => $tripData->trips ?? 0,
+                        'transactions' => $hourData->transactions ?? 0,
+                    ];
+                }
+            }
+
+            $response['hourly_breakdown'] = $hourlyBreakdown;
+        }
+
+        return response()->json(responseFormatter(DEFAULT_200, $response));
+    }
 }
