@@ -231,19 +231,24 @@ class VehicleController extends Controller
             $data = array_merge($request->validated(), [
                 'vehicle_request_status' => PENDING,
                 'is_primary' => false, // Will become primary after admin approval
+                'is_active' => false, // Will become active after admin approval
                 'has_pending_primary_request' => true // Mark as requested to be primary
             ]);
         } else {
             // Has existing vehicles - request this as new primary
-            // Clear any other pending primary requests
-            $existingVehicles->where('has_pending_primary_request', true)
-                ->each(function ($v) {
-                    $v->update(['has_pending_primary_request' => false]);
-                });
+            // Immediately deactivate all existing vehicles
+            $existingVehicles->each(function ($v) {
+                $v->update([
+                    'is_active' => false,
+                    'is_primary' => false,
+                    'has_pending_primary_request' => false
+                ]);
+            });
 
             $data = array_merge($request->validated(), [
                 'vehicle_request_status' => PENDING,
                 'is_primary' => false, // Will become primary after admin approval
+                'is_active' => false, // Will become active after admin approval
                 'has_pending_primary_request' => true // Mark as requested to be primary
             ]);
         }

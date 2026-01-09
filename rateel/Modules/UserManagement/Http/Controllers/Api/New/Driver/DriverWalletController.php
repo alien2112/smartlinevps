@@ -8,9 +8,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Modules\UserManagement\Entities\UserAccount;
 use Modules\TransactionManagement\Entities\Transaction;
+use Modules\BusinessManagement\Entities\BusinessSetting;
+use Modules\Gateways\Library\Payer;
+use Modules\Gateways\Library\Payment as PaymentInfo;
+use Modules\Gateways\Library\Receiver;
+use Modules\Gateways\Traits\Payment;
 
 class DriverWalletController extends Controller
 {
+    use Payment;
     /**
      * Get driver wallet balance and earnings summary
      *
@@ -324,5 +330,104 @@ class DriverWalletController extends Controller
         }
 
         return response()->json(responseFormatter(DEFAULT_200, $response));
+    }
+
+    /**
+     * Add funds to driver wallet via digital payment gateway
+     *
+     * @param Request $request
+     * @return JsonResponse|\Illuminate\Http\RedirectResponse
+     */
+    public function addFund(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'amount' => 'required|numeric|min:1',
+            'payment_method' => 'required|in:kashier,ssl_commerz,stripe,paypal,razor_pay,paystack,senang_pay,paymob_accept,flutterwave,paytm,paytabs,liqpay,mercadopago,bkash,fatoorah,xendit,amazon_pay,iyzi_pay,hyper_pay,foloosi,ccavenue,pvit,moncash,thawani,tap,viva_wallet,hubtel,maxicash,esewa,swish,momo,payfast,worldpay,sixcash',
+            'redirect_url' => 'nullable|url',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(responseFormatter(DEFAULT_400, null, errorProcessor($validator)), 400);
+        }
+
+        $driver = auth('api')->user();
+
+        if ($driver->user_type !== DRIVER) {
+            return response()->json(responseFormatter(DEFAULT_403), 403);
+        }
+
+        $amount = (float) $request->amount;
+
+        // Minimum amount validation
+        $minAmount = (float) (businessConfig('min_wallet_add_fund_amount')?->value ?? 10);
+        if ($amount < $minAmount) {
+            return response()->json(responseFormatter([
+                'response_code' => 'min_amount_error_400',
+                'message' => translate('Minimum amount to add is ') . getCurrencyFormat($minAmount),
+            ]), 400);
+        }
+
+        // Maximum amount validation
+        $maxAmount = (float) (businessConfig('max_wallet_add_fund_amount')?->value ?? 50000);
+        if ($amount > $maxAmount) {
+            return response()->json(responseFormatter([
+                'response_code' => 'max_amount_error_400',
+                'message' => translate('Maximum amount to add is ') . getCurrencyFormat($maxAmount),
+            ]), 400);
+        }
+
+        // Build payer info
+        $payer = new Payer(
+            name: $driver->first_name . ' ' . $driver->last_name,
+            email: $driver->email ?? $driver->phone . '@smartline.com',
+            phone: $driver->phone,
+            address: ''
+        );
+
+        // Additional data for payment page
+        $additionalData = [
+            'business_name' => BusinessSetting::where(['key_name' => 'business_name'])->first()?->value ?? 'Smartline',
+            'business_logo' => asset('storage/app/public/business') . '/' . BusinessSetting::where(['key_name' => 'header_logo'])->first()?->value,
+        ];
+
+        // Determine redirect URL
+        $externalRedirectLink = $request->redirect_url;
+        if (!$externalRedirectLink && $request->header('platform') === 'app') {
+            $externalRedirectLink = 'smartline://driver/wallet/callback';
+        }
+
+        // Create payment info with hook for driver wallet top-up
+        $paymentInfo = new PaymentInfo(
+            hook: 'driver_add_fund_to_wallet',
+            currencyCode: businessConfig('currency_code')?->value ?? 'EGP',
+            paymentMethod: strtolower($request->payment_method),
+            paymentPlatform: $request->header('platform') ?? 'app',
+            payerId: $driver->id,
+            receiverId: 'admin',
+            additionalData: $additionalData,
+            paymentAmount: $amount,
+            externalRedirectLink: $externalRedirectLink,
+            attribute: 'driver_wallet_add_fund',
+            attributeId: $driver->id
+        );
+
+        $receiverInfo = new Receiver('Smartline Driver Wallet', 'wallet.png');
+
+        // Generate payment link
+        $redirectLink = $this->generate_link($payer, $paymentInfo, $receiverInfo);
+
+        // For API requests, return the payment URL
+        if ($request->wantsJson() || $request->header('Accept') === 'application/json') {
+            return response()->json(responseFormatter(DEFAULT_200, [
+                'payment_url' => $redirectLink,
+                'amount' => $amount,
+                'formatted_amount' => getCurrencyFormat($amount),
+                'payment_method' => $request->payment_method,
+                'message' => translate('Redirect to payment gateway'),
+            ]));
+        }
+
+        // For web requests, redirect directly
+        return redirect($redirectLink);
     }
 }

@@ -154,6 +154,7 @@ Route::group(['prefix' => 'driver'], function () {
                 Route::get('earnings', 'earnings');
                 Route::get('summary', 'summary');
                 Route::get('daily-balance', 'dailyBalance');
+                Route::post('add-fund', 'addFund');
             });
         });
         //new controller
