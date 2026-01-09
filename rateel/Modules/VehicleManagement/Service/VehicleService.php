@@ -164,58 +164,92 @@ class VehicleService extends BaseService implements VehicleServiceInterface
         // Store NEW values in draft for admin approval
         // Keep CURRENT values in the vehicle record until admin approves
         $draftData = [];
+        $hasChanges = false;
 
         // Always store new values in draft - they will be applied only after admin approval
         if (isset($data['brand_id']) && $vehicle->brand_id != $data['brand_id']) {
             $draftData['brand_id'] = $data['brand_id'];
             $draftData['model_id'] = $data['model_id'] ?? $vehicle->model_id;
+            $hasChanges = true;
         }
 
         if (isset($data['category_id']) && $vehicle->category_id != $data['category_id']) {
             $draftData['category_id'] = $data['category_id'];
+            $hasChanges = true;
         }
 
         if (isset($data['licence_plate_number']) && $vehicle->licence_plate_number != $data['licence_plate_number']) {
             $draftData['licence_plate_number'] = $data['licence_plate_number'];
+            $hasChanges = true;
         }
 
         if (isset($data['licence_expire_date']) && $vehicle->licence_expire_date != $data['licence_expire_date']) {
             $draftData['licence_expire_date'] = $data['licence_expire_date'];
+            $hasChanges = true;
         }
 
         if (isset($data['vin_number']) && $vehicle->vin_number != $data['vin_number']) {
             $draftData['vin_number'] = $data['vin_number'];
+            $hasChanges = true;
         }
 
         if (isset($data['transmission']) && $vehicle->transmission != $data['transmission']) {
             $draftData['transmission'] = $data['transmission'];
+            $hasChanges = true;
         }
 
         if (isset($data['parcel_weight_capacity']) && $vehicle->parcel_weight_capacity != $data['parcel_weight_capacity']) {
             $draftData['parcel_weight_capacity'] = $data['parcel_weight_capacity'];
+            $hasChanges = true;
         }
 
         if (isset($data['fuel_type']) && $vehicle->fuel_type != $data['fuel_type']) {
             $draftData['fuel_type'] = $data['fuel_type'];
+            $hasChanges = true;
         }
 
         if (isset($data['ownership']) && $vehicle->ownership != $data['ownership']) {
             $draftData['ownership'] = $data['ownership'];
+            $hasChanges = true;
+        }
+
+        // Handle image uploads - update documents immediately (not in draft)
+        $updateDocuments = false;
+        $existingDocuments = $vehicle->documents ?? [];
+        $newDocuments = $existingDocuments;
+
+        if (isset($data['car_front'])) {
+            $extension = $data['car_front']->getClientOriginalExtension();
+            $newFrontImage = fileUploader('vehicle/document/', $extension, $data['car_front'], $existingDocuments[0] ?? null);
+            $newDocuments[0] = $newFrontImage;
+            $updateDocuments = true;
+            $hasChanges = true;
+        }
+
+        if (isset($data['car_back'])) {
+            $extension = $data['car_back']->getClientOriginalExtension();
+            $newBackImage = fileUploader('vehicle/document/', $extension, $data['car_back'], $existingDocuments[1] ?? null);
+            $newDocuments[1] = $newBackImage;
+            $updateDocuments = true;
+            $hasChanges = true;
         }
 
         // If there are changes, store them in draft and set status to PENDING
-        if (!empty($draftData)) {
+        if ($hasChanges) {
             $updateData = [
-                'draft' => $draftData,
                 'vehicle_request_status' => PENDING
             ];
-        } else {
-            // No changes detected, just keep current data
-            $updateData = [];
-        }
 
-        // Only update if there are changes
-        if (!empty($updateData)) {
+            // Only update draft if there are non-image changes
+            if (!empty($draftData)) {
+                $updateData['draft'] = $draftData;
+            }
+
+            // Update documents immediately if images were uploaded
+            if ($updateDocuments) {
+                $updateData['documents'] = $newDocuments;
+            }
+
             return $this->vehicleRepository->update($vehicle->id, $updateData);
         }
 

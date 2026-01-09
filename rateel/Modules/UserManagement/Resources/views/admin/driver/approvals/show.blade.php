@@ -421,15 +421,15 @@
                                                                 </small>
                                                             </div>
                                                             <div class="card-body p-2">
-                                                                <a href="{{ asset('storage/' . $document) }}" target="_blank" data-lightbox="vehicle-{{ $vehicle->id }}" data-title="{{ $vehicle->brand?->name }} {{ $vehicle->model?->name }}">
-                                                                    <img src="{{ asset('storage/' . $document) }}" 
+                                                                <a href="{{ url('media/vehicle/document/' . $document) }}" target="_blank" data-lightbox="vehicle-{{ $vehicle->id }}" data-title="{{ $vehicle->brand?->name }} {{ $vehicle->model?->name }}">
+                                                                    <img src="{{ url('media/vehicle/document/' . $document) }}" 
                                                                          alt="{{ translate('Vehicle Image') }}" 
                                                                          class="img-fluid rounded"
                                                                          style="max-height: 250px; width: 100%; object-fit: cover; cursor: pointer;">
                                                                 </a>
                                                             </div>
                                                             <div class="card-footer bg-white border-top-0 p-2">
-                                                                <a href="{{ asset('storage/' . $document) }}" 
+                                                                <a href="{{ url('media/vehicle/document/' . $document) }}" 
                                                                    target="_blank" 
                                                                    class="btn btn-sm btn-outline-primary w-100">
                                                                     <i class="bi bi-eye"></i> {{ translate('View Full Size') }}

@@ -219,8 +219,6 @@ class ReadinessController extends Controller
             } elseif ($daysUntilExpiry <= 7) {
                 $issues[] = 'insurance_expiring_soon';
             }
-        } else {
-            $issues[] = 'no_insurance_date';
         }
 
         // Check inspection
@@ -231,8 +229,6 @@ class ReadinessController extends Controller
             } elseif ($daysUntilDue <= 7) {
                 $issues[] = 'inspection_due_soon';
             }
-        } else {
-            $issues[] = 'no_inspection_date';
         }
 
         $status = count($issues) === 0 ? 'ready' : 'issues';
