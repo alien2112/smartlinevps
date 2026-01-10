@@ -5,6 +5,7 @@ namespace Modules\UserManagement\Http\Controllers\Api\New\Driver;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 use Modules\UserManagement\Entities\UserAccount;
 use Modules\TransactionManagement\Entities\Transaction;
@@ -250,86 +251,92 @@ class DriverWalletController extends Controller
         $date = $request->date ? \Carbon\Carbon::parse($request->date) : today();
         $includeHourly = $request->boolean('include_hourly', false);
 
-        // Get earnings for the date
-        $earnings = Transaction::where('user_id', $driver->id)
-            ->where('account', 'receivable_balance')
-            ->whereDate('created_at', $date)
-            ->sum('credit');
+        $cacheKey = "driver_daily_balance_{$driver->id}_{$date->format('Y-m-d')}_" . ($includeHourly ? '1' : '0');
 
-        // Get payable (commission) for the date
-        $payable = Transaction::where('user_id', $driver->id)
-            ->where('account', 'payable_balance')
-            ->whereDate('created_at', $date)
-            ->sum('credit');
+        $responseData = Cache::remember($cacheKey, now()->addMinutes(30), function () use ($driver, $date, $includeHourly) {
+            $startOfDay = $date->copy()->startOfDay();
+            $endOfDay = $date->copy()->endOfDay();
 
-        // Get trips completed for the date
-        $trips = \Modules\TripManagement\Entities\TripRequest::where('driver_id', $driver->id)
-            ->where('current_status', 'completed')
-            ->whereDate('created_at', $date)
-            ->count();
+            // Optimize: Combine earnings, payable, and count queries
+            $stats = Transaction::where('user_id', $driver->id)
+                ->whereBetween('created_at', [$startOfDay, $endOfDay])
+                ->whereIn('account', ['receivable_balance', 'payable_balance'])
+                ->selectRaw("
+                    SUM(CASE WHEN account = 'receivable_balance' THEN credit ELSE 0 END) as earnings,
+                    SUM(CASE WHEN account = 'payable_balance' THEN credit ELSE 0 END) as payable,
+                    COUNT(*) as count
+                ")
+                ->first();
 
-        // Get transaction count
-        $transactionCount = Transaction::where('user_id', $driver->id)
-            ->whereIn('account', ['receivable_balance', 'payable_balance'])
-            ->whereDate('created_at', $date)
-            ->count();
+            $earnings = $stats->earnings ?? 0;
+            $payable = $stats->payable ?? 0;
+            $transactionCount = $stats->count ?? 0;
 
-        $netEarnings = $earnings - $payable;
-
-        $response = [
-            'date' => $date->format('Y-m-d'),
-            'day_name' => $date->format('l'),
-            'is_today' => $date->isToday(),
-            'total_earnings' => (float) $earnings,
-            'formatted_earnings' => getCurrencyFormat($earnings),
-            'total_trips' => $trips,
-            'total_payable' => (float) $payable,
-            'formatted_payable' => getCurrencyFormat($payable),
-            'net_earnings' => (float) $netEarnings,
-            'formatted_net' => getCurrencyFormat($netEarnings),
-            'transaction_count' => $transactionCount,
-            'currency' => businessConfig('currency_code')?->value ?? 'EGP',
-        ];
-
-        // Add hourly breakdown if requested
-        if ($includeHourly) {
-            $hourlyData = Transaction::where('user_id', $driver->id)
-                ->where('account', 'receivable_balance')
-                ->whereDate('created_at', $date)
-                ->selectRaw('HOUR(created_at) as hour, SUM(credit) as earnings, COUNT(*) as transactions')
-                ->groupBy('hour')
-                ->orderBy('hour')
-                ->get()
-                ->keyBy('hour');
-
-            $hourlyTrips = \Modules\TripManagement\Entities\TripRequest::where('driver_id', $driver->id)
+            // Optimize: Trips count with index-friendly date range
+            $trips = \Modules\TripManagement\Entities\TripRequest::where('driver_id', $driver->id)
                 ->where('current_status', 'completed')
-                ->whereDate('created_at', $date)
-                ->selectRaw('HOUR(created_at) as hour, COUNT(*) as trips')
-                ->groupBy('hour')
-                ->get()
-                ->keyBy('hour');
+                ->whereBetween('created_at', [$startOfDay, $endOfDay])
+                ->count();
 
-            $hourlyBreakdown = [];
-            for ($h = 0; $h < 24; $h++) {
-                $hourData = $hourlyData->get($h);
-                $tripData = $hourlyTrips->get($h);
-                
-                if ($hourData || $tripData) {
-                    $hourlyBreakdown[] = [
-                        'hour' => sprintf('%02d:00', $h),
-                        'earnings' => (float) ($hourData->earnings ?? 0),
-                        'formatted_earnings' => getCurrencyFormat($hourData->earnings ?? 0),
-                        'trips' => $tripData->trips ?? 0,
-                        'transactions' => $hourData->transactions ?? 0,
-                    ];
+            $netEarnings = $earnings - $payable;
+
+            $response = [
+                'date' => $date->format('Y-m-d'),
+                'day_name' => $date->format('l'),
+                'is_today' => $date->isToday(),
+                'total_earnings' => (float) $earnings,
+                'formatted_earnings' => getCurrencyFormat($earnings),
+                'total_trips' => $trips,
+                'total_payable' => (float) $payable,
+                'formatted_payable' => getCurrencyFormat($payable),
+                'net_earnings' => (float) $netEarnings,
+                'formatted_net' => getCurrencyFormat($netEarnings),
+                'transaction_count' => $transactionCount,
+                'currency' => businessConfig('currency_code')?->value ?? 'EGP',
+            ];
+
+            // Add hourly breakdown if requested
+            if ($includeHourly) {
+                $hourlyData = Transaction::where('user_id', $driver->id)
+                    ->where('account', 'receivable_balance')
+                    ->whereBetween('created_at', [$startOfDay, $endOfDay])
+                    ->selectRaw('HOUR(created_at) as hour, SUM(credit) as earnings, COUNT(*) as transactions')
+                    ->groupBy('hour')
+                    ->orderBy('hour')
+                    ->get()
+                    ->keyBy('hour');
+
+                $hourlyTrips = \Modules\TripManagement\Entities\TripRequest::where('driver_id', $driver->id)
+                    ->where('current_status', 'completed')
+                    ->whereBetween('created_at', [$startOfDay, $endOfDay])
+                    ->selectRaw('HOUR(created_at) as hour, COUNT(*) as trips')
+                    ->groupBy('hour')
+                    ->get()
+                    ->keyBy('hour');
+
+                $hourlyBreakdown = [];
+                for ($h = 0; $h < 24; $h++) {
+                    $hourData = $hourlyData->get($h);
+                    $tripData = $hourlyTrips->get($h);
+                    
+                    if ($hourData || $tripData) {
+                        $hourlyBreakdown[] = [
+                            'hour' => sprintf('%02d:00', $h),
+                            'earnings' => (float) ($hourData->earnings ?? 0),
+                            'formatted_earnings' => getCurrencyFormat($hourData->earnings ?? 0),
+                            'trips' => $tripData->trips ?? 0,
+                            'transactions' => $hourData->transactions ?? 0,
+                        ];
+                    }
                 }
+
+                $response['hourly_breakdown'] = $hourlyBreakdown;
             }
 
-            $response['hourly_breakdown'] = $hourlyBreakdown;
-        }
+            return $response;
+        });
 
-        return response()->json(responseFormatter(DEFAULT_200, $response));
+        return response()->json(responseFormatter(DEFAULT_200, $responseData));
     }
 
     /**

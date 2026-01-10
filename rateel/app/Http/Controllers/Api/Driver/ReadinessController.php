@@ -267,10 +267,11 @@ class ReadinessController extends Controller
     }
 
     /**
-     * Check document status
+     * Check document status (handles both new and legacy document systems)
      */
     private function checkDocumentStatus($driverId): array
     {
+        // Check new document system
         $documents = DB::table('driver_documents')
             ->where('driver_id', $driverId)
             ->get();
@@ -297,20 +298,108 @@ class ReadinessController extends Controller
             }
         }
 
-        $allVerified = $documents->every(fn($d) => $d->verified);
-        $status = count($issues) === 0 ? 'ready' : 'issues';
+        // Check legacy document system (for drivers created before new system)
+        $legacyDocs = $this->checkLegacyDocuments($driverId);
+        $hasLegacyDocs = $legacyDocs['total'] > 0;
+
+        // If no new documents but has legacy documents, consider them as verified (legacy approved)
+        $totalDocuments = $documents->count();
+        $verifiedDocuments = $documents->where('verified', true)->count();
+
+        if ($totalDocuments === 0 && $hasLegacyDocs) {
+            // Legacy driver with old document system
+            $totalDocuments = $legacyDocs['total'];
+            $verifiedDocuments = $legacyDocs['total']; // Assume legacy docs are verified
+            $allVerified = true;
+            $status = 'ready';
+            $message = translate('Legacy documents verified');
+        } else {
+            $allVerified = $totalDocuments > 0 && $documents->every(fn($d) => $d->verified);
+            $status = count($issues) === 0 && ($allVerified || $hasLegacyDocs) ? 'ready' : 'issues';
+            $message = $status === 'ready'
+                ? translate('All documents are valid')
+                : translate('Some documents need attention');
+        }
 
         return [
             'status' => $status,
-            'total_documents' => $documents->count(),
-            'verified_documents' => $documents->where('verified', true)->count(),
+            'total_documents' => $totalDocuments,
+            'verified_documents' => $verifiedDocuments,
             'all_verified' => $allVerified,
+            'has_legacy_documents' => $hasLegacyDocs,
+            'legacy_document_count' => $legacyDocs['total'],
             'expiring_soon' => $expiring,
             'expired' => $expired,
             'issues' => $issues,
-            'message' => $status === 'ready'
-                ? translate('All documents are valid')
-                : translate('Some documents need attention'),
+            'message' => $message,
+        ];
+    }
+
+    /**
+     * Check legacy document system (columns in users table)
+     */
+    private function checkLegacyDocuments($driverId): array
+    {
+        $user = DB::table('users')
+            ->where('id', $driverId)
+            ->select('identification_image', 'old_identification_image', 'other_documents',
+                     'profile_image', 'car_front_image', 'car_back_image')
+            ->first();
+
+        if (!$user) {
+            return ['total' => 0, 'types' => []];
+        }
+
+        $legacyDocTypes = [];
+        $totalLegacyDocs = 0;
+
+        // Check identification_image (JSON array)
+        if (!empty($user->identification_image)) {
+            $identDocs = json_decode($user->identification_image, true);
+            if (is_array($identDocs) && count($identDocs) > 0) {
+                $legacyDocTypes[] = 'identification';
+                $totalLegacyDocs += count($identDocs);
+            }
+        }
+
+        // Check old_identification_image
+        if (!empty($user->old_identification_image)) {
+            $oldIdentDocs = json_decode($user->old_identification_image, true);
+            if (is_array($oldIdentDocs) && count($oldIdentDocs) > 0) {
+                $legacyDocTypes[] = 'old_identification';
+                $totalLegacyDocs += count($oldIdentDocs);
+            }
+        }
+
+        // Check other_documents
+        if (!empty($user->other_documents)) {
+            $otherDocs = json_decode($user->other_documents, true);
+            if (is_array($otherDocs) && count($otherDocs) > 0) {
+                $legacyDocTypes[] = 'other';
+                $totalLegacyDocs += count($otherDocs);
+            }
+        }
+
+        // Check profile_image
+        if (!empty($user->profile_image) && $user->profile_image !== 'null') {
+            $legacyDocTypes[] = 'profile';
+            $totalLegacyDocs++;
+        }
+
+        // Check car images
+        if (!empty($user->car_front_image)) {
+            $legacyDocTypes[] = 'car_front';
+            $totalLegacyDocs++;
+        }
+
+        if (!empty($user->car_back_image)) {
+            $legacyDocTypes[] = 'car_back';
+            $totalLegacyDocs++;
+        }
+
+        return [
+            'total' => $totalLegacyDocs,
+            'types' => $legacyDocTypes,
         ];
     }
 
@@ -428,7 +517,10 @@ class ReadinessController extends Controller
             $blockers[] = 'no_vehicle';
         }
 
-        if ($documents['status'] === 'issues' && !$documents['all_verified']) {
+        // Only block for documents if no legacy documents exist
+        // Legacy drivers with old document system are considered verified
+        $hasLegacyDocs = isset($documents['has_legacy_documents']) && $documents['has_legacy_documents'];
+        if ($documents['status'] === 'issues' && !$documents['all_verified'] && !$hasLegacyDocs) {
             $blockers[] = 'documents_not_verified';
         }
 
