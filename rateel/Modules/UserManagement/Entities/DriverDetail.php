@@ -49,6 +49,8 @@ class DriverDetail extends Model
         'destination_preferences',
         'destination_filter_enabled',
         'destination_radius_km',
+        // Honeycomb preference
+        'honeycomb_enabled',
         'created_at',
         'updated_at',
     ];
@@ -70,6 +72,8 @@ class DriverDetail extends Model
         'destination_preferences' => 'array',
         'destination_filter_enabled' => 'boolean',
         'destination_radius_km' => 'decimal:2',
+        // Honeycomb preference cast
+        'honeycomb_enabled' => 'boolean',
     ];
 
     /**
@@ -396,6 +400,46 @@ class DriverDetail extends Model
         }
 
         return false;
+    }
+
+    // HONEYCOMB PREFERENCE METHODS
+
+    /**
+     * Toggle honeycomb dispatch on/off for this driver
+     *
+     * @return bool Success status
+     */
+    public function toggleHoneycomb(): bool
+    {
+        $this->honeycomb_enabled = !$this->honeycomb_enabled;
+        return $this->save();
+    }
+
+    /**
+     * Set honeycomb dispatch status explicitly
+     *
+     * @param bool $enabled
+     * @return bool Success status
+     */
+    public function setHoneycomb(bool $enabled): bool
+    {
+        $this->honeycomb_enabled = $enabled;
+        return $this->save();
+    }
+
+    /**
+     * Get honeycomb preference info for API response
+     *
+     * @return array
+     */
+    public function getHoneycombInfo(): array
+    {
+        return [
+            'honeycomb_enabled' => $this->honeycomb_enabled ?? true,
+            'description' => $this->honeycomb_enabled 
+                ? 'Honeycomb dispatch is enabled - you will be matched using optimized zone-based dispatch'
+                : 'Honeycomb dispatch is disabled - you will be matched using standard distance-based dispatch',
+        ];
     }
 
     protected static function newFactory()

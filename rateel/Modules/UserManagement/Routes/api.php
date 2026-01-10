@@ -134,6 +134,14 @@ Route::group(['prefix' => 'driver'], function () {
                 Route::patch('/set-radius', 'setRadius');               // Update radius
             });
         });
+        //new controller - Honeycomb Dispatch Preference
+        Route::group(['prefix' => 'honeycomb'], function () {
+            Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Driver\DriverHoneycombController::class)->group(function () {
+                Route::get('/status', 'status');                        // Get honeycomb status
+                Route::patch('/toggle', 'toggle');                      // Toggle honeycomb on/off
+                Route::patch('/set', 'set');                            // Set honeycomb status explicitly
+            });
+        });
         //new controller
         Route::group(['prefix' => 'level'], function () {
             Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Driver\DriverLevelController::class)->group(function () {

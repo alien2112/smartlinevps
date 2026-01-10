@@ -116,6 +116,7 @@ trait HoneycombDispatchTrait
             ->whereHas('driverDetails', fn($query) => $query
                 ->where('is_online', true)
                 ->whereNotIn('availability_status', ['unavailable', 'on_trip'])
+                ->where('honeycomb_enabled', true) // Only include drivers who opted into honeycomb
             )
             ->when($vehicleCategoryId, function ($query) use ($vehicleCategoryId) {
                 $query->whereHas('user.vehicle', fn($q) => 
