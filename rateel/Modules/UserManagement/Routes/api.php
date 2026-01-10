@@ -194,6 +194,31 @@ Route::group(['prefix' => 'driver'], function () {
                 Route::get('ticket/{id}', 'getTicket');
             });
         });
+        //new controller - Safety Center
+        Route::group(['prefix' => 'safety'], function () {
+            Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Driver\SafetyCenterController::class)->group(function () {
+                // Trusted Contacts
+                Route::get('trusted-contacts', 'getTrustedContacts');
+                Route::post('trusted-contacts', 'addTrustedContact');
+                Route::put('trusted-contacts/{id}', 'updateTrustedContact');
+                Route::delete('trusted-contacts/{id}', 'deleteTrustedContact');
+                
+                // Trip Sharing
+                Route::post('share-trip', 'shareTrip');
+                Route::get('shared-trips', 'getSharedTrips');
+                Route::delete('share-trip/{id}', 'stopSharingTrip');
+                
+                // Trip Monitoring
+                Route::post('enable-monitoring', 'enableMonitoring');
+                Route::get('monitoring-status', 'getMonitoringStatus');
+                Route::post('update-monitoring-location', 'updateMonitoringLocation');
+                
+                // Emergency Alerts
+                Route::post('emergency-alert', 'triggerEmergencyAlert');
+                Route::get('emergency-contacts', 'getEmergencyContacts');
+                Route::get('my-alerts', 'getMyAlerts');
+            });
+        });
     });
 
     // KYC Verification routes (No auth required - for onboarding flow)
