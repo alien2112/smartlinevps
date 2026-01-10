@@ -184,6 +184,16 @@ Route::group(['prefix' => 'driver'], function () {
                 Route::post('delete/{id}', 'destroy');
             });
         });
+        //new controller - Support
+        Route::group(['prefix' => 'support'], function () {
+            Route::controller(\Modules\UserManagement\Http\Controllers\Api\New\Driver\SupportController::class)->group(function () {
+                Route::get('app-info', 'appInfo');
+                Route::get('faq', 'faq');
+                Route::post('ticket', 'createTicket');
+                Route::get('tickets', 'getTickets');
+                Route::get('ticket/{id}', 'getTicket');
+            });
+        });
     });
 
     // KYC Verification routes (No auth required - for onboarding flow)

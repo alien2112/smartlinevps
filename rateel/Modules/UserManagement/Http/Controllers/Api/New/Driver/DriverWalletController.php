@@ -47,6 +47,10 @@ class DriverWalletController extends Controller
         // Calculate withdrawable amount (receivable - payable)
         $withdrawableAmount = max(0, (float) $userAccount->receivable_balance - (float) $userAccount->payable_balance);
 
+        // Check if wallet balance is negative
+        $isNegative = $userAccount->wallet_balance < 0;
+        $amountOwed = $isNegative ? abs($userAccount->wallet_balance) : 0;
+
         return response()->json(responseFormatter(DEFAULT_200, [
             'receivable_balance' => (float) $userAccount->receivable_balance,
             'payable_balance' => (float) $userAccount->payable_balance,
@@ -56,6 +60,11 @@ class DriverWalletController extends Controller
             'wallet_balance' => (float) $userAccount->wallet_balance,
             'referral_earn' => (float) $userAccount->referral_earn,
             'withdrawable_amount' => $withdrawableAmount,
+            // NEW: Negative balance indicators
+            'is_negative' => $isNegative,
+            'amount_owed' => $amountOwed,
+            'formatted_wallet_balance' => getCurrencyFormat($userAccount->wallet_balance),
+            'formatted_amount_owed' => $isNegative ? getCurrencyFormat($amountOwed) : null,
             'currency' => businessConfig('currency_code')?->value ?? 'EGP',
             'formatted_receivable' => getCurrencyFormat($userAccount->receivable_balance),
             'formatted_payable' => getCurrencyFormat($userAccount->payable_balance),

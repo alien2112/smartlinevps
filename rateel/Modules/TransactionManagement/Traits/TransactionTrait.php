@@ -103,71 +103,91 @@ trait TransactionTrait
             $tripBalanceAfterRemoveCommission = $trip->paid_fare - $trip->fee->admin_commission; //70
         }
 
-
-        //Rider account update
-        $riderAccount = UserAccount::where('user_id', $trip->driver->id)->first();
-        $riderAccount->payable_balance += $adminReceived; //30
-        $riderAccount->received_balance += $tripBalanceAfterRemoveCommission; //70
+        // ============================================================
+        // NEW: Deduct commission from driver's wallet_balance (can go negative)
+        // ============================================================
+        
+        // Get driver account with lock to prevent race conditions
+        $riderAccount = UserAccount::where('user_id', $trip->driver->id)
+            ->lockForUpdate()
+            ->first();
+        
+        // Deduct commission from wallet_balance (can go negative)
+        $riderAccount->wallet_balance -= $adminReceived;
+        
+        // Still track received cash (driver's earning portion)
+        $riderAccount->received_balance += $tripBalanceAfterRemoveCommission;
         $riderAccount->save();
-
-        //Rider account update transaction 1
+        
+        // Transaction 1: Record wallet debit for commission
         $riderTransaction1 = new Transaction();
-        $riderTransaction1->attribute = 'driver_earning';
+        $riderTransaction1->attribute = 'cash_trip_commission_deducted';
         $riderTransaction1->attribute_id = $trip->id;
-        $riderTransaction1->credit = $tripBalanceAfterRemoveCommission;
-        $riderTransaction1->balance = $riderAccount->received_balance;
+        $riderTransaction1->debit = $adminReceived;
+        $riderTransaction1->balance = $riderAccount->wallet_balance;
         $riderTransaction1->user_id = $trip->driver->id;
-        $riderTransaction1->account = 'received_balance';
+        $riderTransaction1->account = 'wallet_balance';
         $riderTransaction1->save();
-
-        //Rider account update transaction 2
+        
+        // Transaction 2: Record driver earning
         $riderTransaction2 = new Transaction();
-        $riderTransaction2->attribute = 'admin_commission';
+        $riderTransaction2->attribute = 'driver_earning';
         $riderTransaction2->attribute_id = $trip->id;
-        $riderTransaction2->credit = $adminReceived;
-        $riderTransaction2->balance = $riderAccount->payable_balance;
+        $riderTransaction2->credit = $tripBalanceAfterRemoveCommission;
+        $riderTransaction2->balance = $riderAccount->received_balance;
         $riderTransaction2->user_id = $trip->driver->id;
-        $riderTransaction2->account = 'payable_balance';
+        $riderTransaction2->account = 'received_balance';
         $riderTransaction2->trx_ref_id = $riderTransaction1->id;
         $riderTransaction2->save();
 
-        //Rider account update for coupon
+        // Handle coupon and discount as before
         if ($trip->coupon_id !== null && $trip->coupon_amount > 0) {
             $this->riderAccountUpdateWithTransactionForCoupon($trip);
         }
-
-        //Rider account update for discount
         if ($trip->discount_amount !== null && $trip->discount_amount > 0) {
             $this->riderAccountUpdateWithTransactionForDiscount($trip);
         }
 
-        //Admin account update
+        // ============================================================
+        // Admin receives commission directly (already "collected")
+        // ============================================================
+        
         $adminAccount = UserAccount::where('user_id', $adminUserId)->first();
-        $adminAccount->receivable_balance += $adminReceived; //30
+        $adminAccount->received_balance += $adminReceived; // Commission directly received
         $adminAccount->save();
 
-        //Admin transaction 1
+        // Admin transaction: Commission received
         $adminTransaction = new Transaction();
         $adminTransaction->attribute = 'admin_commission';
         $adminTransaction->attribute_id = $trip->id;
         $adminTransaction->credit = $adminReceived;
-        $adminTransaction->balance = $adminAccount->receivable_balance;
+        $adminTransaction->balance = $adminAccount->received_balance;
         $adminTransaction->user_id = $adminUserId;
-        $adminTransaction->account = 'receivable_balance';
-        $adminTransaction->trx_ref_id = $riderTransaction2->id;
+        $adminTransaction->account = 'received_balance';
+        $adminTransaction->trx_ref_id = $riderTransaction1->id;
         $adminTransaction->save();
 
-        //Admin account update for coupon amount
+        // Handle admin coupon/discount
         if ($trip->coupon_id !== null && $trip->coupon_amount > 0) {
             $this->adminAccountUpdateWithTransactionForCoupon($trip, $adminUserId);
         }
-
-        //Admin account update for discount amount
         if ($trip->discount_amount !== null && $trip->discount_amount > 0) {
             $this->adminAccountUpdateWithTransactionForDiscount($trip, $adminUserId);
         }
 
         $this->driverLevelUpdateChecker($trip->driver);
+
+        // Send notification to driver about commission deduction
+        if ($riderAccount->wallet_balance < 0) {
+            sendDeviceNotification(
+                fcm_token: $trip->driver->fcm_token,
+                title: translate('Commission Deducted'),
+                description: translate('Commission of ' . $adminReceived . ' EGP has been deducted. Your wallet balance is now ' . $riderAccount->wallet_balance . ' EGP. Please top-up to clear the negative balance.'),
+                status: 1,
+                action: 'wallet_negative',
+                user_id: $trip->driver->id,
+            );
+        }
 
         DB::commit();
     }
