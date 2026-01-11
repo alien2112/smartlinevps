@@ -102,6 +102,7 @@ Route::group(['prefix' => 'driver/auth'], function () {
         // Step 6: Document upload (multi-file uploads)
         Route::post('upload/id', 'uploadId')->name('driver.onboarding.upload.id');
         Route::post('upload/license', 'uploadLicense')->name('driver.onboarding.upload.license');
+        Route::post('upload/driving-license', 'uploadDrivingLicense')->name('driver.onboarding.upload.driving-license');
         Route::post('upload/car_photo', 'uploadCarPhoto')->name('driver.onboarding.upload.car_photo');
         Route::post('upload/selfie', 'uploadSelfie')->name('driver.onboarding.upload.selfie');
 

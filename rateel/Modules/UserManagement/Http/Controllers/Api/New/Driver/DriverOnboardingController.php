@@ -613,6 +613,46 @@ class DriverOnboardingController extends Controller
     }
 
     /**
+     * Step 6b (Alternative): Upload Driving License Documents (Front + Back)
+     * POST /api/driver/auth/upload/driving-license
+     * Alternative endpoint using driving_license_front and driving_license_back field names
+     */
+    public function uploadDrivingLicense(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'phone' => 'required|string|min:10|max:15',
+            'driving_license_front' => 'required|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'driving_license_back' => 'required|file|mimes:jpg,jpeg,png,pdf|max:5120',
+
+            // Optional vehicle information
+            'brand_id' => 'sometimes|required|exists:vehicle_brands,id',
+            'model_id' => 'sometimes|required|exists:vehicle_models,id',
+            'category_id' => 'sometimes|exists:vehicle_categories,id',
+            'licence_plate_number' => 'sometimes|required|string|max:255',
+            'licence_expire_date' => 'sometimes|date',
+            'ownership' => 'sometimes|nullable|string|in:owned,rented,leased',
+            'fuel_type' => 'sometimes|nullable|string|in:petrol,diesel,electric,hybrid',
+            'vin_number' => 'sometimes|nullable|string|max:255',
+            'transmission' => 'sometimes|nullable|string|in:manual,automatic',
+            'parcel_weight_capacity' => 'sometimes|nullable|numeric',
+            'year_id' => 'sometimes|nullable|exists:vehicle_years,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        return $this->handleMultiDocumentUploadWithVehicle($request, [
+            'driving_license_front' => DriverDocument::TYPE_LICENSE_FRONT,
+            'driving_license_back' => DriverDocument::TYPE_LICENSE_BACK,
+        ]);
+    }
+
+    /**
      * Step 6c: Upload Car Photo Documents (Front + Back)
      * POST /api/driver/auth/upload/car_photo
      */
