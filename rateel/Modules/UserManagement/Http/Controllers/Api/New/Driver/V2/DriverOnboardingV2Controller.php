@@ -446,7 +446,7 @@ class DriverOnboardingV2Controller extends Controller
             'first_name_ar' => 'required|string|max:100',
             'last_name_ar' => 'required|string|max:100',
             'national_id' => 'required|string|min:10|max:20',
-            'city_id' => 'required|string',
+            'city_id' => 'required|exists:zones,id',
             'city_name' => 'nullable|string|max:100',
             'referral_code' => 'nullable|string|size:8',
         ]);
@@ -461,23 +461,6 @@ class DriverOnboardingV2Controller extends Controller
 
         $phone = $this->normalizePhone($request->phone);
         $referralCode = $request->referral_code ? strtoupper(trim($request->referral_code)) : null;
-
-        // Resolve zone: accept both zone ID (UUID) and zone name
-        $zoneInput = $request->city_id;
-        $zone = DB::table('zones')->where('id', $zoneInput)->first();
-
-        if (!$zone) {
-            // Try to find by name if not found by ID
-            $zone = DB::table('zones')->where('name', $zoneInput)->first();
-        }
-
-        if (!$zone) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Invalid city/zone. Please select a valid zone.',
-                'errors' => ['city_id' => ['The selected city is invalid.']],
-            ], 422);
-        }
 
         $driver = User::where('phone', $phone)
             ->where('user_type', 'driver')
@@ -533,8 +516,8 @@ class DriverOnboardingV2Controller extends Controller
         $driver->first_name_ar = $request->first_name_ar;
         $driver->last_name_ar = $request->last_name_ar;
         $driver->identification_number = $request->national_id;
-        $driver->city_id = $zone->id;
-        $driver->city_name = $request->city_name ?? $zone->name;
+        $driver->city_id = $request->city_id;
+        $driver->city_name = $request->city_name;
         $driver->register_completed_at = now();
         $driver->onboarding_step = self::STEP_VEHICLE_TYPE;
 
