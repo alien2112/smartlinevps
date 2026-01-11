@@ -209,28 +209,16 @@ class DriverDocument extends Model
      */
     public static function getRequiredDocuments(?string $vehicleType = null): array
     {
-        // New document types (actually used in database)
-        $newTypes = [
-            'national_id' => 'National ID',
-            'driving_license' => 'Driving License',
-            'vehicle_registration' => 'Vehicle Registration',
-            'vehicle_photo' => 'Vehicle Photo',
-            'profile_photo' => 'Profile Photo',
+        // Document types with improved display names
+        return [
+            'id_front' => 'National ID (Front)',
+            'id_back' => 'National ID (Back)',
+            'license_front' => 'Driving License (Front)',
+            'license_back' => 'Driving License (Back)',
+            'car_front' => 'Vehicle Photo (Front)',
+            'car_back' => 'Vehicle Photo (Back)',
+            'selfie' => 'Profile Photo / Selfie',
         ];
-        
-        // Old document types (for backward compatibility)
-        $oldTypes = [
-            'id_front' => 'ID Front',
-            'id_back' => 'ID Back',
-            'license_front' => 'License Front',
-            'license_back' => 'License Back',
-            'car_front' => 'Car Front',
-            'car_back' => 'Car Back',
-            'selfie' => 'Selfie',
-        ];
-        
-        // Merge both to support old and new types
-        return array_merge($newTypes, $oldTypes);
     }
 
     /**
