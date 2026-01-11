@@ -1130,8 +1130,8 @@ class DriverOnboardingController extends Controller
         // Get uploaded document types
         $uploadedTypes = $uploadedDocuments->pluck('type')->toArray();
 
-        // Calculate missing documents
-        $missingTypes = array_diff($requiredDocs, $uploadedTypes);
+        // Calculate missing documents - compare KEYS not VALUES
+        $missingTypes = array_diff(array_keys($requiredDocs), $uploadedTypes);
 
         // Calculate statistics
         $verifiedCount = $uploadedDocuments->where('verified', true)->count();
