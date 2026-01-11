@@ -71,6 +71,7 @@ class User extends Authenticatable
         'vehicle_selected_at',
         'documents_completed_at',
         'city_id',
+        'city_name',
         'selected_vehicle_type',
         'travel_enabled',
         // Referral system fields

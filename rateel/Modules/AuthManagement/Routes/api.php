@@ -60,6 +60,9 @@ Route::group(['prefix' => 'v2/driver/onboarding'], function () {
         // Step 2: Verify OTP
         Route::post('verify-otp', 'verifyOtp')->name('driver.onboarding.v2.verify-otp');
 
+        // Resend OTP - Only requires phone
+        Route::post('resend-otp', 'resendOtp')->name('driver.onboarding.v2.resend-otp');
+
         // Step 3: Set password
         Route::post('set-password', 'setPassword')->name('driver.onboarding.v2.set-password');
 

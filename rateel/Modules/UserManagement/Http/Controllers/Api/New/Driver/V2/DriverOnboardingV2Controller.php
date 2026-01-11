@@ -447,6 +447,7 @@ class DriverOnboardingV2Controller extends Controller
             'last_name_ar' => 'required|string|max:100',
             'national_id' => 'required|string|min:10|max:20',
             'city_id' => 'required|string',
+            'city_name' => 'nullable|string|max:100',
             'referral_code' => 'nullable|string|size:8',
         ]);
 
@@ -533,6 +534,7 @@ class DriverOnboardingV2Controller extends Controller
         $driver->last_name_ar = $request->last_name_ar;
         $driver->identification_number = $request->national_id;
         $driver->city_id = $zone->id;
+        $driver->city_name = $request->city_name ?? $zone->name;
         $driver->register_completed_at = now();
         $driver->onboarding_step = self::STEP_VEHICLE_TYPE;
 
