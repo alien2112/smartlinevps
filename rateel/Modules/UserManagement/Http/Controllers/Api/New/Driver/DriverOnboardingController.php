@@ -1494,16 +1494,7 @@ class DriverOnboardingController extends Controller
                 ->pluck('type')
                 ->toArray();
 
-            // Handle license documents specially - accept either license_front/back OR driving_license_front/back
             $missingDocs = array_diff($requiredDocs, $uploadedDocTypes);
-
-            // If driving_license is missing, check if old license_front/back was uploaded instead
-            if (isset($missingDocs['driving_license_front']) || isset($missingDocs['driving_license_back'])) {
-                if (DriverDocument::hasLicenseDocuments($driver->id)) {
-                    unset($missingDocs['driving_license_front']);
-                    unset($missingDocs['driving_license_back']);
-                }
-            }
 
             if (empty($missingDocs)) {
                 // All documents uploaded - move to KYC verification
@@ -1793,16 +1784,7 @@ class DriverOnboardingController extends Controller
                 ->pluck('type')
                 ->toArray();
 
-            // Handle license documents specially - accept either license_front/back OR driving_license_front/back
             $missingDocs = array_diff($requiredDocs, $uploadedDocTypes);
-
-            // If driving_license is missing, check if old license_front/back was uploaded instead
-            if (isset($missingDocs['driving_license_front']) || isset($missingDocs['driving_license_back'])) {
-                if (DriverDocument::hasLicenseDocuments($driver->id)) {
-                    unset($missingDocs['driving_license_front']);
-                    unset($missingDocs['driving_license_back']);
-                }
-            }
 
             if (empty($missingDocs)) {
                 // All documents uploaded - move to KYC verification
