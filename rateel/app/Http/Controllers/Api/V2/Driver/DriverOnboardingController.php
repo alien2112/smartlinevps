@@ -356,6 +356,7 @@ class DriverOnboardingController extends Controller
             'model_id' => 'nullable|string|exists:vehicle_models,id',
             'year_id' => 'nullable|string|exists:vehicle_years,id',
             'licence_plate' => 'nullable|string|max:20',
+            'request_travel' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {

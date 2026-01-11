@@ -655,6 +655,7 @@ All protected endpoints require:
 | `year` | integer | ❌ No | min:1990, max:current+1 | Production year |
 | `color` | string | ❌ No | max:30 | Vehicle color |
 | `licence_plate` | string | ❌ No | max:20 | License plate number |
+| `request_travel` | boolean | ❌ No | - | Set to true to request "Travel" capability for this vehicle |
 
 **Request Body Example:**
 ```json

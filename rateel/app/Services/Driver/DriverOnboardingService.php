@@ -800,6 +800,10 @@ class DriverOnboardingService
                 $vehicleData['licence_plate_number'] = $data['licence_plate'];
             }
 
+            if (isset($data['request_travel']) && filter_var($data['request_travel'], FILTER_VALIDATE_BOOLEAN)) {
+                $vehicleData['travel_type_requested'] = true;
+            }
+
             DB::table('vehicles')->insert($vehicleData);
 
             $driver->update([

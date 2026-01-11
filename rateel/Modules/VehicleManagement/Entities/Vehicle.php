@@ -37,7 +37,9 @@ class Vehicle extends Model
         'updated_at',
         'vehicle_request_status',
         'deny_note',
-        'draft'
+        'draft',
+        'travel_type_requested',
+        'is_travel_enabled'
     ];
 
     /**
@@ -53,6 +55,8 @@ class Vehicle extends Model
         'has_pending_primary_request' => 'boolean',
         'vehicle_request_status' => 'string',
         'draft' => 'array',
+        'travel_type_requested' => 'boolean',
+        'is_travel_enabled' => 'boolean',
     ];
 
     /**
