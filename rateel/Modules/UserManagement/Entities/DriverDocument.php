@@ -26,12 +26,18 @@ class DriverDocument extends Model
     public const TYPE_CAR_BACK = 'car_back';
     public const TYPE_SELFIE = 'selfie';
 
+    // Additional document type constants for driving license
+    public const TYPE_DRIVING_LICENSE_FRONT = 'driving_license_front';
+    public const TYPE_DRIVING_LICENSE_BACK = 'driving_license_back';
+
     // Required documents for onboarding completion
     public const REQUIRED_DOCUMENTS = [
         self::TYPE_ID_FRONT,
         self::TYPE_ID_BACK,
         self::TYPE_LICENSE_FRONT,
         self::TYPE_LICENSE_BACK,
+        self::TYPE_DRIVING_LICENSE_FRONT,
+        self::TYPE_DRIVING_LICENSE_BACK,
         self::TYPE_CAR_FRONT,
         self::TYPE_CAR_BACK,
         self::TYPE_SELFIE,
@@ -44,6 +50,8 @@ class DriverDocument extends Model
             self::TYPE_ID_BACK,
             self::TYPE_LICENSE_FRONT,
             self::TYPE_LICENSE_BACK,
+            self::TYPE_DRIVING_LICENSE_FRONT,
+            self::TYPE_DRIVING_LICENSE_BACK,
             self::TYPE_CAR_FRONT,
             self::TYPE_CAR_BACK,
             self::TYPE_SELFIE,
@@ -53,6 +61,8 @@ class DriverDocument extends Model
             self::TYPE_ID_BACK,
             self::TYPE_LICENSE_FRONT,
             self::TYPE_LICENSE_BACK,
+            self::TYPE_DRIVING_LICENSE_FRONT,
+            self::TYPE_DRIVING_LICENSE_BACK,
             self::TYPE_CAR_FRONT,
             self::TYPE_CAR_BACK,
             self::TYPE_SELFIE,
@@ -62,6 +72,8 @@ class DriverDocument extends Model
             self::TYPE_ID_BACK,
             self::TYPE_LICENSE_FRONT,
             self::TYPE_LICENSE_BACK,
+            self::TYPE_DRIVING_LICENSE_FRONT,
+            self::TYPE_DRIVING_LICENSE_BACK,
             self::TYPE_SELFIE,
         ],
         'scooter' => [
@@ -69,6 +81,8 @@ class DriverDocument extends Model
             self::TYPE_ID_BACK,
             self::TYPE_LICENSE_FRONT,
             self::TYPE_LICENSE_BACK,
+            self::TYPE_DRIVING_LICENSE_FRONT,
+            self::TYPE_DRIVING_LICENSE_BACK,
             self::TYPE_SELFIE,
         ],
     ];
@@ -210,11 +224,14 @@ class DriverDocument extends Model
     public static function getRequiredDocuments(?string $vehicleType = null): array
     {
         // Document types with improved display names
+        // Shows both 'license' and 'driving_license' for backward compatibility
         return [
             'id_front' => 'National ID (Front)',
             'id_back' => 'National ID (Back)',
-            'license_front' => 'Driving License (Front)',
-            'license_back' => 'Driving License (Back)',
+            'license_front' => 'License (Front)',
+            'license_back' => 'License (Back)',
+            'driving_license_front' => 'Driving License (Front)',
+            'driving_license_back' => 'Driving License (Back)',
             'car_front' => 'Vehicle Photo (Front)',
             'car_back' => 'Vehicle Photo (Back)',
             'selfie' => 'Profile Photo / Selfie',
