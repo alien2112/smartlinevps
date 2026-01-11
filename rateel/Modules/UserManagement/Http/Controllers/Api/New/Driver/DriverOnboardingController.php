@@ -647,8 +647,8 @@ class DriverOnboardingController extends Controller
         }
 
         return $this->handleMultiDocumentUploadWithVehicle($request, [
-            'driving_license_front' => DriverDocument::TYPE_LICENSE_FRONT,
-            'driving_license_back' => DriverDocument::TYPE_LICENSE_BACK,
+            'driving_license_front' => DriverDocument::TYPE_DRIVING_LICENSE_FRONT,
+            'driving_license_back' => DriverDocument::TYPE_DRIVING_LICENSE_BACK,
         ]);
     }
 
