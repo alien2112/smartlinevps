@@ -229,6 +229,7 @@ class DriverOnboardingV2Controller extends Controller
             'message' => 'OTP verified successfully',
             'data' => [
                 'next_step' => $nextStep,
+                'phone_verified' => true,
             ],
         ];
 
@@ -246,6 +247,63 @@ class DriverOnboardingV2Controller extends Controller
         }
 
         return response()->json($response);
+    }
+
+    /**
+     * Resend OTP - Only requires phone
+     * POST /api/v2/driver/onboarding/resend-otp
+     */
+    public function resendOtp(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'phone' => 'required|string|min:10|max:15',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $phone = $this->normalizePhone($request->phone);
+
+        $driver = User::where('phone', $phone)
+            ->where('user_type', 'driver')
+            ->first();
+
+        if (!$driver) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Driver not found. Please start over.',
+            ], 404);
+        }
+
+        // Send OTP via BeOn
+        $otpResult = $this->beonOtpService->sendOtp($phone);
+
+        if (!$otpResult['success']) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $otpResult['message'] ?? 'Failed to send OTP. Please try again.',
+            ], 500);
+        }
+
+        // Cache the OTP
+        $otp = $otpResult['otp'] ?? null;
+        if ($otp) {
+            Cache::put(self::OTP_CACHE_PREFIX . $phone, $otp, now()->addMinutes(self::OTP_EXPIRY_MINUTES));
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'OTP sent successfully',
+            'data' => [
+                'phone' => $phone,
+                'message' => 'Please enter the OTP sent to your phone',
+            ],
+        ]);
     }
 
     /**
