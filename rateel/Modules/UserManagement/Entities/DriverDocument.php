@@ -219,17 +219,16 @@ class DriverDocument extends Model
     /**
      * Get required documents based on vehicle type
      * Returns an associative array with type => display name
-     * Supports both old and new document type naming conventions
+     * Note: license_front/back and driving_license_front/back are mutually exclusive
+     * Either type satisfies the license requirement
      */
     public static function getRequiredDocuments(?string $vehicleType = null): array
     {
         // Document types with improved display names
-        // Shows both 'license' and 'driving_license' for backward compatibility
+        // Uses driving_license as the primary type, but accepts license_front/back for backward compatibility
         return [
             'id_front' => 'National ID (Front)',
             'id_back' => 'National ID (Back)',
-            'license_front' => 'License (Front)',
-            'license_back' => 'License (Back)',
             'driving_license_front' => 'Driving License (Front)',
             'driving_license_back' => 'Driving License (Back)',
             'car_front' => 'Vehicle Photo (Front)',
@@ -244,6 +243,25 @@ class DriverDocument extends Model
     public static function getTypeName(string $type): string
     {
         return ucwords(str_replace('_', ' ', $type));
+    }
+
+    /**
+     * Check if driver has fulfilled the license requirement
+     * Accepts either license_front/back OR driving_license_front/back
+     */
+    public static function hasLicenseDocuments($driverId): bool
+    {
+        $uploadedDocs = static::where('driver_id', $driverId)
+            ->pluck('type')
+            ->toArray();
+
+        $hasOldLicense = in_array(self::TYPE_LICENSE_FRONT, $uploadedDocs) ||
+                         in_array(self::TYPE_LICENSE_BACK, $uploadedDocs);
+
+        $hasNewLicense = in_array(self::TYPE_DRIVING_LICENSE_FRONT, $uploadedDocs) ||
+                         in_array(self::TYPE_DRIVING_LICENSE_BACK, $uploadedDocs);
+
+        return $hasOldLicense || $hasNewLicense;
     }
 
     /**
