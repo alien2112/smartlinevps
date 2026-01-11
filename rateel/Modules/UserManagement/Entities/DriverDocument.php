@@ -219,12 +219,12 @@ class DriverDocument extends Model
     /**
      * Get required documents based on vehicle type
      * Returns an associative array with type => display name
-     * Supports both old and new document type naming conventions
+     * Note: License and Driving License are SEPARATE required document types
      */
     public static function getRequiredDocuments(?string $vehicleType = null): array
     {
         // Document types with improved display names
-        // Shows both 'license' and 'driving_license' for backward compatibility
+        // Both License and Driving License are required as distinct document types
         return [
             'id_front' => 'National ID (Front)',
             'id_back' => 'National ID (Back)',

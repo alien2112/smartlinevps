@@ -1494,7 +1494,10 @@ class DriverOnboardingController extends Controller
                 ->pluck('type')
                 ->toArray();
 
-            $missingDocs = array_diff($requiredDocs, $uploadedDocTypes);
+            // Compare document type KEYS, not VALUES (requiredDocs has TYPE => DISPLAY_NAME)
+            $missingDocTypes = array_diff(array_keys($requiredDocs), $uploadedDocTypes);
+            // Return as TYPE => DISPLAY_NAME for consistency
+            $missingDocs = array_intersect_key($requiredDocs, array_flip($missingDocTypes));
 
             if (empty($missingDocs)) {
                 // All documents uploaded - move to KYC verification
@@ -1784,7 +1787,10 @@ class DriverOnboardingController extends Controller
                 ->pluck('type')
                 ->toArray();
 
-            $missingDocs = array_diff($requiredDocs, $uploadedDocTypes);
+            // Compare document type KEYS, not VALUES (requiredDocs has TYPE => DISPLAY_NAME)
+            $missingDocTypes = array_diff(array_keys($requiredDocs), $uploadedDocTypes);
+            // Return as TYPE => DISPLAY_NAME for consistency
+            $missingDocs = array_intersect_key($requiredDocs, array_flip($missingDocTypes));
 
             if (empty($missingDocs)) {
                 // All documents uploaded - move to KYC verification
