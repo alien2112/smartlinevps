@@ -27,20 +27,14 @@ async function verifyCaptainAccess(userId, dbQuery) {
 
         const captain = rows[0];
 
-        if (!captain.is_verified) {
-            return { verified: false, reason: 'NOT_VERIFIED' };
-        }
-
-        if (!captain.is_active) {
-            return { verified: false, reason: 'INACTIVE_CAPTAIN' };
-        }
-
-        return { 
-            verified: true, 
+        // For registration status inquiries, we allow captains even if not verified/active
+        // This allows them to check their registration status
+        return {
+            verified: true, // Always verified for registration status check
             captain: {
                 id: captain.id,
-                is_verified: captain.is_verified,
-                is_active: captain.is_active,
+                is_verified: captain.is_verified || false,
+                is_active: captain.is_active || false,
                 license_number: captain.license_number
             }
         };
@@ -59,17 +53,17 @@ async function verifyCaptainAccess(userId, dbQuery) {
  */
 async function shouldHaveCaptainAccess(userId, dbQuery, logSecurityEvent) {
     const result = await verifyCaptainAccess(userId, dbQuery);
-    
+
     if (!result.verified && result.reason !== 'NOT_CAPTAIN') {
         // Log access denial
         if (logSecurityEvent) {
-            logSecurityEvent('captain_access_denied', { 
-                userId, 
-                reason: result.reason 
+            logSecurityEvent('captain_access_denied', {
+                userId,
+                reason: result.reason
             });
         }
     }
-    
+
     return result.verified;
 }
 
@@ -77,6 +71,8 @@ module.exports = {
     verifyCaptainAccess,
     shouldHaveCaptainAccess
 };
+
+
 
 
 

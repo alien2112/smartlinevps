@@ -2351,25 +2351,34 @@ app.post('/chat',
 
             // If detected as captain, verify from database
             if (detectedType === 'captain' || userType === 'captain') {
-                const captainVerification = await verifyCaptainAccess(user_id, dbQuery);
-                if (captainVerification.verified) {
-                    userType = 'captain';
-                    if (!getUserType(user_id)) {
-                        setUserType(user_id, 'captain');
+                try {
+                    const captainVerification = await verifyCaptainAccess(user_id, dbQuery);
+                    if (captainVerification.verified) {
+                        userType = 'captain';
+                        if (!getUserType(user_id)) {
+                            setUserType(user_id, 'captain');
+                        }
+                    } else {
+                        // Not a captain in database - treat as customer
+                        if (detectedType === 'captain') {
+                            logSecurityEvent('captain_access_denied', {
+                                userId: user_id,
+                                reason: captainVerification.reason
+                            });
+                        }
+                        userType = 'customer';
                     }
-                } else {
-                    // Not a verified captain - treat as customer
-                    if (detectedType === 'captain') {
-                        logSecurityEvent('captain_access_denied', {
-                            userId: user_id,
-                            reason: captainVerification.reason
-                        });
-                    }
+                } catch (error) {
+                    logger.error('Captain verification error', { error: error.message, userId: user_id });
+                    // On error, default to customer
                     userType = 'customer';
                 }
             } else if (detectedType && !userType) {
                 setUserType(user_id, detectedType);
                 userType = detectedType;
+            } else if (!userType) {
+                // Default to customer if no type detected
+                userType = 'customer';
             }
 
             // 5. Handle location data
@@ -2384,7 +2393,45 @@ app.post('/chat',
             }
 
             // 6. Process conversation (with language enforcement if enabled)
-            let response = await processConversation(user_id, message, lang, userType, langResult);
+            let response;
+            try {
+                response = await processConversation(user_id, message, lang, userType, langResult);
+                
+                // Ensure response has all required fields
+                if (!response) {
+                    throw new Error('processConversation returned null/undefined');
+                }
+                
+                // Ensure required fields exist
+                response.message = response.message || (lang === 'ar' ? 'كيف أقدر أساعدك؟' : 'How can I help you?');
+                response.action = response.action || ACTION_TYPES.NONE;
+                response.data = response.data || {};
+                response.quick_replies = response.quick_replies || [];
+                response.language = response.language || lang;
+                response.userType = response.userType || userType;
+                response.confidence = response.confidence || 0.5;
+                response.handoff = response.handoff || false;
+            } catch (error) {
+                logger.error('processConversation error', {
+                    error: error.message,
+                    stack: error.stack,
+                    userId: user_id
+                });
+                
+                // Fallback response
+                response = {
+                    message: lang === 'ar'
+                        ? 'عذراً، حدث خطأ. حاول مرة أخرى.'
+                        : 'Sorry, an error occurred. Please try again.',
+                    action: ACTION_TYPES.NONE,
+                    data: {},
+                    quick_replies: getDefaultQuickReplies(lang),
+                    language: lang,
+                    userType: userType,
+                    confidence: 0,
+                    handoff: false
+                };
+            }
 
             // 6.5. Language enforcement (if enabled)
             const enforceLanguage = isFeatureEnabled('LANGUAGE_ENFORCEMENT', user_id);

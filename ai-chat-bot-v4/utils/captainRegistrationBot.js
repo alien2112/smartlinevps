@@ -381,22 +381,23 @@ function getQuickReplies(status, lang) {
  */
 async function getCaptainRegistrationStatus(userId, dbQuery) {
     try {
+        // First check if user exists and has driver role
         const rows = await dbQuery(`
             SELECT 
                 u.id,
                 u.first_name,
                 u.last_name,
                 u.user_role,
-                d.is_verified,
-                d.is_active,
-                d.approval_status,
+                COALESCE(d.is_verified, 0) as is_verified,
+                COALESCE(d.is_active, 0) as is_active,
+                COALESCE(d.approval_status, 'pending') as approval_status,
                 d.rejection_reason,
                 d.license_number,
                 d.vehicle_registration_number,
                 d.created_at
             FROM users u
             LEFT JOIN drivers d ON u.id = d.user_id
-            WHERE u.id = ? AND u.user_role = 'driver'
+            WHERE u.id = ? AND (u.user_role = 'driver' OR d.user_id IS NOT NULL)
         `, [userId]);
 
         if (rows.length === 0) {
@@ -408,23 +409,27 @@ async function getCaptainRegistrationStatus(userId, dbQuery) {
         }
 
         const captain = rows[0];
-        const captainName = `${captain.first_name || ''} ${captain.last_name || ''}`.trim();
+        const captainName = `${captain.first_name || ''} ${captain.last_name || ''}`.trim() || 'Captain';
 
         // Determine registration status
         let status = 'under_review'; // Default
+        
+        const approvalStatus = captain.approval_status || 'pending';
+        const isVerified = captain.is_verified === 1 || captain.is_verified === true;
+        const isActive = captain.is_active === 1 || captain.is_active === true;
 
-        if (captain.approval_status === 'approved' && captain.is_verified && captain.is_active) {
+        if (approvalStatus === 'approved' && isVerified && isActive) {
             status = 'approved';
-        } else if (captain.approval_status === 'rejected') {
+        } else if (approvalStatus === 'rejected') {
             status = 'rejected';
-        } else if (captain.approval_status === 'pending') {
+        } else if (approvalStatus === 'pending' || !approvalStatus) {
             // Check if documents are missing
             if (!captain.license_number || !captain.vehicle_registration_number) {
                 status = 'documents_missing';
             } else {
                 status = 'background_check';
             }
-        } else if (captain.approval_status === 'documents_required') {
+        } else if (approvalStatus === 'documents_required') {
             status = 'documents_missing';
         }
 
@@ -433,10 +438,10 @@ async function getCaptainRegistrationStatus(userId, dbQuery) {
             status,
             captain: {
                 name: captainName,
-                is_verified: captain.is_verified,
-                is_active: captain.is_active,
-                approval_status: captain.approval_status,
-                rejection_reason: captain.rejection_reason
+                is_verified: isVerified,
+                is_active: isActive,
+                approval_status: approvalStatus,
+                rejection_reason: captain.rejection_reason || null
             }
         };
     } catch (error) {
@@ -454,4 +459,6 @@ module.exports = {
     getCaptainRegistrationStatus,
     getQuickReplies
 };
+
+
 
