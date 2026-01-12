@@ -47,6 +47,7 @@ class VerificationMediaRepository extends BaseRepository implements Verification
 
     /**
      * Check if required media exists for a session.
+     * Handles flexible video kind matching (e.g., liveness_video can be satisfied by liveness_video, liveness_video_1, or liveness_video_2)
      */
     public function hasRequiredMedia(string $sessionId, array $requiredKinds = ['selfie', 'id_front']): bool
     {
@@ -55,9 +56,27 @@ class VerificationMediaRepository extends BaseRepository implements Verification
             ->pluck('kind')
             ->toArray();
 
+        $videoKinds = config('verification.video_kinds', ['liveness_video', 'liveness_video_1', 'liveness_video_2']);
+
         foreach ($requiredKinds as $kind) {
-            if (!in_array($kind, $existingKinds)) {
-                return false;
+            // Check if it's a video requirement
+            if ($kind === 'liveness_video') {
+                // For liveness_video requirement, check if ANY video kind exists
+                $hasVideo = false;
+                foreach ($videoKinds as $videoKind) {
+                    if (in_array($videoKind, $existingKinds)) {
+                        $hasVideo = true;
+                        break;
+                    }
+                }
+                if (!$hasVideo) {
+                    return false;
+                }
+            } else {
+                // For other kinds (selfie, id_front, id_back), check exact match
+                if (!in_array($kind, $existingKinds)) {
+                    return false;
+                }
             }
         }
 

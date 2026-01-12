@@ -34,5 +34,8 @@ Route::get('/health/detailed', [AppConfigController::class, 'healthDetailed']);
 // Driver App New Features (2026) - Notifications, Support, Account Management, etc.
 require __DIR__.'/api_driver_new_features.php';
 
+// Customer App New Features (2026) - AI Chat, Support, etc.
+require __DIR__.'/api_customer_new_features.php';
+
 // Driver Onboarding V2 - Secure onboarding flow with state machine
 require __DIR__.'/api_v2_driver_onboarding.php';

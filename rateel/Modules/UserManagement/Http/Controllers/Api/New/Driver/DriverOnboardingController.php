@@ -102,11 +102,14 @@ class DriverOnboardingController extends Controller
 
             if (!$driver) {
                 // Create new driver with phone only
+                // Ensure is_approved = false so they must wait for admin approval
                 $driver = User::create([
                     'phone' => $phone,
                     'user_type' => 'driver',
                     'onboarding_step' => self::STEP_OTP,
+                    'onboarding_state' => 'otp_pending',
                     'is_active' => false,
+                    'is_approved' => false,
                     'ref_code' => $this->generateRefCode(),
                 ]);
 
@@ -266,12 +269,20 @@ class DriverOnboardingController extends Controller
     /**
      * Step 3: Set Password
      * POST /api/driver/auth/set-password
+     *
+     * Handles both new driver password setup and returning driver login
      */
     public function setPassword(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
             'phone' => 'required|string|min:10|max:15',
-            'password' => 'required|string|min:8',
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'max:128',
+                'regex:/^[a-zA-Z0-9]+$/', // Only letters and digits, no special characters
+            ],
         ]);
 
         if ($validator->fails()) {
@@ -295,6 +306,61 @@ class DriverOnboardingController extends Controller
             ], 404);
         }
 
+        // Check if driver already has a password (returning driver - login scenario)
+        if (!empty($driver->password)) {
+            // Verify the provided password
+            if (!Hash::check($request->password, $driver->password)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid password. Please try again.',
+                ], 401);
+            }
+
+            // Password is correct - check if approved
+            $nextStep = $this->determineNextStep($driver);
+
+            // Only issue token if driver is approved
+            if (!$driver->is_approved) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Your account has not been approved yet. Please wait for admin approval.',
+                    'error_code' => 'DRIVER_NOT_APPROVED',
+                    'data' => [
+                        'authenticated' => false,
+                        'is_returning' => true,
+                        'next_step' => $nextStep,
+                        'onboarding_state' => $driver->onboarding_state,
+                    ],
+                ], 403);
+            }
+
+            // Issue token with proper scope
+            $tokenScope = $driver->is_approved ? ['driver'] : ['onboarding'];
+            $token = $driver->createToken('driver-token', $tokenScope)->accessToken;
+            $tokenExpiresAt = now()->addHours(48);
+
+            Log::info('Returning driver authenticated via password', [
+                'driver_id' => $driver->id,
+                'phone_masked' => substr($phone, 0, 5) . '****',
+                'is_approved' => $driver->is_approved,
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Login successful. Welcome back!',
+                'data' => [
+                    'authenticated' => true,
+                    'is_returning' => true,
+                    'token' => $token,
+                    'token_type' => 'Bearer',
+                    'token_expires_at' => $tokenExpiresAt->toIso8601String(),
+                    'next_step' => $nextStep,
+                    'driver' => $this->getDriverProfile($driver),
+                ],
+            ]);
+        }
+
+        // New driver - set password for the first time
         // Validate flow - OTP must be verified first
         if (!$driver->otp_verified_at) {
             return response()->json([
@@ -309,10 +375,17 @@ class DriverOnboardingController extends Controller
         $driver->onboarding_step = self::STEP_REGISTER_INFO;
         $driver->save();
 
+        Log::info('New driver password set', [
+            'driver_id' => $driver->id,
+            'phone_masked' => substr($phone, 0, 5) . '****',
+        ]);
+
         return response()->json([
             'status' => 'success',
             'message' => 'Password set successfully',
             'data' => [
+                'authenticated' => false,
+                'is_returning' => false,
                 'next_step' => self::STEP_REGISTER_INFO,
             ],
         ]);
@@ -896,12 +969,29 @@ class DriverOnboardingController extends Controller
             case self::STEP_PENDING_APPROVAL:
                 $requiredDocs = DriverDocument::getRequiredDocuments($driver->selected_vehicle_type);
                 $uploadedDocs = DriverDocument::where('driver_id', $driver->id)
-                    ->pluck('type')
-                    ->toArray();
-                $missingDocs = array_diff($requiredDocs, $uploadedDocs);
+                    ->get(['type', 'verified', 'rejection_reason', 'file_path']);
 
-                $response['data']['uploaded_documents'] = $uploadedDocs;
+                $uploadedTypes = $uploadedDocs->pluck('type')->toArray();
+                $missingDocs = array_diff(array_keys($requiredDocs), $uploadedTypes);
+
+                $response['data']['uploaded_documents'] = $uploadedTypes;
                 $response['data']['vehicle_type'] = $driver->selected_vehicle_type;
+
+                // Include rejected documents info so driver knows what to re-upload
+                $rejectedDocs = $uploadedDocs->filter(function($doc) {
+                    return !$doc->verified && $doc->rejection_reason;
+                })->map(function($doc) {
+                    return [
+                        'type' => $doc->type,
+                        'rejection_reason' => $doc->rejection_reason,
+                    ];
+                })->values()->toArray();
+
+                if (count($rejectedDocs) > 0) {
+                    $response['data']['rejected_documents'] = $rejectedDocs;
+                    $response['data']['has_rejected_documents'] = true;
+                    $response['message'] = 'Some documents were rejected. Please re-upload them.';
+                }
 
                 // Issue token even at these steps (not approved yet)
                 if ($driver->password) {
@@ -1206,10 +1296,13 @@ class DriverOnboardingController extends Controller
             }
 
             // Mark KYC as verified (bypass) and move to pending approval
+            // Ensure driver is NOT approved until admin reviews
             $driver->update([
                 'kyc_verified_at' => now(),
                 'onboarding_step' => self::STEP_PENDING_APPROVAL,
                 'onboarding_state' => 'pending_approval',
+                'is_approved' => false,
+                'is_active' => false,
             ]);
 
             $driver->refresh();
@@ -1217,6 +1310,14 @@ class DriverOnboardingController extends Controller
             Log::info('Driver skipped KYC verification', [
                 'driver_id' => $driver->id,
                 'phone' => $phone,
+            ]);
+
+            // Create admin notification for pending approval
+            \Modules\AdminModule\Entities\AdminNotification::create([
+                'model' => 'driver_approval_request',
+                'model_id' => $driver->id,
+                'message' => 'new_driver_approval_request',
+                'is_seen' => false,
             ]);
 
             return response()->json([

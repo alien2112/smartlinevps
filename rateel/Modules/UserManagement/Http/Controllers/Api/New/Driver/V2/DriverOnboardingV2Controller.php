@@ -83,11 +83,14 @@ class DriverOnboardingV2Controller extends Controller
 
             if (!$driver) {
                 // Create new driver with phone only
+                // Ensure is_approved = false so they must wait for admin approval
                 $driver = User::create([
                     'phone' => $phone,
                     'user_type' => 'driver',
                     'onboarding_step' => self::STEP_OTP,
+                    'onboarding_state' => 'otp_pending',
                     'is_active' => false,
+                    'is_approved' => false,
                     'ref_code' => $this->generateRefCode(),
                 ]);
 

@@ -246,7 +246,7 @@ class AiChatbotController extends Controller
     public function health()
     {
         try {
-            $chatbotUrl = config('services.ai_chatbot.url', 'http://localhost:3001');
+            $chatbotUrl = config('services.ai_chatbot.url', 'http://localhost:3000');
             $response = @file_get_contents($chatbotUrl . '/health', false, stream_context_create([
                 'http' => ['timeout' => 5]
             ]));

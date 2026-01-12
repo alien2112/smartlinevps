@@ -154,8 +154,10 @@ class DriverDocument extends Model
             return null;
         }
 
-        // Use getMediaUrl helper to match vehicle image format
-        return getMediaUrl($this->file_path, 'driver/document');
+        // Files are stored at: storage/app/public/driver-documents/{driver_id}/{filename}
+        // The file_path already contains: driver-documents/{driver_id}/{filename}
+        // So we just need to prepend the storage URL without adding extra folder prefix
+        return asset('storage/' . $this->file_path);
     }
 
     /**

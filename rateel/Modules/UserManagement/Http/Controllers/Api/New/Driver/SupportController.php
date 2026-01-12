@@ -35,6 +35,7 @@ class SupportController extends Controller
     /**
      * Get frequently asked questions
      * GET /api/driver/support/faq
+     * GET /api/driver/auth/support/faqs (alias)
      */
     public function faq(): JsonResponse
     {
@@ -103,6 +104,15 @@ class SupportController extends Controller
     }
 
     /**
+     * Alias for faq() method (plural form for new route)
+     * GET /api/driver/auth/support/faqs
+     */
+    public function faqs(): JsonResponse
+    {
+        return $this->faq();
+    }
+
+    /**
      * Submit a support ticket
      * POST /api/driver/support/ticket
      */
@@ -123,9 +133,12 @@ class SupportController extends Controller
         $driver = auth('api')->user();
 
         $ticket = SupportTicket::create([
+            'ticket_number' => SupportTicket::generateTicketNumber(),
+            'driver_id' => $driver->id,
             'user_id' => $driver->id,
             'user_type' => 'driver',
             'subject' => $request->subject,
+            'description' => $request->message,
             'message' => $request->message,
             'category' => $request->category ?? SupportTicket::CATEGORY_OTHER,
             'priority' => $request->priority ?? 'normal',
@@ -146,6 +159,7 @@ class SupportController extends Controller
     /**
      * Get driver's support tickets
      * GET /api/driver/support/tickets
+     * GET /api/driver/auth/support/tickets (alias)
      */
     public function getTickets(Request $request): JsonResponse
     {
@@ -194,6 +208,15 @@ class SupportController extends Controller
     }
 
     /**
+     * Alias for getTickets() method (for new route)
+     * GET /api/driver/auth/support/tickets
+     */
+    public function tickets(Request $request): JsonResponse
+    {
+        return $this->getTickets($request);
+    }
+
+    /**
      * Get single ticket details
      * GET /api/driver/support/ticket/{id}
      */
@@ -225,6 +248,193 @@ class SupportController extends Controller
                 'ref_id' => $ticket->trip->ref_id,
                 'created_at' => $ticket->trip->created_at->toIso8601String(),
             ] : null,
+        ]));
+    }
+
+    /**
+     * Alias for getTicket() method (for new route)
+     * GET /api/driver/auth/support/tickets/{id}
+     */
+    public function ticketDetails(string $id): JsonResponse
+    {
+        return $this->getTicket($id);
+    }
+
+    /**
+     * Reply to a support ticket
+     * POST /api/driver/auth/support/tickets/{id}/reply
+     */
+    public function replyToTicket(string $id, Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'message' => 'required|string|max:2000',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(responseFormatter(DEFAULT_400, errors: errorProcessor($validator)), 400);
+        }
+
+        $driver = auth('api')->user();
+
+        $ticket = SupportTicket::where('user_id', $driver->id)
+            ->where('id', $id)
+            ->first();
+
+        if (!$ticket) {
+            return response()->json(responseFormatter(DEFAULT_404), 404);
+        }
+
+        // Add reply to ticket (you may want to create a ticket_replies table)
+        // For now, we'll append to the message field
+        $ticket->driver_reply = $request->message;
+        $ticket->replied_at = now();
+        $ticket->save();
+
+        return response()->json(responseFormatter(DEFAULT_UPDATE_200, [
+            'message' => 'Your reply has been submitted.',
+            'ticket_id' => $ticket->id,
+        ]));
+    }
+
+    /**
+     * Rate a support ticket
+     * POST /api/driver/auth/support/tickets/{id}/rate
+     */
+    public function rateTicket(string $id, Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'rating' => 'required|integer|min:1|max:5',
+            'feedback' => 'nullable|string|max:500',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(responseFormatter(DEFAULT_400, errors: errorProcessor($validator)), 400);
+        }
+
+        $driver = auth('api')->user();
+
+        $ticket = SupportTicket::where('user_id', $driver->id)
+            ->where('id', $id)
+            ->first();
+
+        if (!$ticket) {
+            return response()->json(responseFormatter(DEFAULT_404), 404);
+        }
+
+        if ($ticket->status !== SupportTicket::STATUS_RESOLVED && $ticket->status !== SupportTicket::STATUS_CLOSED) {
+            return response()->json(responseFormatter(constant: DEFAULT_400, content: 'Can only rate resolved or closed tickets'), 400);
+        }
+
+        $ticket->rating = $request->rating;
+        $ticket->rating_feedback = $request->feedback;
+        $ticket->rated_at = now();
+        $ticket->save();
+
+        return response()->json(responseFormatter(DEFAULT_UPDATE_200, [
+            'message' => 'Thank you for your feedback!',
+        ]));
+    }
+
+    /**
+     * Submit general feedback
+     * POST /api/driver/auth/support/feedback
+     */
+    public function submitFeedback(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'type' => 'required|in:bug,feature,improvement,general',
+            'message' => 'required|string|max:2000',
+            'rating' => 'nullable|integer|min:1|max:5',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(responseFormatter(DEFAULT_400, errors: errorProcessor($validator)), 400);
+        }
+
+        $driver = auth('api')->user();
+
+        // Create a feedback ticket
+        $ticket = SupportTicket::create([
+            'user_id' => $driver->id,
+            'user_type' => 'driver',
+            'subject' => 'Feedback: ' . ucfirst($request->type),
+            'message' => $request->message,
+            'category' => 'feedback',
+            'priority' => 'normal',
+            'status' => SupportTicket::STATUS_OPEN,
+            'rating' => $request->rating,
+        ]);
+
+        return response()->json(responseFormatter(DEFAULT_STORE_200, [
+            'message' => 'Thank you for your feedback!',
+            'ticket_id' => $ticket->id,
+        ]));
+    }
+
+    /**
+     * Report an issue
+     * POST /api/driver/auth/support/report-issue
+     */
+    public function reportIssue(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'issue_type' => 'required|in:app_crash,payment_issue,trip_issue,account_issue,other',
+            'description' => 'required|string|max:2000',
+            'trip_id' => 'nullable|uuid|exists:trip_requests,id',
+            'severity' => 'nullable|in:low,medium,high,critical',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(responseFormatter(DEFAULT_400, errors: errorProcessor($validator)), 400);
+        }
+
+        $driver = auth('api')->user();
+
+        $severity = $request->severity ?? 'medium';
+        $priority = match($severity) {
+            'critical' => 'urgent',
+            'high' => 'high',
+            'medium' => 'normal',
+            'low' => 'low',
+            default => 'normal',
+        };
+
+        $ticket = SupportTicket::create([
+            'user_id' => $driver->id,
+            'user_type' => 'driver',
+            'subject' => 'Issue Report: ' . str_replace('_', ' ', ucfirst($request->issue_type)),
+            'message' => $request->description,
+            'category' => 'issue',
+            'priority' => $priority,
+            'trip_id' => $request->trip_id,
+            'status' => SupportTicket::STATUS_OPEN,
+        ]);
+
+        return response()->json(responseFormatter(DEFAULT_STORE_200, [
+            'message' => 'Your issue has been reported. We will investigate shortly.',
+            'ticket_id' => $ticket->id,
+            'priority' => $priority,
+        ]));
+    }
+
+    /**
+     * Provide feedback on FAQ helpfulness
+     * POST /api/driver/auth/support/faqs/{id}/feedback
+     */
+    public function faqFeedback(string $id, Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'helpful' => 'required|boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(responseFormatter(DEFAULT_400, errors: errorProcessor($validator)), 400);
+        }
+
+        // In a real implementation, you'd store this in a database
+        // For now, just return success
+        return response()->json(responseFormatter(DEFAULT_200, [
+            'message' => 'Thank you for your feedback!',
         ]));
     }
 }

@@ -27,7 +27,7 @@ class VehicleResource extends JsonResource
             'fuel_type' => $this->fuel_type,
             'ownership' => $this->ownership,
             'driver' => (new DriverResource($this->whenLoaded('driver'))),
-            'documents' => $this->documents,
+            'documents' => getMediaUrl($this->documents, 'vehicle/document'),
             'is_active' => $this->is_active,
             'vehicle_request_status' => $this->vehicle_request_status,
             'deny_note' => $this->deny_note,
