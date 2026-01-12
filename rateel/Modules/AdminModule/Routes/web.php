@@ -51,6 +51,7 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
         Route::get('heat-map', 'heatMap')->name('heat-map');
         Route::get('heat-map-overview-data', 'heatMapOverview')->name('heat-map-overview-data');
         Route::get('heat-map-compare', 'heatMapCompare')->name('heat-map-compare');
+        Route::get('test_customer_map', 'testCustomerMap')->name('test-customer-map');
         Route::get('recent-trip-activity', 'recentTripActivity')->name('recent-trip-activity');
         Route::get('leader-board-driver', 'leaderBoardDriver')->name('leader-board-driver');
         Route::get('leader-board-customer', 'leaderBoardCustomer')->name('leader-board-customer');

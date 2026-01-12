@@ -467,6 +467,64 @@ class DashboardController extends BaseController
                 ->render());
     }
 
+    /**
+     * Test page to display customer last locations on a map
+     */
+    public function testCustomerMap(Request $request)
+    {
+        // Fetch all customer locations from user_last_locations table
+        $customerLocations = \DB::table('user_last_locations')
+            ->where('type', 'customer')
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->where('latitude', '!=', '0')
+            ->where('longitude', '!=', '0')
+            ->select(
+                'user_id',
+                'latitude',
+                'longitude',
+                'zone_id',
+                'updated_at'
+            )
+            ->orderBy('updated_at', 'desc')
+            ->limit(1000) // Limit to 1000 customers for performance
+            ->get();
+
+        // Convert to markers format
+        $markers = $customerLocations->map(function ($location) {
+            return [
+                'position' => [
+                    'lat' => (float)$location->latitude,
+                    'lng' => (float)$location->longitude,
+                ],
+                'title' => "Customer ID: " . $location->user_id,
+                'info' => "Last updated: " . $location->updated_at,
+            ];
+        })->filter(fn($m) => $m['position']['lat'] != 0 && $m['position']['lng'] != 0);
+
+        // Calculate center point from all customer locations
+        $latSum = 0;
+        $lngSum = 0;
+        $count = 0;
+
+        foreach ($customerLocations as $location) {
+            $lat = (float)$location->latitude;
+            $lng = (float)$location->longitude;
+            if ($lat != 0 && $lng != 0) {
+                $latSum += $lat;
+                $lngSum += $lng;
+                $count++;
+            }
+        }
+
+        $centerLat = $count > 0 ? $latSum / $count : 30.0444; // Default to Cairo
+        $centerLng = $count > 0 ? $lngSum / $count : 31.2357; // Default to Cairo
+
+        $markersJson = json_encode($markers->values());
+
+        return view('adminmodule::test-customer-map', compact('markersJson', 'centerLat', 'centerLng', 'customerLocations'));
+    }
+
     public function heatMapCompare(Request $request)
     {
         $allZones = $this->zoneService->getAll();
