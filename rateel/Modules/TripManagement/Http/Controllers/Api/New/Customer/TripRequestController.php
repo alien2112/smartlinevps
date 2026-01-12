@@ -775,7 +775,8 @@ class TripRequestController extends Controller
                 return response()->json(responseFormatter(ROUTE_NOT_FOUND_404, $driverArrivalTime[1]['error_detail'] ?? 'Route not found'), 404);
             }
             if ($trip->type == 'ride_request') {
-                $attributes['driver_arrival_time'] = (float)($driverArrivalTime[0]['duration']) / 60;
+                // duration_sec is in seconds, convert to minutes
+                $attributes['driver_arrival_time'] = (float)($driverArrivalTime[0]['duration_sec']) / 60;
             }
 
             //Trip update - update trip status and set ongoing timestamp

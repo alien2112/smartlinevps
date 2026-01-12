@@ -39,7 +39,7 @@ class VehicleController extends Controller
 
         $formattedVehicles = $vehicles->map(function ($vehicle) {
             $images = $vehicle->documents ? getMediaUrl($vehicle->documents, 'vehicle/document') : [];
-            
+
             return [
                 'id' => $vehicle->id,
                 'brand' => $vehicle->brand?->name,
@@ -59,7 +59,21 @@ class VehicleController extends Controller
                 'images' => [
                     'car_front' => $images[0] ?? null,
                     'car_back' => $images[1] ?? null,
+                    'car_license_image' => $images[2] ?? null,
                 ],
+                'documents' => array_map(function ($img, $idx) {
+                    $type = match($idx) {
+                        0 => 'car_front',
+                        1 => 'car_back',
+                        2 => 'car_license_image',
+                        default => "document_" . ($idx + 1)
+                    };
+                    return [
+                        'type' => $type,
+                        'url' => $img,
+                        'index' => $idx
+                    ];
+                }, $images, array_keys($images)),
                 'created_at' => $vehicle->created_at?->format('Y-m-d H:i:s'),
             ];
         });
@@ -169,14 +183,18 @@ class VehicleController extends Controller
         // Always set vehicle to PENDING status - requires admin approval
         $data = array_merge($request->validated(), [
             'vehicle_request_status' => PENDING,
-            'is_primary' => $isPrimary
+            'is_primary' => $isPrimary,
+            'has_pending_primary_request' => $isPrimary // Set flag when requesting primary vehicle
         ]);
 
-        // If setting as primary, unset others
+        // If setting as primary, unset others and clear their pending flags
         if ($isPrimary) {
             $this->vehicleService->getBy(criteria: ['driver_id' => $request->driver_id])
                 ->each(function ($vehicle) {
-                    $vehicle->update(['is_primary' => false]);
+                    $vehicle->update([
+                        'is_primary' => false,
+                        'has_pending_primary_request' => false
+                    ]);
                 });
         }
 

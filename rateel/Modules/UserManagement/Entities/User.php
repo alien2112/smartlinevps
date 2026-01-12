@@ -88,6 +88,9 @@ class User extends Authenticatable
         'is_approved',
         'terms_accepted_at',
         'privacy_accepted_at',
+        // Negative balance limit
+        'max_negative_balance',
+        'negative_balance_warning_sent',
     ];
 
     protected $casts = [
@@ -111,6 +114,8 @@ class User extends Authenticatable
         'vehicle_selected_at' => 'datetime',
         'documents_completed_at' => 'datetime',
         'travel_enabled' => 'boolean',
+        'max_negative_balance' => 'float',
+        'negative_balance_warning_sent' => 'boolean',
     ];
 
     protected static function newFactory()

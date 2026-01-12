@@ -76,6 +76,9 @@ class AppServiceProvider extends ServiceProvider
         // Register observer for rating achievements
         \Modules\ReviewModule\Entities\Review::observe(\App\Observers\ReviewObserver::class);
 
+        // Register observer for negative balance limit monitoring
+        \Modules\UserManagement\Entities\UserAccount::observe(\App\Observers\UserAccountObserver::class);
+
         // Note: EloquentSpatial::useDefaultSrid(4326) was removed because
         // this method is not available in the installed version of eloquent-spatial.
         // SRID 4326 is typically the default for geographic coordinates anyway.

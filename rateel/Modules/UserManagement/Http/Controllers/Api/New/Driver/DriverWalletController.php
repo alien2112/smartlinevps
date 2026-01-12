@@ -142,6 +142,7 @@ class DriverWalletController extends Controller
                     'received_balance',
                     'pending_withdraw_balance',
                     'received_withdraw_balance',
+                    'wallet_balance',
                 ]);
                 break;
         }
@@ -365,10 +366,16 @@ class DriverWalletController extends Controller
 
             // Add hourly breakdown if requested
             if ($includeHourly) {
+                // Query hourly earnings and payable (matches the main query logic)
                 $hourlyData = Transaction::where('user_id', $driver->id)
-                    ->where('account', 'receivable_balance')
                     ->whereBetween('created_at', [$startOfDay, $endOfDay])
-                    ->selectRaw('HOUR(created_at) as hour, SUM(credit) as earnings, COUNT(*) as transactions')
+                    ->whereIn('account', ['receivable_balance', 'received_balance', 'payable_balance'])
+                    ->selectRaw("
+                        HOUR(created_at) as hour,
+                        SUM(CASE WHEN account IN ('receivable_balance', 'received_balance') THEN credit ELSE 0 END) as earnings,
+                        SUM(CASE WHEN account = 'payable_balance' THEN credit ELSE 0 END) as payable,
+                        COUNT(*) as transactions
+                    ")
                     ->groupBy('hour')
                     ->orderBy('hour')
                     ->get()
@@ -386,12 +393,20 @@ class DriverWalletController extends Controller
                 for ($h = 0; $h < 24; $h++) {
                     $hourData = $hourlyData->get($h);
                     $tripData = $hourlyTrips->get($h);
-                    
+
                     if ($hourData || $tripData) {
+                        $hourEarnings = (float) ($hourData->earnings ?? 0);
+                        $hourPayable = (float) ($hourData->payable ?? 0);
+                        $hourNet = $hourEarnings - $hourPayable;
+
                         $hourlyBreakdown[] = [
                             'hour' => sprintf('%02d:00', $h),
-                            'earnings' => (float) ($hourData->earnings ?? 0),
-                            'formatted_earnings' => getCurrencyFormat($hourData->earnings ?? 0),
+                            'earnings' => $hourEarnings,
+                            'formatted_earnings' => getCurrencyFormat($hourEarnings),
+                            'payable' => $hourPayable,
+                            'formatted_payable' => getCurrencyFormat($hourPayable),
+                            'net_earnings' => $hourNet,
+                            'formatted_net' => getCurrencyFormat($hourNet),
                             'trips' => $tripData->trips ?? 0,
                             'transactions' => $hourData->transactions ?? 0,
                         ];

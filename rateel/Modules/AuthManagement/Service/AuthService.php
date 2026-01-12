@@ -29,11 +29,52 @@ class AuthService extends BaseService implements Interface\AuthServiceInterface
     public function checkClientRoute($request)
     {
         $route = str_contains($request->route()?->getPrefix(), 'customer');
-        if ($route) {
-            $user = $this->userRepository->findOneBy(criteria: ['phone' => $request->phone_or_email, 'user_type' => CUSTOMER]);
-        } else {
-            $user = $this->userRepository->findOneBy(criteria: ['phone' => $request->phone_or_email, 'user_type' => DRIVER]);
+        $phoneOrEmail = $request->phone_or_email;
+
+        // Check if it's an email
+        if (filter_var($phoneOrEmail, FILTER_VALIDATE_EMAIL)) {
+            // Search by email - try requested user type first
+            if ($route) {
+                $user = $this->userRepository->findOneBy(criteria: ['email' => $phoneOrEmail, 'user_type' => CUSTOMER]);
+            } else {
+                $user = $this->userRepository->findOneBy(criteria: ['email' => $phoneOrEmail, 'user_type' => DRIVER]);
+            }
+
+            // If not found, check for admin-employee
+            if (!$user) {
+                $user = $this->userRepository->findOneBy(criteria: ['email' => $phoneOrEmail, 'user_type' => 'admin-employee']);
+            }
+
+            return $user;
         }
+
+        // It's a phone number - search with multiple formats
+        $normalizedPhone = $this->normalizePhoneNumber($phoneOrEmail);
+        $originalPhone = preg_replace('/[^0-9+]/', '', $phoneOrEmail);
+
+        // Try to find user with normalized phone first (new format: +20...)
+        if ($route) {
+            $user = $this->userRepository->findOneBy(criteria: ['phone' => $normalizedPhone, 'user_type' => CUSTOMER]);
+            // If not found, try with original format (old format: 01...)
+            if (!$user) {
+                $user = $this->userRepository->findOneBy(criteria: ['phone' => $originalPhone, 'user_type' => CUSTOMER]);
+            }
+        } else {
+            $user = $this->userRepository->findOneBy(criteria: ['phone' => $normalizedPhone, 'user_type' => DRIVER]);
+            // If not found, try with original format (old format: 01...)
+            if (!$user) {
+                $user = $this->userRepository->findOneBy(criteria: ['phone' => $originalPhone, 'user_type' => DRIVER]);
+            }
+        }
+
+        // If still not found, check for admin-employee with both phone formats
+        if (!$user) {
+            $user = $this->userRepository->findOneBy(criteria: ['phone' => $normalizedPhone, 'user_type' => 'admin-employee']);
+            if (!$user) {
+                $user = $this->userRepository->findOneBy(criteria: ['phone' => $originalPhone, 'user_type' => 'admin-employee']);
+            }
+        }
+
         return $user;
     }
 
@@ -129,5 +170,32 @@ class AuthService extends BaseService implements Interface\AuthServiceInterface
         }
 
         return $otp;
+    }
+
+    /**
+     * Normalize phone number to international format
+     *
+     * @param string $phone
+     * @return string
+     */
+    private function normalizePhoneNumber(string $phone): string
+    {
+        // Remove all non-numeric characters except leading +
+        $phone = preg_replace('/[^0-9+]/', '', $phone);
+
+        // Ensure + prefix for international format
+        if (!str_starts_with($phone, '+')) {
+            // Assume Egyptian number if starts with 0
+            if (str_starts_with($phone, '0')) {
+                $phone = '+20' . substr($phone, 1);
+            } elseif (str_starts_with($phone, '20')) {
+                $phone = '+' . $phone;
+            } else {
+                // For numbers that don't start with 0 or 20, assume they need +20 prefix
+                $phone = '+20' . $phone;
+            }
+        }
+
+        return $phone;
     }
 }

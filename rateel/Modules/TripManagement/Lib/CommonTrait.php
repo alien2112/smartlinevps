@@ -815,6 +815,7 @@ trait CommonTrait
                     'fare' => $trip->VehicleCategory->type === 'car' ? round((($category_min_threshold > 0 && $distance <= $category_min_threshold) ? 0 : $drive_fare), 2) : round((($category_min_threshold > 0 && $distance <= $category_min_threshold) ? 0 : $bike_fare), 2),
                     'estimated_distance' => $trip->VehicleCategory->type === 'car' ? $drive_est_distance : $bike_est_distance,
                     'estimated_duration' => $trip->VehicleCategory->type === 'car' ? $drive_est_duration : $bike_est_duration,
+                    'estimated_time' => (float) ($trip->VehicleCategory->type === 'car' ? $drive_est_duration : $bike_est_duration),
                     'vehicle_category_type' => $trip->VehicleCategory->type === 'car' ? 'Car' : 'Motorbike',
                     'estimated_fare' => round($est_fare, $points),
                     'discount_fare' => round($discountEstFare, $points),

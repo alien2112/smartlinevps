@@ -288,6 +288,114 @@
                 </div>
             </div>
 
+            <!-- Negative Balance Limit Management -->
+            <div class="card mb-30">
+                <div class="card-body">
+                    <div class="row justify-content-between align-items-center g-2 mb-3">
+                        <div class="col-sm-6">
+                            <h5 class="text-capitalize d-flex align-items-center gap-2 text-primary">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                                {{ translate('negative_balance_limit') }}
+                            </h5>
+                        </div>
+                    </div>
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <div class="card card-body h-100 justify-content-center py-4">
+                                <div class="d-flex gap-2 justify-content-between align-items-center">
+                                    <div class="d-flex flex-column align-items-start">
+                                        <h4 class="fw-bold mb-1">
+                                            {{ getCurrencyFormat($commonData['driver']->max_negative_balance ?? 200) }}
+                                        </h4>
+                                        <div class="text-capitalize mb-2 fw-medium">
+                                            {{ translate('maximum_negative_balance_allowed') }}
+                                        </div>
+                                        @if($commonData['driver']->userAccount && $commonData['driver']->userAccount->wallet_balance < 0)
+                                            @php
+                                                $negativeAmount = abs($commonData['driver']->userAccount->wallet_balance);
+                                                $maxLimit = $commonData['driver']->max_negative_balance ?? 200;
+                                                $percentage = $maxLimit > 0 ? ($negativeAmount / $maxLimit) * 100 : 0;
+                                            @endphp
+                                            <div class="w-100 mt-2">
+                                                <small class="text-muted">{{ translate('current_usage') }}: {{ getCurrencyFormat($negativeAmount) }} ({{ round($percentage, 1) }}%)</small>
+                                                <div class="progress mt-1" style="height: 8px;">
+                                                    <div class="progress-bar {{ $percentage >= 75 ? 'bg-danger' : 'bg-warning' }}"
+                                                         role="progressbar"
+                                                         style="width: {{ min($percentage, 100) }}%"
+                                                         aria-valuenow="{{ $percentage }}"
+                                                         aria-valuemin="0"
+                                                         aria-valuemax="100">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        @endif
+                                    </div>
+                                    <div>
+                                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#negativeBalanceLimitModal">
+                                            <i class="bi bi-pencil-square"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="card card-body h-100 justify-content-center py-4">
+                                <div class="d-flex gap-2 justify-content-between align-items-center">
+                                    <div class="d-flex flex-column align-items-start">
+                                        <h4 class="fw-bold mb-1 {{ $commonData['driver']->userAccount && $commonData['driver']->userAccount->wallet_balance < 0 ? 'text-danger' : 'text-success' }}">
+                                            {{ getCurrencyFormat($commonData['driver']->userAccount->wallet_balance ?? 0) }}
+                                        </h4>
+                                        <div class="text-capitalize mb-0 fw-medium">
+                                            {{ translate('current_wallet_balance') }}
+                                        </div>
+                                        @if(!$commonData['driver']->is_active && $commonData['driver']->userAccount && $commonData['driver']->userAccount->wallet_balance < 0)
+                                            <span class="badge bg-danger mt-2">{{ translate('account_deactivated_due_to_negative_balance') }}</span>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal for Updating Negative Balance Limit -->
+            <div class="modal fade" id="negativeBalanceLimitModal" tabindex="-1" aria-labelledby="negativeBalanceLimitModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="negativeBalanceLimitModalLabel">{{ translate('update_negative_balance_limit') }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <form action="{{ route('admin.driver.update-negative-balance-limit', $commonData['driver']->id) }}" method="POST">
+                            @csrf
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label for="max_negative_balance" class="form-label">{{ translate('maximum_negative_balance') }}</label>
+                                    <input type="number"
+                                           class="form-control"
+                                           id="max_negative_balance"
+                                           name="max_negative_balance"
+                                           value="{{ $commonData['driver']->max_negative_balance ?? 200 }}"
+                                           min="0"
+                                           max="10000"
+                                           step="0.01"
+                                           required>
+                                    <div class="form-text">{{ translate('set_the_maximum_amount_the_driver_can_owe_before_account_deactivation') }}</div>
+                                </div>
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle"></i>
+                                    {{ translate('driver_will_receive_warning_at_75_of_this_limit') }}
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ translate('close') }}</button>
+                                <button type="submit" class="btn btn-primary">{{ translate('update_limit') }}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
 
             <div class="d-flex mb-4">
                 <ul class="nav nav--tabs p-1 rounded bg-white" role="tablist">

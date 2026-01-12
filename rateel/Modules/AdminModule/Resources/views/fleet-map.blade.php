@@ -57,20 +57,6 @@
                                    data-tab-target="customer">{{translate("Customers")}}</a>
                             </li>
                         </ul>
-                        <form action="{{request()->fullUrl()}}" id="zoneSubmitForm" class="pb-1">
-                            <div class="">
-                                <select class="js-select-custom min-w-200 h-35" name="zone_id" id="selectZone">
-                                    @if(count($zones)>0)
-                                        @foreach($zones as $key =>$zone)
-                                            <option value="{{$zone->id}}"
-                                                    {{request('zone_id') == $zone->id ? "selected" :""}} data-show-shield="{{ in_array($zone->id, $safetyAlertZones) ? 'true' : '' }}">{{$zone->name}}</option>
-                                        @endforeach
-                                    @else
-                                        <option selected disabled>{{translate("zone_not_found")}}</option>
-                                    @endif
-                                </select>
-                            </div>
-                        </form>
                     </div>
                     <div class="zone-lists d-flex flex-wrap gap-3">
                         <div class="zone-lists__left">
@@ -727,9 +713,7 @@
                 initMap($map.attr("id"), lat, lng, title, markersData, input, polygonData);
             });
 
-            $('#selectZone').on('change', function () {
-                $('#zoneSubmitForm').submit();
-            });
+            // Zone selector removed
 
             if (localStorage.getItem('firstTimeUser') === null) {
                 $('.js-select-overlay').show();

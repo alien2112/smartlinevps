@@ -339,4 +339,62 @@ class DriverController extends BaseController
         }
         return redirect()->back();
     }
+
+    /**
+     * Update driver negative balance limit
+     */
+    public function updateNegativeBalanceLimit(Request $request, $id): JsonResponse|RedirectResponse
+    {
+        $this->authorize('user_edit');
+
+        $request->validate([
+            'max_negative_balance' => 'required|numeric|min:0|max:10000',
+        ]);
+
+        $driver = $this->driverService->findOne($id);
+
+        if (!$driver || $driver->user_type !== DRIVER) {
+            if ($request->wantsJson()) {
+                return response()->json(['message' => 'Driver not found'], 404);
+            }
+            Toastr::error(translate('Driver not found'));
+            return back();
+        }
+
+        $oldLimit = $driver->max_negative_balance;
+        $newLimit = (float) $request->max_negative_balance;
+
+        $driver->update([
+            'max_negative_balance' => $newLimit,
+        ]);
+
+        // If driver was deactivated due to negative balance limit and the new limit allows them, reactivate
+        if (!$driver->is_active && $driver->userAccount) {
+            $walletBalance = (float) $driver->userAccount->wallet_balance;
+            if ($walletBalance < 0 && abs($walletBalance) < $newLimit) {
+                $driver->update(['is_active' => 1]);
+
+                // Send reactivation notification
+                AppNotification::create([
+                    'user_id' => $driver->id,
+                    'title' => 'Account Reactivated',
+                    'description' => "Your account has been reactivated. Your negative balance limit has been updated to " . getCurrencyFormat($newLimit) . ".",
+                    'type' => 'account_reactivated',
+                    'action' => 'wallet',
+                ]);
+            }
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'message' => 'Negative balance limit updated successfully',
+                'old_limit' => $oldLimit,
+                'new_limit' => $newLimit,
+                'driver' => $driver,
+            ]);
+        }
+
+        Toastr::success(translate('Negative balance limit updated successfully'));
+        return back();
+    }
 }

@@ -970,8 +970,9 @@ class TripRequestController extends Controller
             }
 
             // Use driver_arrival_time calculated before transaction started
+            // duration_sec is in seconds, convert to minutes
             if ($trip->type == 'ride_request' && $driver_arrival_time) {
-                $attributes['driver_arrival_time'] = (double)($driver_arrival_time[0]['duration']) / 60;
+                $attributes['driver_arrival_time'] = (double)($driver_arrival_time[0]['duration_sec']) / 60;
             }
 
             //Trip update

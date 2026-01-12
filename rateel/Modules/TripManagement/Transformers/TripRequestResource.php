@@ -266,6 +266,7 @@ class TripRequestResource extends JsonResource
                 'idle_time' => round((double)$this->time->idle_time),
                 'actual_time' => round((double)$this->time->actual_time, 2),
                 'estimated_time' => round((double)$this->time->estimated_time, 2),
+                'driver_arrival_time' => round((double)$this->time->driver_arrival_time, 2),
             ];
         }
         return array_merge($trip_request, $coordinate, $fee, $time);

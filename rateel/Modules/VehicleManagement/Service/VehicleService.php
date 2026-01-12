@@ -51,24 +51,50 @@ class VehicleService extends BaseService implements VehicleServiceInterface
     public function create(array $data): ?Model
     {
         $documents = [];
-        
-        // Handle car_front and car_back images
-        if (isset($data['car_front'])) {
-            $extension = $data['car_front']->getClientOriginalExtension();
-            $documents[] = fileUploader('vehicle/document/', $extension, $data['car_front']);
-        }
-        
-        if (isset($data['car_back'])) {
-            $extension = $data['car_back']->getClientOriginalExtension();
-            $documents[] = fileUploader('vehicle/document/', $extension, $data['car_back']);
-        }
-        
-        // Handle other documents
-        if (array_key_exists('other_documents', $data)) {
-            foreach ($data['other_documents'] as $doc) {
-                $extension = $doc->getClientOriginalExtension();
-                $documents[] = fileUploader('vehicle/document/', $extension, $doc);
+
+        try {
+            // Handle car_front and car_back images
+            if (isset($data['car_front'])) {
+                $extension = $data['car_front']->getClientOriginalExtension();
+                $uploadedFile = fileUploader('vehicle/document/', $extension, $data['car_front']);
+                if ($uploadedFile) {
+                    $documents[] = $uploadedFile;
+                }
             }
+
+            if (isset($data['car_back'])) {
+                $extension = $data['car_back']->getClientOriginalExtension();
+                $uploadedFile = fileUploader('vehicle/document/', $extension, $data['car_back']);
+                if ($uploadedFile) {
+                    $documents[] = $uploadedFile;
+                }
+            }
+
+            // Handle car license image
+            if (isset($data['car_license_image'])) {
+                $extension = $data['car_license_image']->getClientOriginalExtension();
+                $uploadedFile = fileUploader('vehicle/document/', $extension, $data['car_license_image']);
+                if ($uploadedFile) {
+                    $documents[] = $uploadedFile;
+                }
+            }
+
+            // Handle other documents
+            if (array_key_exists('other_documents', $data)) {
+                foreach ($data['other_documents'] as $doc) {
+                    $extension = $doc->getClientOriginalExtension();
+                    $uploadedFile = fileUploader('vehicle/document/', $extension, $doc);
+                    if ($uploadedFile) {
+                        $documents[] = $uploadedFile;
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            \Log::error('Vehicle document upload failed', [
+                'error' => $e->getMessage(),
+                'driver_id' => $data['driver_id'] ?? 'unknown',
+            ]);
+            // Continue without documents if upload fails
         }
         
         $storeData = [
@@ -77,13 +103,16 @@ class VehicleService extends BaseService implements VehicleServiceInterface
             'category_id' => $data['category_id'],
             'licence_plate_number' => $data['licence_plate_number'],
             'licence_expire_date' => $data['licence_expire_date'],
-            'vin_number' => $data['vin_number'],
-            'transmission' => $data['transmission'],
-            'parcel_weight_capacity' => $data['parcel_weight_capacity'],
-            'fuel_type' => $data['fuel_type'],
+            'vin_number' => $data['vin_number'] ?? null,
+            'transmission' => $data['transmission'] ?? null,
+            'parcel_weight_capacity' => $data['parcel_weight_capacity'] ?? null,
+            'fuel_type' => $data['fuel_type'] ?? null,
             'ownership' => $data['ownership'],
             'driver_id' => $data['driver_id'],
-            'vehicle_request_status' => $data['vehicle_request_status'],
+            'vehicle_request_status' => $data['vehicle_request_status'] ?? PENDING,
+            'is_primary' => $data['is_primary'] ?? false,
+            'is_active' => $data['is_active'] ?? false,
+            'has_pending_primary_request' => $data['has_pending_primary_request'] ?? false,
             'documents' => $documents,
         ];
         return $this->vehicleRepository->create($storeData);
@@ -218,20 +247,43 @@ class VehicleService extends BaseService implements VehicleServiceInterface
         $existingDocuments = $vehicle->documents ?? [];
         $newDocuments = $existingDocuments;
 
-        if (isset($data['car_front'])) {
-            $extension = $data['car_front']->getClientOriginalExtension();
-            $newFrontImage = fileUploader('vehicle/document/', $extension, $data['car_front'], $existingDocuments[0] ?? null);
-            $newDocuments[0] = $newFrontImage;
-            $updateDocuments = true;
-            $hasChanges = true;
-        }
+        try {
+            if (isset($data['car_front'])) {
+                $extension = $data['car_front']->getClientOriginalExtension();
+                $newFrontImage = fileUploader('vehicle/document/', $extension, $data['car_front'], $existingDocuments[0] ?? null);
+                if ($newFrontImage) {
+                    $newDocuments[0] = $newFrontImage;
+                    $updateDocuments = true;
+                    $hasChanges = true;
+                }
+            }
 
-        if (isset($data['car_back'])) {
-            $extension = $data['car_back']->getClientOriginalExtension();
-            $newBackImage = fileUploader('vehicle/document/', $extension, $data['car_back'], $existingDocuments[1] ?? null);
-            $newDocuments[1] = $newBackImage;
-            $updateDocuments = true;
-            $hasChanges = true;
+            if (isset($data['car_back'])) {
+                $extension = $data['car_back']->getClientOriginalExtension();
+                $newBackImage = fileUploader('vehicle/document/', $extension, $data['car_back'], $existingDocuments[1] ?? null);
+                if ($newBackImage) {
+                    $newDocuments[1] = $newBackImage;
+                    $updateDocuments = true;
+                    $hasChanges = true;
+                }
+            }
+
+            if (isset($data['car_license_image'])) {
+                $extension = $data['car_license_image']->getClientOriginalExtension();
+                $newLicenseImage = fileUploader('vehicle/document/', $extension, $data['car_license_image'], $existingDocuments[2] ?? null);
+                if ($newLicenseImage) {
+                    $newDocuments[2] = $newLicenseImage;
+                    $updateDocuments = true;
+                    $hasChanges = true;
+                }
+            }
+        } catch (\Exception $e) {
+            \Log::error('Vehicle document update failed', [
+                'error' => $e->getMessage(),
+                'vehicle_id' => $vehicle->id,
+                'driver_id' => $vehicle->driver_id,
+            ]);
+            // Continue with other changes if document upload fails
         }
 
         // If there are changes, store them in draft and set status to PENDING

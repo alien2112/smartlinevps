@@ -2894,4 +2894,6 @@
   'Account is ready' => 'Account is ready',
   'Ready to go  but 1 items need attention.' => 'Ready to go  but 1 items need attention.',
   'Some items need attention' => 'Some items need attention',
+  'commission_deducted' => 'Commission Deducted',
+  'commission_deducted_message' => 'Commission of :amount EGP has been deducted. Your wallet balance is now :balance EGP. Please top-up to clear the negative balance.',
 );

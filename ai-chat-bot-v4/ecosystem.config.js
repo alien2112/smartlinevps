@@ -1,6 +1,6 @@
 /**
  * PM2 Ecosystem Configuration
- * Production deployment for SmartLine AI Chatbot V3
+ * Production deployment for SmartLine AI Chatbot V5
  */
 
 module.exports = {
@@ -61,7 +61,7 @@ module.exports = {
             host: 'your-server.com',
             ref: 'origin/main',
             repo: 'git@github.com:yourrepo/smartline.git',
-            path: '/var/www/laravel/smartlinevps/ai-chat-bot-v3',
+            path: '/var/www/laravel/smartlinevps/ai-chat-bot-v5',
             'pre-deploy-local': '',
             'post-deploy': 'npm install && pm2 reload ecosystem.config.js --env production',
             'pre-setup': ''

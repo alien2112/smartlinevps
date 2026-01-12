@@ -415,6 +415,8 @@
                                                                         <i class="bi bi-car-front"></i> {{ translate('Car Front') }}
                                                                     @elseif($index === 1)
                                                                         <i class="bi bi-car-front-fill"></i> {{ translate('Car Back') }}
+                                                                    @elseif($index === 2)
+                                                                        <i class="bi bi-card-text"></i> {{ translate('License') }}
                                                                     @else
                                                                         <i class="bi bi-file-image"></i> {{ translate('Document') }} {{ $index + 1 }}
                                                                     @endif

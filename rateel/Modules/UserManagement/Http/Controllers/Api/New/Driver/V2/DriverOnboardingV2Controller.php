@@ -219,8 +219,9 @@ class DriverOnboardingV2Controller extends Controller
         // Clear the OTP from cache after successful verification
         Cache::forget(self::OTP_CACHE_PREFIX . $phone);
 
-        // Mark OTP as verified
+        // Mark OTP as verified and update state
         $driver->otp_verified_at = now();
+        $driver->onboarding_state = 'otp_verified';
 
         // Determine next step based on current state
         $nextStep = $this->determineNextStep($driver);

@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Modules\TripManagement\Entities\SafetyAlert;
 
 class PanicAlertController extends Controller
 {
@@ -36,13 +37,27 @@ class PanicAlertController extends Controller
         }
 
         try {
+            // Create SafetyAlert record in database
+            $safetyAlert = SafetyAlert::create([
+                'trip_request_id' => null, // No trip for panic alerts
+                'sent_by' => $customer->id,
+                'alert_location' => json_encode([
+                    'lat' => $request->lat,
+                    'lng' => $request->lng,
+                ]),
+                'reason' => $request->reason ? [$request->reason] : ['panic_alert'],
+                'trip_status_when_make_alert' => null,
+                'status' => 'pending',
+                'number_of_alert' => 1,
+            ]);
+
             // Build description with location and reason
             $description = translate('Customer :name triggered a panic alert', ['name' => $customer->first_name . ' ' . $customer->last_name]);
             $description .= ' | Location: ' . $request->lat . ',' . $request->lng;
             if ($request->reason) {
                 $description .= ' | Reason: ' . $request->reason;
             }
-            
+
             // Send Firebase notification to admin dashboard
             sendTopicNotification(
                 topic: 'admin_panic_alert_notification',
@@ -57,6 +72,7 @@ class PanicAlertController extends Controller
             );
 
             Log::info('Panic alert triggered', [
+                'safety_alert_id' => $safetyAlert->id,
                 'customer_id' => $customer->id,
                 'customer_phone' => $customer->phone,
                 'lat' => $request->lat,
@@ -69,6 +85,7 @@ class PanicAlertController extends Controller
                 'message' => translate('Panic alert sent successfully. Help is on the way.'),
             ], [
                 'alert_sent' => true,
+                'alert_id' => $safetyAlert->id,
                 'timestamp' => now()->toIso8601String(),
             ]));
 
@@ -78,7 +95,7 @@ class PanicAlertController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
-            return response()->json(responseFormatter(DEFAULT_500), 500);
+            return response()->json(responseFormatter(DEFAULT_400, null, ['error' => 'Failed to trigger panic alert']), 500);
         }
     }
 }

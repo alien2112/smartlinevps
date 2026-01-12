@@ -179,10 +179,17 @@ trait TransactionTrait
 
         // Send notification to driver about commission deduction
         if ($riderAccount->wallet_balance < 0) {
+            // Use translation keys with placeholders for proper Arabic translation
+            $commissionAmount = number_format($adminReceived, 2);
+            $walletBalance = number_format($riderAccount->wallet_balance, 2);
+            
             sendDeviceNotification(
                 fcm_token: $trip->driver->fcm_token,
-                title: translate('Commission Deducted'),
-                description: translate('Commission of ' . $adminReceived . ' EGP has been deducted. Your wallet balance is now ' . $riderAccount->wallet_balance . ' EGP. Please top-up to clear the negative balance.'),
+                title: translate('commission_deducted'),
+                description: translate('commission_deducted_message', [
+                    'amount' => $commissionAmount,
+                    'balance' => $walletBalance
+                ]),
                 status: 1,
                 action: 'wallet_negative',
                 user_id: $trip->driver->id,

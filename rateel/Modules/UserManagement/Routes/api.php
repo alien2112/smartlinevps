@@ -259,6 +259,23 @@ Route::group(['prefix' => 'admin/wallet', 'middleware' => ['auth:api']], functio
     });
 });
 
+// Admin Support Tickets
+Route::group(['prefix' => 'admin/support/tickets', 'middleware' => ['auth:api']], function () {
+    Route::controller(\Modules\UserManagement\Http\Controllers\Api\Admin\SupportTicketController::class)->group(function () {
+        // List all support tickets
+        Route::get('/', 'index');
+
+        // Get ticket details
+        Route::get('{id}', 'show');
+
+        // Respond to ticket
+        Route::post('{id}/respond', 'respond');
+
+        // Update ticket status
+        Route::patch('{id}/status', 'updateStatus');
+    });
+});
+
 // Verification Media Download (signed URL access)
 Route::get('verification/media/{media}', function ($mediaId) {
     $media = \Modules\UserManagement\Entities\VerificationMedia::findOrFail($mediaId);

@@ -104,6 +104,7 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
             Route::delete('permanent-delete/{id}', 'permanentDelete')->name('permanent-delete');
             Route::put('update/{id}', 'update')->name('update');
             Route::get('update-status', 'updateStatus')->name('update-status');
+            Route::post('update-negative-balance-limit/{id}', 'updateNegativeBalanceLimit')->name('update-negative-balance-limit');
             Route::get('get-all-ajax', 'getAllAjax')->name('get-all-ajax');
             Route::get('get-all-ajax-vehicle', 'getAllAjaxVehicle')->name('get-all-ajax-vehicle');
             Route::get('statistics', 'statistics')->name('statistics');
@@ -251,6 +252,16 @@ Route::group(['prefix' => 'admin', 'as' => 'admin.', 'middleware' => 'admin'], f
             Route::get('show/{id}', 'show')->name('show');
             Route::post('block-user/{userId}', 'blockUser')->name('block-user');
             Route::get('export', 'export')->name('export');
+        });
+    });
+
+    // Support Tickets Management
+    Route::group(['prefix' => 'support/tickets', 'as' => 'support.'], function () {
+        Route::controller(\Modules\UserManagement\Http\Controllers\Web\New\Admin\SupportTicketController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('show/{id}', 'show')->name('show');
+            Route::post('respond/{id}', 'respond')->name('respond');
+            Route::patch('status/{id}', 'updateStatus')->name('status.update');
         });
     });
 

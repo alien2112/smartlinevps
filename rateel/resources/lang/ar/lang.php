@@ -3227,4 +3227,6 @@
   'Recent_Chat_Logs' => 'Recent Chat Logs',
   'set_the_minimum_price_for_trips._the_final_fare_will_never_be_less_than_this_amount' => 'Set the minimum price for trips. the final fare will never be less than this amount',
   'By Turning OFF Level Feature' => 'By Turning OFF Level Feature',
+  'commission_deducted' => 'تم خصم العمولة',
+  'commission_deducted_message' => 'تم خصم عمولة بقيمة :amount جنيه. رصيد محفظتك الآن :balance جنيه. يرجى شحن محفظتك لتغطية الرصيد السالب.',
 );

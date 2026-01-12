@@ -1258,7 +1258,8 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
                 $user->lastLocations->longitude
             ],
         );
-        $attributes['driver_arrival_time'] = (float)($driverArrivalTime[0]['duration']) / 60;
+        // duration_sec is in seconds, convert to minutes
+        $attributes['driver_arrival_time'] = (float)($driverArrivalTime[0]['duration_sec']) / 60;
         $this->driverDetailService->update(id: $user->id, data: ['availability_status' => 'on_trip']);
 
         $data = $this->tempTripNotificationService->getBy(criteria: [

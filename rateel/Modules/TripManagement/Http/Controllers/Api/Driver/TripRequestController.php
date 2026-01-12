@@ -333,6 +333,12 @@ class TripRequestController extends Controller
         }
 
         $bid_on_fare = get_cache('bid_on_fare') ?? 0;
+
+        // Check if driver has a vehicle assigned
+        if (!$user->vehicle) {
+            return response()->json(responseFormatter(constant: DRIVER_403, content: ['message' => 'No vehicle assigned to driver']), 403);
+        }
+
         $assignedVehicleCategoryId = $trip->vehicle_category_id;
         if (empty($assignedVehicleCategoryId)) {
             $assignedVehicleCategoryId = $user->vehicle->category_id ?? null;

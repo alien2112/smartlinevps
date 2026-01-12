@@ -26,6 +26,7 @@ class VehicleApiStoreUpdateRequest extends FormRequest
             'fuel_type' => Rule::requiredIf(empty($id)),
             'car_front' => 'sometimes|image|mimes:jpeg,png,jpg|max:10240',
             'car_back' => 'sometimes|image|mimes:jpeg,png,jpg|max:10240',
+            'car_license_image' => 'sometimes|image|mimes:jpeg,png,jpg|max:10240',
             // 'other_documents' => Rule::requiredIf(empty($id)),
         ];
     }

@@ -242,6 +242,11 @@ class SupportController extends Controller
             'status' => $ticket->status,
             'admin_response' => $ticket->admin_response,
             'responded_at' => $ticket->responded_at?->toIso8601String(),
+            'driver_reply' => $ticket->driver_reply,
+            'replied_at' => $ticket->replied_at?->toIso8601String(),
+            'rating' => $ticket->rating,
+            'rating_feedback' => $ticket->rating_feedback,
+            'rated_at' => $ticket->rated_at?->toIso8601String(),
             'created_at' => $ticket->created_at->toIso8601String(),
             'trip' => $ticket->trip ? [
                 'id' => $ticket->trip->id,

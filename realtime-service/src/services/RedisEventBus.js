@@ -31,7 +31,9 @@ class RedisEventBus {
       // NEW: Critical channels for fixing race conditions
       TRIP_ACCEPTED: 'laravel:trip.accepted',     // Driver accepted - notify BOTH parties immediately
       OTP_VERIFIED: 'laravel:otp.verified',       // OTP verified - trip is now ongoing
-      DRIVER_ARRIVED: 'laravel:driver.arrived'    // Driver arrived at pickup
+      DRIVER_ARRIVED: 'laravel:driver.arrived',   // Driver arrived at pickup
+      // Batch notification channel for multi-driver dispatch
+      BATCH_NOTIFICATION: 'laravel:batch.notification'
     };
   }
 
@@ -140,6 +142,10 @@ class RedisEventBus {
 
         case this.CHANNELS.DRIVER_ARRIVED:
           await this.handleDriverArrived(data);
+          break;
+
+        case this.CHANNELS.BATCH_NOTIFICATION:
+          await this.handleBatchNotification(data);
           break;
 
         default:
@@ -614,6 +620,92 @@ class RedisEventBus {
         timestamp: Date.now()
       });
     }
+  }
+
+  /**
+   * Handle batch notification event - Fan out ride:new to multiple drivers
+   * 
+   * This is the key optimization: Laravel sends ONE Redis message with array of driver_ids,
+   * and Node.js fans out to individual socket connections.
+   * 
+   * This replaces the old pattern of Laravel publishing N individual messages.
+   */
+  async handleBatchNotification(data) {
+    const {
+      driver_ids,
+      ride_id,
+      trip_id,
+      customer_id,
+      event_type,
+      pickup_latitude,
+      pickup_longitude,
+      destination_latitude,
+      destination_longitude,
+      vehicle_category_id,
+      estimated_fare,
+      type,
+      created_at,
+      trace_id
+    } = data;
+
+    const rideId = ride_id || trip_id;
+    const driverIds = driver_ids || [];
+
+    if (driverIds.length === 0) {
+      logger.warn('Batch notification received with empty driver_ids', { trace_id, ride_id: rideId });
+      return;
+    }
+
+    logger.info('Handling batch notification - fanning out to drivers', {
+      ride_id: rideId,
+      driver_count: driverIds.length,
+      event_type,
+      trace_id
+    });
+
+    // Build the ride payload once
+    const ridePayload = {
+      rideId,
+      ride_id: rideId,
+      tripId: rideId,
+      trip_id: rideId,
+      customerId: customer_id,
+      customer_id,
+      pickupLatitude: pickup_latitude,
+      pickupLongitude: pickup_longitude,
+      destinationLatitude: destination_latitude,
+      destinationLongitude: destination_longitude,
+      vehicleCategoryId: vehicle_category_id,
+      estimatedFare: estimated_fare,
+      type,
+      createdAt: created_at,
+      trace_id,
+      timestamp: Date.now()
+    };
+
+    // Fan out to each driver's socket room
+    let sentCount = 0;
+    for (const driverId of driverIds) {
+      const room = `user:${driverId}`;
+      
+      // Emit ride:new event (this is what Flutter driver app listens for)
+      this.io.to(room).emit('ride:new', ridePayload);
+      
+      // Track which drivers were notified for this ride
+      await this.redis.sadd(`ride:notified:${rideId}`, String(driverId));
+      
+      sentCount++;
+    }
+
+    // Set expiry on the notified set (30 minutes - ride request timeout)
+    await this.redis.expire(`ride:notified:${rideId}`, 1800);
+
+    logger.info('Batch notification fan-out complete', {
+      ride_id: rideId,
+      drivers_notified: sentCount,
+      event_type,
+      trace_id
+    });
   }
 
   /**
