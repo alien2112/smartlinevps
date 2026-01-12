@@ -23,7 +23,7 @@ class VehicleModelResource extends JsonResource
             'hatch_bag_capacity' => $this->hatch_bag_capacity,
             'engine' => $this->engine,
             'description' => $this->description,
-            'image' => $this->image,
+            'image' => getMediaUrl($this->image),
             'is_active' => $this->is_active,
             'created_at' => $this->created_at
         ];
