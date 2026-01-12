@@ -28,8 +28,8 @@
             <div class="card">
                 <div class="card-header d-flex flex-wrap gap-3">
                     <div class="w-100 max-w-299px">
-                        <h4>{{translate('Trip Heat Map')}}</h4>
-                        <p>{{translate("Monitor your trips from here")}}</p>
+                        <h4>{{translate('Customer Density Heat Map')}}</h4>
+                        <p>{{translate("View areas with the most customers")}}</p>
                     </div>
                     <div class="d-flex flex-grow-1 gap-4">
                         <div class="flex-grow-1">
@@ -141,10 +141,16 @@
     <script src="{{asset('public/assets/admin-module/js/date-range-picker.js')}}"></script>
     
     <!-- Load OpenStreetMap libraries in order (NO Google Maps) -->
+    <script>
+        // Ensure no Google Maps is loaded
+        if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
+            console.warn('Google Maps detected but not needed for this page - using OpenStreetMap/Leaflet');
+        }
+    </script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
-    <script src="{{asset('public/assets/admin-module/js/maps/map-init-overview.js')}}?v={{ time() }}"></script>
+    <script src="{{asset('public/assets/admin-module/js/maps/map-init-overview.js')}}?v={{ time() }}&t={{ now()->timestamp }}"></script>
 
     <script>
         console.log('=== HEAT MAP PAGE LOADED ===');
