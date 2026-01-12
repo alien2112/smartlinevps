@@ -521,7 +521,7 @@ class TripRequestController extends Controller
 
 
         $data = $this->tripRequestservice->findOneWithAvg(criteria: ['id' => $trip_request_id], relations: [
-            'driver', 'vehicle.model', 'vehicleCategory', 'tripStatus',
+            'driver.vehicle', 'vehicle.model', 'vehicleCategory', 'tripStatus',
             'coordinate', 'fee', 'time', 'parcel', 'parcelUserInfo'
         ], withAvgRelation: ['customerReceivedReviews', 'rating']);
         if (!$data) {
