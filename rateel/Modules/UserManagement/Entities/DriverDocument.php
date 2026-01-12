@@ -26,12 +26,18 @@ class DriverDocument extends Model
     public const TYPE_CAR_BACK = 'car_back';
     public const TYPE_SELFIE = 'selfie';
 
+    // Additional document type constants for driving license
+    public const TYPE_DRIVING_LICENSE_FRONT = 'driving_license_front';
+    public const TYPE_DRIVING_LICENSE_BACK = 'driving_license_back';
+
     // Required documents for onboarding completion
     public const REQUIRED_DOCUMENTS = [
         self::TYPE_ID_FRONT,
         self::TYPE_ID_BACK,
         self::TYPE_LICENSE_FRONT,
         self::TYPE_LICENSE_BACK,
+        self::TYPE_DRIVING_LICENSE_FRONT,
+        self::TYPE_DRIVING_LICENSE_BACK,
         self::TYPE_CAR_FRONT,
         self::TYPE_CAR_BACK,
         self::TYPE_SELFIE,
@@ -44,6 +50,8 @@ class DriverDocument extends Model
             self::TYPE_ID_BACK,
             self::TYPE_LICENSE_FRONT,
             self::TYPE_LICENSE_BACK,
+            self::TYPE_DRIVING_LICENSE_FRONT,
+            self::TYPE_DRIVING_LICENSE_BACK,
             self::TYPE_CAR_FRONT,
             self::TYPE_CAR_BACK,
             self::TYPE_SELFIE,
@@ -53,6 +61,8 @@ class DriverDocument extends Model
             self::TYPE_ID_BACK,
             self::TYPE_LICENSE_FRONT,
             self::TYPE_LICENSE_BACK,
+            self::TYPE_DRIVING_LICENSE_FRONT,
+            self::TYPE_DRIVING_LICENSE_BACK,
             self::TYPE_CAR_FRONT,
             self::TYPE_CAR_BACK,
             self::TYPE_SELFIE,
@@ -62,6 +72,8 @@ class DriverDocument extends Model
             self::TYPE_ID_BACK,
             self::TYPE_LICENSE_FRONT,
             self::TYPE_LICENSE_BACK,
+            self::TYPE_DRIVING_LICENSE_FRONT,
+            self::TYPE_DRIVING_LICENSE_BACK,
             self::TYPE_SELFIE,
         ],
         'scooter' => [
@@ -69,6 +81,8 @@ class DriverDocument extends Model
             self::TYPE_ID_BACK,
             self::TYPE_LICENSE_FRONT,
             self::TYPE_LICENSE_BACK,
+            self::TYPE_DRIVING_LICENSE_FRONT,
+            self::TYPE_DRIVING_LICENSE_BACK,
             self::TYPE_SELFIE,
         ],
     ];
@@ -140,8 +154,10 @@ class DriverDocument extends Model
             return null;
         }
 
-        // Use getMediaUrl helper to match vehicle image format
-        return getMediaUrl($this->file_path, 'driver/document');
+        // Files are stored at: storage/app/public/driver-documents/{driver_id}/{filename}
+        // The file_path already contains: driver-documents/{driver_id}/{filename}
+        // So we just need to prepend the storage URL without adding extra folder prefix
+        return asset('storage/' . $this->file_path);
     }
 
     /**
@@ -205,32 +221,23 @@ class DriverDocument extends Model
     /**
      * Get required documents based on vehicle type
      * Returns an associative array with type => display name
-     * Supports both old and new document type naming conventions
+     * Note: License and Driving License are SEPARATE required document types
      */
     public static function getRequiredDocuments(?string $vehicleType = null): array
     {
-        // New document types (actually used in database)
-        $newTypes = [
-            'national_id' => 'National ID',
-            'driving_license' => 'Driving License',
-            'vehicle_registration' => 'Vehicle Registration',
-            'vehicle_photo' => 'Vehicle Photo',
-            'profile_photo' => 'Profile Photo',
+        // Document types with improved display names
+        // Both License and Driving License are required as distinct document types
+        return [
+            'id_front' => 'National ID (Front)',
+            'id_back' => 'National ID (Back)',
+            'license_front' => 'License (Front)',
+            'license_back' => 'License (Back)',
+            'driving_license_front' => 'Driving License (Front)',
+            'driving_license_back' => 'Driving License (Back)',
+            'car_front' => 'Vehicle Photo (Front)',
+            'car_back' => 'Vehicle Photo (Back)',
+            'selfie' => 'Profile Photo / Selfie',
         ];
-        
-        // Old document types (for backward compatibility)
-        $oldTypes = [
-            'id_front' => 'ID Front',
-            'id_back' => 'ID Back',
-            'license_front' => 'License Front',
-            'license_back' => 'License Back',
-            'car_front' => 'Car Front',
-            'car_back' => 'Car Back',
-            'selfie' => 'Selfie',
-        ];
-        
-        // Merge both to support old and new types
-        return array_merge($newTypes, $oldTypes);
     }
 
     /**

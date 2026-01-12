@@ -230,7 +230,21 @@ class TripRequestRepository implements TripRequestInterfaces
                 $trip->time()->update(['driver_arrival_time' => $attributes['driver_arrival_time']]);
             }
             if ($attributes['coordinate'] ?? null) {
-                $trip->coordinate()->update($attributes['coordinate']);
+                // Use CoordinateHelper for drop_coordinates to bypass Eloquent Spatial bug
+                if (isset($attributes['coordinate']['drop_coordinates'])) {
+                    $dropCoords = $attributes['coordinate']['drop_coordinates'];
+                    if ($dropCoords instanceof \MatanYadaev\EloquentSpatial\Objects\Point) {
+                        \App\Helpers\CoordinateHelper::updateDropCoordinates(
+                            $trip->id,
+                            $dropCoords->latitude,
+                            $dropCoords->longitude
+                        );
+                    }
+                    unset($attributes['coordinate']['drop_coordinates']);
+                }
+                if (!empty($attributes['coordinate'])) {
+                    $trip->coordinate()->update($attributes['coordinate']);
+                }
             }
         });
 
@@ -274,12 +288,14 @@ class TripRequestRepository implements TripRequestInterfaces
         }
 
         if ($attributes['coordinate'] ?? null) {
-            $coordinate = $trip->coordinate;
-            if ($coordinate) {
-                $coordinate->update([
-                    'drop_coordinates' => $attributes['coordinate']['drop_coordinates'],
-                ]);
-                $coordinate->save();
+            // Use CoordinateHelper for raw SQL update to bypass Eloquent Spatial bug
+            $dropCoords = $attributes['coordinate']['drop_coordinates'];
+            if ($dropCoords instanceof Point) {
+                \App\Helpers\CoordinateHelper::updateDropCoordinates(
+                    $trip->id,
+                    $dropCoords->latitude,
+                    $dropCoords->longitude
+                );
             }
         }
         if ($attributes['fee'] ?? null) {

@@ -440,7 +440,7 @@ function normalizeArabizi(s) {
 /**
  * Create a loose regex that matches letters even if user inserts symbols/spaces
  * Example: f*u*c*k, f u c k, ك*س*م
- * 
+ *
  * @param {string} word - The word to create a pattern for
  * @param {Object} options - Configuration options
  * @returns {RegExp|null} Compiled regex or null if word is too short
@@ -453,19 +453,23 @@ function looseWordRegex(word, options = {}) {
 
     if (!word || word.length < CONFIG.minWordLength) return null;
 
-    // Escape special regex characters
-    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    // Split into characters and join with [\W_]* (matches non-word chars including spaces/symbols)
-    const chars = Array.from(escaped);
-    const gapPattern = `[\\W_]{0,${maxGap}}`;
-    const pattern = chars.join(gapPattern);
-
-    // Add word boundary if requested
-    const fullPattern = allowBoundary ? `(?:^|\\W)${pattern}(?:\\W|$)` : pattern;
-
-    // Use flags: i (case-insensitive), u (Unicode)
     try {
+        // Remove common obfuscation chars (*, @, numbers acting as letters)
+        const cleaned = word.replace(/[*@0-9]/g, '');
+        if (!cleaned || cleaned.length < CONFIG.minWordLength) return null;
+
+        // Escape special regex characters
+        const escaped = cleaned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        // Build character array and join with gap pattern
+        const chars = Array.from(escaped);
+        const gapPattern = `[\\W_]{0,${maxGap}}`;
+        const pattern = chars.join(gapPattern);
+
+        // Add word boundary if requested
+        const fullPattern = allowBoundary ? `(?:^|\\W)${pattern}(?:\\W|$)` : pattern;
+
+        // Use flags: i (case-insensitive), u (Unicode)
         return new RegExp(fullPattern, 'iu');
     } catch (e) {
         console.error(`Failed to compile regex for word: ${word}`, e);

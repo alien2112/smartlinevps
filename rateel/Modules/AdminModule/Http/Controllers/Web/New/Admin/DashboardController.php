@@ -313,51 +313,48 @@ class DashboardController extends BaseController
         $zoneIds = $zones->pluck('id')->toArray();
         
         // PERFORMANCE FIX: Add max limit to prevent loading excessive data
-        // For heat maps, we don't need all trips - a representative sample is sufficient
+        // For heat maps, we don't need all customer locations - a representative sample is sufficient
         $maxHeatMapPoints = config('app.max_heatmap_points', 5000);
         
-        // Use raw query for efficiency - only fetch needed columns
-        // Handle empty zone array to prevent SQL errors
-        $trips = collect([]);
+        // Fetch customer locations from user_last_locations table instead of trip pickup locations
+        // This shows where customers are located (customer density heat map)
+        $customerLocations = collect([]);
         if (!empty($zoneIds)) {
-            $trips = \DB::table('trip_requests')
-                ->join('trip_request_coordinates', 'trip_requests.id', '=', 'trip_request_coordinates.trip_request_id')
-                ->whereIn('trip_requests.zone_id', $zoneIds)
+            $customerLocations = \DB::table('user_last_locations')
+                ->where('type', 'customer')
+                ->whereIn('zone_id', $zoneIds)
                 ->when(!empty($whereBetweenCriteria), function ($query) use ($whereBetweenCriteria) {
                     foreach ($whereBetweenCriteria as $column => $range) {
-                        $query->whereBetween('trip_requests.' . $column, $range);
+                        $query->whereBetween('user_last_locations.' . $column, $range);
                     }
                 })
+                ->whereNotNull('latitude')
+                ->whereNotNull('longitude')
+                ->where('latitude', '!=', '0')
+                ->where('longitude', '!=', '0')
                 ->select(
-                    'trip_requests.ref_id',
-                    \DB::raw('ST_AsText(trip_request_coordinates.pickup_coordinates) as pickup_coordinates')
+                    'user_id',
+                    'latitude',
+                    'longitude',
+                    'zone_id'
                 )
                 ->limit($maxHeatMapPoints)
                 ->get();
         }
         
-        $markers = $trips->map(function ($trip) {
-            // Handle spatial data - pickup_coordinates might be stored as WKB or JSON
-            $lat = 0;
-            $lng = 0;
-            if ($trip->pickup_coordinates) {
-                // Try to parse coordinates depending on storage format
-                if (is_string($trip->pickup_coordinates)) {
-                    // If stored as POINT(lng lat) or similar
-                    if (preg_match('/POINT\s*\(\s*([0-9.-]+)\s+([0-9.-]+)\s*\)/i', $trip->pickup_coordinates, $matches)) {
-                        $lng = (float)$matches[1];
-                        $lat = (float)$matches[2];
-                    }
-                }
-            }
+        // Map customer locations to markers for heat map
+        $markers = $customerLocations->map(function ($location) {
+            $lat = (float)$location->latitude;
+            $lng = (float)$location->longitude;
+            
             return [
                 'position' => [
                     'lat' => $lat,
                     'lng' => $lng,
                 ],
-                'title' => "Trip Id #" . $trip->ref_id,
+                'title' => "Customer #" . $location->user_id,
             ];
-        })->filter(fn($m) => $m['position']['lat'] != 0 || $m['position']['lng'] != 0); // Filter out invalid coords
+        })->filter(fn($m) => $m['position']['lat'] != 0 && $m['position']['lng'] != 0); // Filter out invalid coords
         
         $polygons = json_encode(formatZoneCoordinates($zones));
 
@@ -400,47 +397,48 @@ class DashboardController extends BaseController
         $zones = $this->zoneService->getBy(whereInCriteria: $whereInCriteria);
         $zoneIds = $zones->pluck('id')->toArray();
         
-        // PERFORMANCE FIX: Use raw query with limit instead of loading all trips via Eloquent
+        // PERFORMANCE FIX: Use raw query with limit instead of loading all customer locations via Eloquent
         $maxHeatMapPoints = config('app.max_heatmap_points', 5000);
         
-        // Handle empty zone array to prevent SQL errors
-        $trips = collect([]);
+        // Fetch customer locations from user_last_locations table instead of trip pickup locations
+        // This shows where customers are located (customer density heat map)
+        $customerLocations = collect([]);
         if (!empty($zoneIds)) {
-            $trips = \DB::table('trip_requests')
-                ->join('trip_request_coordinates', 'trip_requests.id', '=', 'trip_request_coordinates.trip_request_id')
-                ->whereIn('trip_requests.zone_id', $zoneIds)
+            $customerLocations = \DB::table('user_last_locations')
+                ->where('type', 'customer')
+                ->whereIn('zone_id', $zoneIds)
                 ->when(!empty($whereBetweenCriteria), function ($query) use ($whereBetweenCriteria) {
                     foreach ($whereBetweenCriteria as $column => $range) {
-                        $query->whereBetween('trip_requests.' . $column, $range);
+                        $query->whereBetween('user_last_locations.' . $column, $range);
                     }
                 })
+                ->whereNotNull('latitude')
+                ->whereNotNull('longitude')
+                ->where('latitude', '!=', '0')
+                ->where('longitude', '!=', '0')
                 ->select(
-                    'trip_requests.ref_id',
-                    \DB::raw('ST_AsText(trip_request_coordinates.pickup_coordinates) as pickup_coordinates')
+                    'user_id',
+                    'latitude',
+                    'longitude',
+                    'zone_id'
                 )
                 ->limit($maxHeatMapPoints)
                 ->get();
         }
         
-        $markers = $trips->map(function ($trip) {
-            $lat = 0;
-            $lng = 0;
-            if ($trip->pickup_coordinates) {
-                if (is_string($trip->pickup_coordinates)) {
-                    if (preg_match('/POINT\s*\(\s*([0-9.-]+)\s+([0-9.-]+)\s*\)/i', $trip->pickup_coordinates, $matches)) {
-                        $lng = (float)$matches[1];
-                        $lat = (float)$matches[2];
-                    }
-                }
-            }
+        // Map customer locations to markers for heat map
+        $markers = $customerLocations->map(function ($location) {
+            $lat = (float)$location->latitude;
+            $lng = (float)$location->longitude;
+            
             return [
                 'position' => [
                     'lat' => $lat,
                     'lng' => $lng,
                 ],
-                'title' => "Trip Id #" . $trip->ref_id,
+                'title' => "Customer #" . $location->user_id,
             ];
-        })->filter(fn($m) => $m['position']['lat'] != 0 || $m['position']['lng'] != 0)->values();
+        })->filter(fn($m) => $m['position']['lat'] != 0 && $m['position']['lng'] != 0)->values();
         
         $polygons = json_encode(formatZoneCoordinates($zones));
         $markers = json_encode($markers);
@@ -467,6 +465,64 @@ class DashboardController extends BaseController
         return response()
             ->json(view('adminmodule::partials.heat-map._overview-map', compact('polygons', 'markers', 'centerLat', 'centerLng'))
                 ->render());
+    }
+
+    /**
+     * Test page to display customer last locations on a map
+     */
+    public function testCustomerMap(Request $request)
+    {
+        // Fetch all customer locations from user_last_locations table
+        $customerLocations = \DB::table('user_last_locations')
+            ->where('type', 'customer')
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->where('latitude', '!=', '0')
+            ->where('longitude', '!=', '0')
+            ->select(
+                'user_id',
+                'latitude',
+                'longitude',
+                'zone_id',
+                'updated_at'
+            )
+            ->orderBy('updated_at', 'desc')
+            ->limit(1000) // Limit to 1000 customers for performance
+            ->get();
+
+        // Convert to markers format
+        $markers = $customerLocations->map(function ($location) {
+            return [
+                'position' => [
+                    'lat' => (float)$location->latitude,
+                    'lng' => (float)$location->longitude,
+                ],
+                'title' => "Customer ID: " . $location->user_id,
+                'info' => "Last updated: " . $location->updated_at,
+            ];
+        })->filter(fn($m) => $m['position']['lat'] != 0 && $m['position']['lng'] != 0);
+
+        // Calculate center point from all customer locations
+        $latSum = 0;
+        $lngSum = 0;
+        $count = 0;
+
+        foreach ($customerLocations as $location) {
+            $lat = (float)$location->latitude;
+            $lng = (float)$location->longitude;
+            if ($lat != 0 && $lng != 0) {
+                $latSum += $lat;
+                $lngSum += $lng;
+                $count++;
+            }
+        }
+
+        $centerLat = $count > 0 ? $latSum / $count : 30.0444; // Default to Cairo
+        $centerLng = $count > 0 ? $lngSum / $count : 31.2357; // Default to Cairo
+
+        $markersJson = json_encode($markers->values());
+
+        return view('adminmodule::test-customer-map', compact('markersJson', 'centerLat', 'centerLng', 'customerLocations'));
     }
 
     public function heatMapCompare(Request $request)

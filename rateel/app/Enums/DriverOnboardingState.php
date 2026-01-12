@@ -86,7 +86,7 @@ enum DriverOnboardingState: string
             self::VEHICLE_SELECTED => [self::DOCUMENTS_PENDING],
             self::DOCUMENTS_PENDING => [self::KYC_VERIFICATION, self::VEHICLE_SELECTED], // Can go back if doc rejected
             self::KYC_VERIFICATION => [self::PENDING_APPROVAL, self::DOCUMENTS_PENDING], // Can go back if KYC fails
-            self::PENDING_APPROVAL => [self::APPROVED, self::REJECTED, self::KYC_VERIFICATION],
+            self::PENDING_APPROVAL => [self::APPROVED, self::REJECTED, self::KYC_VERIFICATION, self::DOCUMENTS_PENDING], // Can go back if docs rejected
             self::APPROVED => [self::SUSPENDED],
             self::REJECTED => [self::OTP_PENDING], // Can restart the process
             self::SUSPENDED => [self::APPROVED], // Admin can unsuspend

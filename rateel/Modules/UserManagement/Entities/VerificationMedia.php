@@ -31,6 +31,8 @@ class VerificationMedia extends Model
     // Kind constants
     const KIND_SELFIE = 'selfie';
     const KIND_LIVENESS_VIDEO = 'liveness_video';
+    const KIND_LIVENESS_VIDEO_1 = 'liveness_video_1';
+    const KIND_LIVENESS_VIDEO_2 = 'liveness_video_2';
     const KIND_ID_FRONT = 'id_front';
     const KIND_ID_BACK = 'id_back';
 

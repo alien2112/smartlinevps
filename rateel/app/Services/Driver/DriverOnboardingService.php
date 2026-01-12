@@ -5,6 +5,7 @@ namespace App\Services\Driver;
 use App\Enums\DriverOnboardingState;
 use Modules\UserManagement\Entities\User;
 use Modules\UserManagement\Entities\UserAddress;
+use Modules\AdminModule\Entities\AdminNotification;
 use App\Services\BeOnOtpService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -333,7 +334,8 @@ class DriverOnboardingService
             if ($currentState === DriverOnboardingState::OTP_PENDING) {
                 $driver->update([
                     'onboarding_state' => $newState->value,
-                    'onboarding_state_version' => $driver->onboarding_state_version + 1,
+                    'onboarding_step' => 'password',
+                    'onboarding_state_version' => ($driver->onboarding_state_version ?? 0) + 1,
                     'is_phone_verified' => true,
                     'phone_verified_at' => now(),
                     'otp_verified_at' => now(),
@@ -605,6 +607,7 @@ class DriverOnboardingService
             if ($driver->is_approved && $currentState !== DriverOnboardingState::APPROVED) {
                 $driver->update([
                     'onboarding_state' => DriverOnboardingState::APPROVED->value,
+                    'onboarding_step' => 'approved',
                 ]);
                 $currentState = DriverOnboardingState::APPROVED;
                 Log::info('Fixed onboarding state for approved driver', [
@@ -665,7 +668,8 @@ class DriverOnboardingService
             'password' => Hash::make($password),
             'password_set_at' => now(),
             'onboarding_state' => DriverOnboardingState::PASSWORD_SET->value,
-            'onboarding_state_version' => $driver->onboarding_state_version + 1,
+            'onboarding_step' => 'register_info',
+            'onboarding_state_version' => ($driver->onboarding_state_version ?? 0) + 1,
         ]);
 
         Log::info('New driver password set', [
@@ -715,7 +719,8 @@ class DriverOnboardingService
                 'is_profile_complete' => true,
                 'register_completed_at' => now(),
                 'onboarding_state' => DriverOnboardingState::PROFILE_COMPLETE->value,
-                'onboarding_state_version' => $driver->onboarding_state_version + 1,
+                'onboarding_step' => 'vehicle_type',
+                'onboarding_state_version' => ($driver->onboarding_state_version ?? 0) + 1,
             ]);
 
             // Save address if provided
@@ -810,7 +815,8 @@ class DriverOnboardingService
                 'selected_vehicle_type' => $data['vehicle_category_id'],
                 'vehicle_selected_at' => now(),
                 'onboarding_state' => DriverOnboardingState::VEHICLE_SELECTED->value,
-                'onboarding_state_version' => $driver->onboarding_state_version + 1,
+                'onboarding_step' => 'documents',
+                'onboarding_state_version' => ($driver->onboarding_state_version ?? 0) + 1,
             ]);
 
             // Get required documents
@@ -956,22 +962,31 @@ class DriverOnboardingService
 
             // Update state if all documents uploaded
             if ($allUploaded) {
-                if ($driver->onboarding_state === DriverOnboardingState::VEHICLE_SELECTED->value) {
-                    // First time all docs uploaded - move to DOCUMENTS_PENDING then to KYC
+                // Check both onboarding_state (new system) and onboarding_step (old system)
+                $isVehicleSelected = $driver->onboarding_state === DriverOnboardingState::VEHICLE_SELECTED->value
+                    || $driver->onboarding_step === 'documents'
+                    || $driver->onboarding_step === 'vehicle_type';
+
+                $isDocumentsPending = $driver->onboarding_state === DriverOnboardingState::DOCUMENTS_PENDING->value;
+
+                if ($isVehicleSelected && !$driver->documents_completed_at) {
+                    // First time all docs uploaded - move to KYC verification
                     $driver->update([
                         'documents_completed_at' => now(),
                         'onboarding_state' => DriverOnboardingState::KYC_VERIFICATION->value,
-                        'onboarding_state_version' => $driver->onboarding_state_version + 1,
+                        'onboarding_step' => 'kyc_verification',
+                        'onboarding_state_version' => ($driver->onboarding_state_version ?? 0) + 1,
                     ]);
 
                     Log::info('Driver documents completed, moving to KYC verification', [
                         'driver_id' => $driver->id,
                     ]);
-                } elseif ($driver->onboarding_state === DriverOnboardingState::DOCUMENTS_PENDING->value) {
+                } elseif ($isDocumentsPending) {
                     // Re-upload after rejection - move to KYC
                     $driver->update([
                         'onboarding_state' => DriverOnboardingState::KYC_VERIFICATION->value,
-                        'onboarding_state_version' => $driver->onboarding_state_version + 1,
+                        'onboarding_step' => 'kyc_verification',
+                        'onboarding_state_version' => ($driver->onboarding_state_version ?? 0) + 1,
                     ]);
                 }
             }
@@ -1077,12 +1092,23 @@ class DriverOnboardingService
             'terms_accepted_at' => $termsAccepted ? now() : null,
             'privacy_accepted_at' => $privacyAccepted ? now() : null,
             'onboarding_state' => DriverOnboardingState::PENDING_APPROVAL->value,
+            'onboarding_step' => 'pending_approval',
             'onboarding_state_version' => $driver->onboarding_state_version + 1,
+            'is_approved' => false,
+            'is_active' => false,
         ]);
 
         Log::info('Driver submitted for approval', [
             'driver_id' => $driver->id,
             'phone' => $this->maskPhone($driver->phone),
+        ]);
+
+        // Create admin notification for pending approval
+        AdminNotification::create([
+            'model' => 'driver_approval_request',
+            'model_id' => $driver->id,
+            'message' => 'new_driver_approval_request',
+            'is_seen' => false,
         ]);
 
         return [
@@ -1123,6 +1149,7 @@ class DriverOnboardingService
                 throw new \Exception('Phone number already registered as ' . $existingUser->user_type);
             }
 
+            // Create new driver - ensure is_approved = false so they must wait for admin approval
             $driver = User::create([
                 'id' => Str::uuid(),
                 'phone' => $phone,
@@ -1131,6 +1158,7 @@ class DriverOnboardingService
                 'is_approved' => false,
                 'is_phone_verified' => true,
                 'onboarding_state' => DriverOnboardingState::OTP_PENDING->value,
+                'onboarding_step' => 'otp',
                 'onboarding_state_version' => 1,
                 'device_fingerprint' => $deviceId,
                 'ref_code' => strtoupper(Str::random(8)),

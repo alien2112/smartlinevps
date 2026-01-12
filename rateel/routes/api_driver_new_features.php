@@ -19,7 +19,16 @@ use Modules\UserManagement\Http\Controllers\Api\New\Driver\SupportController;
 |
 */
 
-Route::group(['prefix' => 'driver/auth', 'middleware' => ['auth:api']], function () {
+// ============================================
+// PUBLIC ROUTES - NO AUTHENTICATION REQUIRED
+// ============================================
+// Content Pages (Public - for terms, privacy, etc.)
+Route::group(['prefix' => 'driver/auth'], function () {
+    Route::get('/pages/{slug}', [\App\Http\Controllers\Api\ContentPageController::class, 'show']);
+    Route::get('/pages', [\App\Http\Controllers\Api\ContentPageController::class, 'index']);
+});
+
+Route::group(['prefix' => 'driver/auth', 'middleware' => ['auth:api', 'driver.approved']], function () {
 
     // ============================================
     // NOTIFICATIONS
@@ -62,12 +71,6 @@ Route::group(['prefix' => 'driver/auth', 'middleware' => ['auth:api']], function
         // App Info
         Route::get('/app-info', 'appInfo'); // Get app version info
     });
-
-    // ============================================
-    // CONTENT PAGES
-    // ============================================
-    Route::get('/pages/{slug}', [\App\Http\Controllers\Api\ContentPageController::class, 'show']);
-    Route::get('/pages', [\App\Http\Controllers\Api\ContentPageController::class, 'index']);
 
     // ============================================
     // ACCOUNT MANAGEMENT

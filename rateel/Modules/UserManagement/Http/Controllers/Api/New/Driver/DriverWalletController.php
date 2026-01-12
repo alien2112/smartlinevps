@@ -51,6 +51,14 @@ class DriverWalletController extends Controller
         $isNegative = $userAccount->wallet_balance < 0;
         $amountOwed = $isNegative ? abs($userAccount->wallet_balance) : 0;
 
+        // Negative balance limit info
+        $maxNegativeBalance = (float) ($driver->max_negative_balance ?? 200);
+        $negativeBalanceUsed = $isNegative ? abs($userAccount->wallet_balance) : 0;
+        $negativeBalanceRemaining = max(0, $maxNegativeBalance - $negativeBalanceUsed);
+        $negativeBalancePercentage = $maxNegativeBalance > 0 ? round(($negativeBalanceUsed / $maxNegativeBalance) * 100, 2) : 0;
+        $warningThreshold = $maxNegativeBalance * 0.75;
+        $isNearLimit = $negativeBalanceUsed >= $warningThreshold;
+
         return response()->json(responseFormatter(DEFAULT_200, [
             'receivable_balance' => (float) $userAccount->receivable_balance,
             'payable_balance' => (float) $userAccount->payable_balance,
@@ -69,6 +77,19 @@ class DriverWalletController extends Controller
             'formatted_receivable' => getCurrencyFormat($userAccount->receivable_balance),
             'formatted_payable' => getCurrencyFormat($userAccount->payable_balance),
             'formatted_withdrawable' => getCurrencyFormat($withdrawableAmount),
+            // Negative balance limit information
+            'negative_balance_limit' => [
+                'max_limit' => $maxNegativeBalance,
+                'formatted_max_limit' => getCurrencyFormat($maxNegativeBalance),
+                'used' => $negativeBalanceUsed,
+                'formatted_used' => getCurrencyFormat($negativeBalanceUsed),
+                'remaining' => $negativeBalanceRemaining,
+                'formatted_remaining' => getCurrencyFormat($negativeBalanceRemaining),
+                'percentage_used' => $negativeBalancePercentage,
+                'is_near_limit' => $isNearLimit,
+                'warning_threshold' => $warningThreshold,
+                'formatted_warning_threshold' => getCurrencyFormat($warningThreshold),
+            ],
         ]));
     }
 
@@ -288,6 +309,22 @@ class DriverWalletController extends Controller
                 ->count();
 
             $netEarnings = $earnings - $payable;
+            $hasNegativeBalance = $netEarnings < 0;
+            $negativeBalance = $hasNegativeBalance ? abs($netEarnings) : null;
+
+            // Get current wallet balance for negative balance limit info
+            $userAccount = UserAccount::where('user_id', $driver->id)->first();
+            $currentWalletBalance = $userAccount ? (float) $userAccount->wallet_balance : 0;
+            
+            // Calculate negative balance limit information
+            $isNegative = $currentWalletBalance < 0;
+            $amountOwed = $isNegative ? abs($currentWalletBalance) : 0;
+            $maxNegativeBalance = (float) ($driver->max_negative_balance ?? 200);
+            $negativeBalanceUsed = $isNegative ? abs($currentWalletBalance) : 0;
+            $negativeBalanceRemaining = max(0, $maxNegativeBalance - $negativeBalanceUsed);
+            $negativeBalancePercentage = $maxNegativeBalance > 0 ? round(($negativeBalanceUsed / $maxNegativeBalance) * 100, 2) : 0;
+            $warningThreshold = $maxNegativeBalance * 0.75;
+            $isNearLimit = $negativeBalanceUsed >= $warningThreshold;
 
             $response = [
                 'date' => $date->format('Y-m-d'),
@@ -300,8 +337,30 @@ class DriverWalletController extends Controller
                 'formatted_payable' => getCurrencyFormat($payable),
                 'net_earnings' => (float) $netEarnings,
                 'formatted_net' => getCurrencyFormat($netEarnings),
+                'has_negative_balance' => $hasNegativeBalance,
+                'negative_balance' => $negativeBalance ? (float) $negativeBalance : null,
+                'formatted_negative_balance' => $negativeBalance ? getCurrencyFormat($negativeBalance) : null,
                 'transaction_count' => $transactionCount,
                 'currency' => businessConfig('currency_code')?->value ?? 'EGP',
+                // Current wallet balance
+                'wallet_balance' => $currentWalletBalance,
+                'formatted_wallet_balance' => getCurrencyFormat($currentWalletBalance),
+                'is_wallet_negative' => $isNegative,
+                'amount_owed' => $amountOwed,
+                'formatted_amount_owed' => $isNegative ? getCurrencyFormat($amountOwed) : null,
+                // Negative balance limit information
+                'negative_balance_limit' => [
+                    'max_limit' => $maxNegativeBalance,
+                    'formatted_max_limit' => getCurrencyFormat($maxNegativeBalance),
+                    'used' => $negativeBalanceUsed,
+                    'formatted_used' => getCurrencyFormat($negativeBalanceUsed),
+                    'remaining' => $negativeBalanceRemaining,
+                    'formatted_remaining' => getCurrencyFormat($negativeBalanceRemaining),
+                    'percentage_used' => $negativeBalancePercentage,
+                    'is_near_limit' => $isNearLimit,
+                    'warning_threshold' => $warningThreshold,
+                    'formatted_warning_threshold' => getCurrencyFormat($warningThreshold),
+                ],
             ];
 
             // Add hourly breakdown if requested

@@ -600,7 +600,7 @@ class ConfigController extends Controller
         if ($request->filled('language')) $apiParams['language'] = $request->input('language');
 
         // GeoLink Text Search API
-        $response = Http::get(MAP_API_BASE_URI . '/api/v2/text_search', $apiParams);
+        $response = Http::timeout(5)->get(MAP_API_BASE_URI . '/api/v2/text_search', $apiParams);
 
         // Debug log
         \Log::info('GeoLink autocomplete API call', [
@@ -618,8 +618,8 @@ class ConfigController extends Controller
 
         $transformedData = $this->transformTextSearchResponse($response->json(), $zoneId);
 
-        // Cache for 60 seconds
-        \Cache::put($cacheKey, $transformedData, 60);
+        // Cache for 5 minutes (300 seconds) - autocomplete queries are relatively stable
+        \Cache::put($cacheKey, $transformedData, 300);
 
         return response()->json(responseFormatter(DEFAULT_200, $transformedData), 200);
     }
@@ -675,6 +675,12 @@ class ConfigController extends Controller
         }
 
         if ($data && is_array($data)) {
+            // Limit to first 10 results for better performance (autocomplete doesn't need more)
+            $data = array_slice($data, 0, 10);
+
+            // Skip zone filtering if only 1-2 results (overhead not worth it, GeoLink already biases by location)
+            $skipZoneFiltering = count($data) <= 2;
+
             foreach ($data as $result) {
                 if (!is_array($result)) {
                     continue;
@@ -688,7 +694,7 @@ class ConfigController extends Controller
                 $address = $result['address'] ?? $result['long_address'] ?? $result['formatted_address'] ?? '';
 
                 // Zone filtering: Skip results outside the zone
-                if ($zone && $lat && $lng) {
+                if ($zone && $lat && $lng && !$skipZoneFiltering) {
                     try {
                         $point = new Point($lat, $lng, 4326);
                         $isInZone = $this->zoneService->getByPoints($point)

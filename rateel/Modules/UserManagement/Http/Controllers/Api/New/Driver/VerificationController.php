@@ -95,9 +95,12 @@ class VerificationController extends Controller
             );
         }
 
+        $videoKinds = config('verification.video_kinds', ['liveness_video', 'liveness_video_1', 'liveness_video_2']);
+        $allowedKinds = array_merge(['selfie', 'id_front', 'id_back'], $videoKinds);
+
         $validator = Validator::make($request->all(), [
             'phone' => 'required|string|min:10|max:15',
-            'kind' => 'required|in:selfie,liveness_video,id_front,id_back',
+            'kind' => 'required|in:' . implode(',', $allowedKinds),
             'file' => 'required|file|max:10240', // 10MB max
         ]);
 

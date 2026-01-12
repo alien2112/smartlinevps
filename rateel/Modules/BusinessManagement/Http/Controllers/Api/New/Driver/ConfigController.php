@@ -528,15 +528,25 @@ class ConfigController extends Controller
 
         // Get zone_id from header or query parameter for filtering
         $zoneId = $request->header('zoneId') ?? $request->input('zoneId') ?? $request->input('zone_id');
+        $searchText = $request['search_text'];
 
         // Accept both 'lat'/'lng' and 'latitude'/'longitude' from request (Flutter sends lat/lng)
         $latitude = $request->input('latitude') ?? $request->input('lat');
         $longitude = $request->input('longitude') ?? $request->input('lng');
 
+        // Create cache key based on search text, zone, and location
+        $cacheKey = 'driver_place_autocomplete_' . md5($searchText . $zoneId . $latitude . $longitude);
+
+        // Try to get from cache first (5 minutes TTL)
+        $cachedResult = \Cache::get($cacheKey);
+        if ($cachedResult !== null) {
+            return response()->json(responseFormatter(DEFAULT_200, $cachedResult), 200);
+        }
+
         // Build GeoLink API parameters with location biasing
         // GeoLink text_search requires 'latitude' and 'longitude' per docs
         $apiParams = [
-            'query' => $request['search_text'],
+            'query' => $searchText,
             'key' => $mapKey
         ];
 
@@ -547,7 +557,7 @@ class ConfigController extends Controller
         if ($request->filled('country')) $apiParams['country'] = $request->input('country');
 
         // GeoLink Text Search API
-        $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/text_search', $apiParams);
+        $response = Http::timeout(5)->get(MAP_API_BASE_URI . '/api/v2/text_search', $apiParams);
 
         // Log the response for debugging
         if (!$response->successful()) {
@@ -571,6 +581,9 @@ class ConfigController extends Controller
         ]);
 
         $transformedData = $this->transformTextSearchResponse($geoLinkData, $zoneId);
+
+        // Cache for 5 minutes (300 seconds)
+        \Cache::put($cacheKey, $transformedData, 300);
 
         return response()->json(responseFormatter(DEFAULT_200, $transformedData), 200);
     }
@@ -764,6 +777,12 @@ class ConfigController extends Controller
         }
 
         if ($data && is_array($data)) {
+            // Limit to first 10 results for better performance (autocomplete doesn't need more)
+            $data = array_slice($data, 0, 10);
+
+            // Skip zone filtering if only 1-2 results (overhead not worth it, GeoLink already biases by location)
+            $skipZoneFiltering = count($data) <= 2;
+
             foreach ($data as $result) {
                 // Convert object to array if needed
                 if (is_object($result)) {
@@ -781,7 +800,7 @@ class ConfigController extends Controller
                     $address = $result['address'] ?? $result['long_address'] ?? $result['formatted_address'] ?? '';
 
                     // Zone filtering: Skip results outside the zone
-                    if ($zone && $lat && $lng) {
+                    if ($zone && $lat && $lng && !$skipZoneFiltering) {
                         try {
                             $point = new Point($lat, $lng, 4326);
                             $isInZone = $this->zoneService->getByPoints($point)

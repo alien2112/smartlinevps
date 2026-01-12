@@ -5,6 +5,7 @@ namespace App\Http;
 use App\Http\Middleware\GlobalMiddleware;
 use App\Http\Middleware\LocalizationMiddleware;
 use App\Http\Middleware\MaintenanceModeMiddleware;
+use App\Http\Middleware\CheckDriverApproved;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Modules\AdminModule\Http\Middleware\AdminMiddleware;
 
@@ -75,5 +76,6 @@ class Kernel extends HttpKernel
         'rate_limit' => \App\Http\Middleware\ApiRateLimiter::class,
         'onboarding' => \App\Http\Middleware\OnboardingAuth::class,
         'deprecated' => \App\Http\Middleware\DeprecationWarning::class,
+        'driver.approved' => CheckDriverApproved::class,
     ];
 }

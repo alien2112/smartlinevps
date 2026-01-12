@@ -18,7 +18,7 @@ class VehicleBrandResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'description' => $this->description,
-            'image' => $this->image,
+            'image' => getMediaUrl($this->image),
             'is_active' => $this->is_active,
             'vehicles' => VehicleResource::collection($this->whenLoaded('vehicles')),
             'vehicle_models' => VehicleModelResource::collection($this->whenLoaded('vehicleModels')),
