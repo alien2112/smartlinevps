@@ -15,6 +15,12 @@ class VehicleResource extends JsonResource
      */
     public function toArray($request)
     {
+        // Ensure documents are properly formatted as full URLs
+        $documents = $this->documents ?? [];
+        if (!empty($documents)) {
+            $documents = getMediaUrl($documents, 'vehicle/document');
+        }
+
         return [
             'brand' => VehicleBrandResource::make($this->whenLoaded('brand')),
             'model' => VehicleModelResource::make($this->whenLoaded('model')),
@@ -27,7 +33,7 @@ class VehicleResource extends JsonResource
             'fuel_type' => $this->fuel_type,
             'ownership' => $this->ownership,
             'driver' => (new DriverResource($this->whenLoaded('driver'))),
-            'documents' => $this->documents,
+            'documents' => $documents,
             'is_active' => $this->is_active,
             'vehicle_request_status' => $this->vehicle_request_status,
             'deny_note' => $this->deny_note,

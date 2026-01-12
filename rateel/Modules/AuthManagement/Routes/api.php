@@ -60,6 +60,9 @@ Route::group(['prefix' => 'v2/driver/onboarding'], function () {
         // Step 2: Verify OTP
         Route::post('verify-otp', 'verifyOtp')->name('driver.onboarding.v2.verify-otp');
 
+        // Resend OTP - Only requires phone
+        Route::post('resend-otp', 'resendOtp')->name('driver.onboarding.v2.resend-otp');
+
         // Step 3: Set password
         Route::post('set-password', 'setPassword')->name('driver.onboarding.v2.set-password');
 
@@ -99,6 +102,7 @@ Route::group(['prefix' => 'driver/auth'], function () {
         // Step 6: Document upload (multi-file uploads)
         Route::post('upload/id', 'uploadId')->name('driver.onboarding.upload.id');
         Route::post('upload/license', 'uploadLicense')->name('driver.onboarding.upload.license');
+        Route::post('upload/driving-license', 'uploadDrivingLicense')->name('driver.onboarding.upload.driving-license');
         Route::post('upload/car_photo', 'uploadCarPhoto')->name('driver.onboarding.upload.car_photo');
         Route::post('upload/selfie', 'uploadSelfie')->name('driver.onboarding.upload.selfie');
 

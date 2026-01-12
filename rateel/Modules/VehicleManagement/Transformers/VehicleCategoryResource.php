@@ -27,7 +27,7 @@ class VehicleCategoryResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'image' => $this->image,
+            'image' => getMediaUrl($this->image),
             'type' => $this->type,
             'self_selectable' => in_array($this->id, $allowedCategories),
             'requires_admin_assignment' => !in_array($this->id, $allowedCategories),

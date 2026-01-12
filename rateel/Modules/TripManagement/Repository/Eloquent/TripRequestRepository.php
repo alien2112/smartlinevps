@@ -231,7 +231,23 @@ class TripRequestRepository extends BaseRepository implements TripRequestReposit
         }
 
         if ($attributes['coordinate'] ?? null) {
-            $trip->coordinate()->update($attributes['coordinate']);
+            // Use CoordinateHelper for drop_coordinates to bypass Eloquent Spatial bug
+            if (isset($attributes['coordinate']['drop_coordinates'])) {
+                $dropCoords = $attributes['coordinate']['drop_coordinates'];
+                if ($dropCoords instanceof \MatanYadaev\EloquentSpatial\Objects\Point) {
+                    \App\Helpers\CoordinateHelper::updateDropCoordinates(
+                        $trip->id,
+                        $dropCoords->latitude,
+                        $dropCoords->longitude
+                    );
+                }
+                // Remove drop_coordinates from the array so it doesn't get updated again
+                unset($attributes['coordinate']['drop_coordinates']);
+            }
+            // Update any remaining coordinate fields through Eloquent
+            if (!empty($attributes['coordinate'])) {
+                $trip->coordinate()->update($attributes['coordinate']);
+            }
         }
         if ($attributes['fee'] ?? null) {
             $trip->fee()->update($attributes['fee']);

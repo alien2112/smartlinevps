@@ -94,7 +94,7 @@ Route::group(['prefix' => 'customer'], function () {
 
 Route::group(['prefix' => 'driver'], function () {
 
-    Route::group(['middleware' => ['auth:api', 'maintenance_mode']], function () {
+    Route::group(['middleware' => ['auth:api', 'driver.approved', 'maintenance_mode']], function () {
         Route::get('time-tracking', [TimeTrackController::class, 'store']);
         Route::post('update-online-status', [TimeTrackController::class, 'onlineStatus']);
         Route::group(['prefix' => 'update'], function () {

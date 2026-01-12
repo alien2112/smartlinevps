@@ -89,9 +89,20 @@ return [
     |
     */
     'required_media' => [
-        'driver_kyc' => ['selfie', 'id_front'], // Minimum for drivers
+        'driver_kyc' => ['selfie', 'liveness_video'], // Minimum for drivers (1 selfie + at least 1 video)
         'customer_kyc' => ['selfie'], // Minimum for customers (future)
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Video Upload Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Allow up to 3 liveness videos for enhanced verification.
+    |
+    */
+    'max_videos' => 3,
+    'video_kinds' => ['liveness_video', 'liveness_video_1', 'liveness_video_2'],
 
     /*
     |--------------------------------------------------------------------------

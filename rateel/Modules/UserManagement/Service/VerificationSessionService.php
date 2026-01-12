@@ -62,13 +62,20 @@ class VerificationSessionService implements VerificationSessionServiceInterface
      */
     public function storeMedia(string $sessionId, string $kind, UploadedFile $file): VerificationMedia
     {
-        // Validate kind
+        // Validate kind - combine document types with video kinds from config
         $validKinds = [
             VerificationMedia::KIND_SELFIE,
-            VerificationMedia::KIND_LIVENESS_VIDEO,
             VerificationMedia::KIND_ID_FRONT,
             VerificationMedia::KIND_ID_BACK,
         ];
+
+        // Add video kinds from config
+        $videoKinds = $this->config['video_kinds'] ?? [
+            VerificationMedia::KIND_LIVENESS_VIDEO,
+            VerificationMedia::KIND_LIVENESS_VIDEO_1,
+            VerificationMedia::KIND_LIVENESS_VIDEO_2,
+        ];
+        $validKinds = array_merge($validKinds, $videoKinds);
 
         if (!in_array($kind, $validKinds)) {
             throw new \InvalidArgumentException("Invalid media kind: {$kind}");
@@ -222,9 +229,12 @@ class VerificationSessionService implements VerificationSessionServiceInterface
         };
 
         $updateData = ['kyc_status' => $kycStatus];
-        
+
         if ($kycStatus === 'verified') {
             $updateData['kyc_verified_at'] = now();
+            // Move to pending_approval when KYC is verified - admin must approve
+            $updateData['onboarding_step'] = 'pending_approval';
+            $updateData['onboarding_state'] = 'pending_approval';
         }
 
         \Modules\UserManagement\Entities\User::where('id', $userId)->update($updateData);

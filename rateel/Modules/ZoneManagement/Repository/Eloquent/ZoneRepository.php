@@ -32,22 +32,22 @@ class ZoneRepository extends BaseRepository implements ZoneRepositoryInterface
 
         if (AxisOrder::supported($connection)) {
             $query->whereRaw(
-                "ST_CONTAINS(`coordinates`, ST_GeomFromText(?, ?, 'axis-order=long-lat'))",
-                [$wkt, $srid]
+                "ST_CONTAINS(ST_SRID(`coordinates`, ?), ST_GeomFromText(?, ?, 'axis-order=long-lat'))",
+                [$srid, $wkt, $srid]
             )->orWhereRaw(
-                "ST_CONTAINS(`coordinates`, ST_GeomFromText(?, ?, 'axis-order=lat-long'))",
-                [$wkt, $srid]
+                "ST_CONTAINS(ST_SRID(`coordinates`, ?), ST_GeomFromText(?, ?, 'axis-order=lat-long'))",
+                [$srid, $wkt, $srid]
             )->orderByRaw(
-                "ST_CONTAINS(`coordinates`, ST_GeomFromText(?, ?, 'axis-order=long-lat')) DESC",
-                [$wkt, $srid]
+                "ST_CONTAINS(ST_SRID(`coordinates`, ?), ST_GeomFromText(?, ?, 'axis-order=long-lat')) DESC",
+                [$srid, $wkt, $srid]
             );
 
             return $query;
         }
 
         return $query->whereRaw(
-            "ST_CONTAINS(`coordinates`, ST_GeomFromText(?, ?))",
-            [$wkt, $srid]
+            "ST_CONTAINS(ST_SRID(`coordinates`, ?), ST_GeomFromText(?, ?))",
+            [$srid, $wkt, $srid]
         );
     }
 

@@ -77,7 +77,7 @@ Route::group(['prefix' => 'customer', 'middleware' => ['auth:api', 'maintenance_
 /**
  * DRIVER API LIST
  */
-Route::group(['prefix' => 'driver', 'middleware' => ['auth:api', 'maintenance_mode']], function () {
+Route::group(['prefix' => 'driver', 'middleware' => ['auth:api', 'driver.approved', 'maintenance_mode']], function () {
     Route::post('last-ride-details', [DriverTripController::class, 'lastRideDetails']);
     Route::group(['prefix' => 'ride', 'middleware' => ['auth:api', 'maintenance_mode']], function () {
         Route::controller(DriverTripController::class)->group(function () {

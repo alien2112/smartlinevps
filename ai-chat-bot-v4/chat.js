@@ -2962,7 +2962,7 @@ async function start() {
         await initDatabase();
 
         // Start server
-        const server = app.listen(PORT, () => {
+        const server = app.listen(PORT, '127.0.0.1', () => {
             console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║                                                            ║

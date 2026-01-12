@@ -83,11 +83,14 @@ class DriverOnboardingV2Controller extends Controller
 
             if (!$driver) {
                 // Create new driver with phone only
+                // Ensure is_approved = false so they must wait for admin approval
                 $driver = User::create([
                     'phone' => $phone,
                     'user_type' => 'driver',
                     'onboarding_step' => self::STEP_OTP,
+                    'onboarding_state' => 'otp_pending',
                     'is_active' => false,
+                    'is_approved' => false,
                     'ref_code' => $this->generateRefCode(),
                 ]);
 
@@ -229,6 +232,7 @@ class DriverOnboardingV2Controller extends Controller
             'message' => 'OTP verified successfully',
             'data' => [
                 'next_step' => $nextStep,
+                'phone_verified' => true,
             ],
         ];
 
@@ -246,6 +250,63 @@ class DriverOnboardingV2Controller extends Controller
         }
 
         return response()->json($response);
+    }
+
+    /**
+     * Resend OTP - Only requires phone
+     * POST /api/v2/driver/onboarding/resend-otp
+     */
+    public function resendOtp(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'phone' => 'required|string|min:10|max:15',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $phone = $this->normalizePhone($request->phone);
+
+        $driver = User::where('phone', $phone)
+            ->where('user_type', 'driver')
+            ->first();
+
+        if (!$driver) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Driver not found. Please start over.',
+            ], 404);
+        }
+
+        // Send OTP via BeOn
+        $otpResult = $this->beonOtpService->sendOtp($phone);
+
+        if (!$otpResult['success']) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $otpResult['message'] ?? 'Failed to send OTP. Please try again.',
+            ], 500);
+        }
+
+        // Cache the OTP
+        $otp = $otpResult['otp'] ?? null;
+        if ($otp) {
+            Cache::put(self::OTP_CACHE_PREFIX . $phone, $otp, now()->addMinutes(self::OTP_EXPIRY_MINUTES));
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'OTP sent successfully',
+            'data' => [
+                'phone' => $phone,
+                'message' => 'Please enter the OTP sent to your phone',
+            ],
+        ]);
     }
 
     /**
@@ -389,6 +450,7 @@ class DriverOnboardingV2Controller extends Controller
             'last_name_ar' => 'required|string|max:100',
             'national_id' => 'required|string|min:10|max:20',
             'city_id' => 'required|exists:zones,id',
+            'city_name' => 'nullable|string|max:100',
             'referral_code' => 'nullable|string|size:8',
         ]);
 
@@ -458,6 +520,7 @@ class DriverOnboardingV2Controller extends Controller
         $driver->last_name_ar = $request->last_name_ar;
         $driver->identification_number = $request->national_id;
         $driver->city_id = $request->city_id;
+        $driver->city_name = $request->city_name;
         $driver->register_completed_at = now();
         $driver->onboarding_step = self::STEP_VEHICLE_TYPE;
 

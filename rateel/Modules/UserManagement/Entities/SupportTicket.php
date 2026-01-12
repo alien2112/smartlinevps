@@ -11,9 +11,12 @@ class SupportTicket extends Model
     use HasFactory, HasUuids;
 
     protected $fillable = [
+        'ticket_number',
+        'driver_id',
         'user_id',
         'user_type',
         'subject',
+        'description',
         'message',
         'category',
         'priority',
@@ -22,10 +25,17 @@ class SupportTicket extends Model
         'admin_response',
         'responded_at',
         'responded_by',
+        'driver_reply',
+        'replied_at',
+        'rating',
+        'rating_feedback',
+        'rated_at',
     ];
 
     protected $casts = [
         'responded_at' => 'datetime',
+        'replied_at' => 'datetime',
+        'rated_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -110,5 +120,15 @@ class SupportTicket extends Model
     public function isResolved(): bool
     {
         return in_array($this->status, [self::STATUS_RESOLVED, self::STATUS_CLOSED]);
+    }
+
+    /**
+     * Generate a unique ticket number
+     */
+    public static function generateTicketNumber(): string
+    {
+        $date = date('Ymd');
+        $random = strtoupper(substr(uniqid(mt_rand(), true), -6));
+        return "TKT-{$date}-{$random}";
     }
 }
