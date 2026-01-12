@@ -12,7 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         // Trusted Contacts Table
-        Schema::create('trusted_contacts', function (Blueprint $table) {
+        if (!Schema::hasTable('trusted_contacts')) {
+            Schema::create('trusted_contacts', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('user_id')->constrained('users')->onDelete('cascade');
             $table->string('name');
@@ -22,11 +23,13 @@ return new class extends Migration
             $table->integer('priority')->default(1); // 1 = highest priority
             $table->timestamps();
             
-            $table->index(['user_id', 'is_active']);
-        });
+                $table->index(['user_id', 'is_active']);
+            });
+        }
 
         // Trip Shares Table
-        Schema::create('trip_shares', function (Blueprint $table) {
+        if (!Schema::hasTable('trip_shares')) {
+            Schema::create('trip_shares', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('trip_id')->constrained('trip_requests')->onDelete('cascade');
             $table->foreignUuid('driver_id')->constrained('users')->onDelete('cascade');
@@ -41,11 +44,13 @@ return new class extends Migration
             
             $table->index(['trip_id', 'is_active']);
             $table->index('share_token');
-            $table->index('driver_id');
-        });
+                $table->index('driver_id');
+            });
+        }
 
         // Emergency Alerts Table
-        Schema::create('emergency_alerts', function (Blueprint $table) {
+        if (!Schema::hasTable('emergency_alerts')) {
+            Schema::create('emergency_alerts', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('user_id')->constrained('users')->onDelete('cascade');
             $table->string('user_type'); // 'driver' or 'customer'
@@ -64,11 +69,13 @@ return new class extends Migration
             $table->index(['user_id', 'status']);
             $table->index(['trip_id', 'status']);
             $table->index('alert_type');
-            $table->index('created_at');
-        });
+                $table->index('created_at');
+            });
+        }
 
         // Trip Monitoring Table
-        Schema::create('trip_monitoring', function (Blueprint $table) {
+        if (!Schema::hasTable('trip_monitoring')) {
+            Schema::create('trip_monitoring', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('trip_id')->constrained('trip_requests')->onDelete('cascade');
             $table->foreignUuid('driver_id')->constrained('users')->onDelete('cascade');
@@ -86,11 +93,13 @@ return new class extends Migration
             
             $table->unique('trip_id');
             $table->index(['driver_id', 'is_enabled']);
-            $table->index('alert_triggered');
-        });
+                $table->index('alert_triggered');
+            });
+        }
 
         // Emergency Contacts (System-wide)
-        Schema::create('emergency_contacts', function (Blueprint $table) {
+        if (!Schema::hasTable('emergency_contacts')) {
+            Schema::create('emergency_contacts', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('country_code')->default('EG');
             $table->string('service_type'); // 'police', 'ambulance', 'fire', 'traffic'
@@ -102,8 +111,9 @@ return new class extends Migration
             $table->timestamps();
             
             $table->index(['country_code', 'is_active']);
-            $table->index('service_type');
-        });
+                $table->index('service_type');
+            });
+        }
     }
 
     /**

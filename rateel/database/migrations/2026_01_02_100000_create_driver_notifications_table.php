@@ -11,7 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('driver_notifications', function (Blueprint $table) {
+        if (!Schema::hasTable('driver_notifications')) {
+            Schema::create('driver_notifications', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('driver_id')->constrained('users')->onDelete('cascade');
             $table->string('type', 50); // trip_update, payment_received, system_announcement, etc.
@@ -28,12 +29,14 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
 
-            $table->index(['driver_id', 'is_read']);
-            $table->index(['driver_id', 'created_at']);
-            $table->index('type');
-        });
+                $table->index(['driver_id', 'is_read']);
+                $table->index(['driver_id', 'created_at']);
+                $table->index('type');
+            });
+        }
 
-        Schema::create('notification_settings', function (Blueprint $table) {
+        if (!Schema::hasTable('notification_settings')) {
+            Schema::create('notification_settings', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('driver_id')->constrained('users')->onDelete('cascade');
             $table->boolean('trip_requests_enabled')->default(true);
@@ -49,8 +52,9 @@ return new class extends Migration
             $table->boolean('quiet_hours_enabled')->default(false);
             $table->timestamps();
 
-            $table->unique('driver_id');
-        });
+                $table->unique('driver_id');
+            });
+        }
     }
 
     /**

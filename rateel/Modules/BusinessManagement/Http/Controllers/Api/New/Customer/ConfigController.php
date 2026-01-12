@@ -1051,16 +1051,20 @@ class ConfigController extends Controller
 
         $intermediateCoordinates = [];
         if ($trip->current_status == ONGOING) {
+            // Use CoordinateHelper to correctly extract coordinates (handles DB swap)
+            $destCoords = \App\Helpers\CoordinateHelper::extractFromPoint($trip->coordinate->destination_coordinates);
             $destinationCoordinates = [
-                $trip->coordinate->destination_coordinates->latitude,
-                $trip->coordinate->destination_coordinates->longitude,
+                $destCoords['lat'],
+                $destCoords['lng'],
             ];
             // Fixed: removed double $ sign
             $intermediateCoordinates = $trip->coordinate->intermediate_coordinates ? json_decode($trip->coordinate->intermediate_coordinates, true) : [];
         } else {
+            // Use CoordinateHelper to correctly extract coordinates (handles DB swap)
+            $pickupCoords = \App\Helpers\CoordinateHelper::extractFromPoint($trip->coordinate->pickup_coordinates);
             $destinationCoordinates = [
-                $trip->coordinate->pickup_coordinates->latitude,
-                $trip->coordinate->pickup_coordinates->longitude,
+                $pickupCoords['lat'],
+                $pickupCoords['lng'],
             ];
         }
 
