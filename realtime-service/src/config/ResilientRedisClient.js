@@ -242,6 +242,7 @@ class ResilientRedisClient extends EventEmitter {
   // String operations
   async get(key) { return this.executeCommand('get', key); }
   async set(key, value, ...args) { return this.executeCommand('set', key, value, ...args); }
+  async setex(key, seconds, value) { return this.executeCommand('setex', key, seconds, value); }
   async del(...keys) { return this.executeCommand('del', ...keys); }
   async exists(...keys) { return this.executeCommand('exists', ...keys); }
   async expire(key, seconds) { return this.executeCommand('expire', key, seconds); }
