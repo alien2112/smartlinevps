@@ -56,6 +56,7 @@ Route::group(['prefix' => 'driver'], function () {
     Route::controller(\Modules\BusinessManagement\Http\Controllers\Api\New\Driver\ConfigController::class)->group(function () {
         // Legacy full configuration (backward compatibility)
         Route::get('configuration', 'configuration');
+        Route::get('pages/{page_name}', 'pages');
 
         Route::group(['prefix' => 'config'], function () {
             // OPTIMIZED: Smaller, focused configuration endpoints

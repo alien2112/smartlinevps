@@ -109,10 +109,22 @@ class ConfigController extends Controller
             'conversion_status' => (bool)($loyaltyPoints['status'] ?? false),
             'conversion_rate' => (double)($loyaltyPoints['points'] ?? 0),
             'base_url' => url('/') . '/api/',
-            'websocket_url' => $info->firstWhere('key_name', 'websocket_url')?->value ?? null,
-            'websocket_port' => (string)$info->firstWhere('key_name', 'websocket_port')?->value ?? 6001,
-            'websocket_key' => env('PUSHER_APP_KEY'),
-            'websocket_scheme' => env('PUSHER_SCHEME'),
+            // WebSocket - Laravel Reverb Configuration (Legacy - using Pusher env for backward compatibility)
+            'websocket_url' => $info->firstWhere('key_name', 'websocket_url')?->value ?? env('REVERB_HOST', env('PUSHER_HOST', 'smartline-it.com')),
+            'websocket_port' => (string)($info->firstWhere('key_name', 'websocket_port')?->value ?? env('REVERB_PORT', env('PUSHER_PORT', '443'))),
+            'websocket_key' => env('REVERB_APP_KEY', env('PUSHER_APP_KEY')),
+            'websocket_scheme' => env('REVERB_SCHEME', env('PUSHER_SCHEME', 'https')),
+            // Reverb WebSocket Configuration (camelCase for Flutter)
+            'webSocketUrl' => $info->firstWhere('key_name', 'websocket_url')?->value ?? env('REVERB_HOST', env('PUSHER_HOST', 'smartline-it.com')),
+            'webSocketPort' => (string)($info->firstWhere('key_name', 'websocket_port')?->value ?? env('REVERB_PORT', env('PUSHER_PORT', '443'))),
+            'websocketScheme' => env('REVERB_SCHEME', env('PUSHER_SCHEME', 'https')),
+            'webSocketKey' => env('REVERB_APP_KEY', env('PUSHER_APP_KEY')),
+            // Socket.IO Configuration (Node.js real-time service)
+            'socketio_url' => env('SOCKETIO_URL', $info->firstWhere('key_name', 'websocket_url')?->value ?? 'smartline-it.com'),
+            'socketio_path' => env('SOCKETIO_PATH', '/socket.io/'),
+            // Socket.IO Configuration (camelCase for Flutter)
+            'socketIOUrl' => env('SOCKETIO_URL', $info->firstWhere('key_name', 'websocket_url')?->value ?? 'smartline-it.com'),
+            'socketIOPath' => env('SOCKETIO_PATH', '/socket.io/'),
             'review_status' => (bool)$info->firstWhere('key_name', DRIVER_REVIEW)?->value ?? null,
             'level_status' => (bool)$info->firstWhere('key_name', DRIVER_LEVEL)?->value ?? null,
             'image_base_url' => [
