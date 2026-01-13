@@ -3,6 +3,7 @@
 namespace Modules\TripManagement\Http\Controllers\Api\New\Customer;
 
 use App\Http\Controllers\Controller;
+use App\Services\RealtimeEventPublisher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Modules\TripManagement\Service\Interface\SafetyAlertServiceInterface;
@@ -13,12 +14,17 @@ class SafetyAlertController extends Controller
 {
     protected $tripRequestService;
     protected $safetyAlertService;
+    protected $realtimeEventPublisher;
 
 
-    public function __construct(TripRequestServiceInterface $tripRequestService, SafetyAlertServiceInterface $safetyAlertService)
-    {
+    public function __construct(
+        TripRequestServiceInterface $tripRequestService, 
+        SafetyAlertServiceInterface $safetyAlertService,
+        RealtimeEventPublisher $realtimeEventPublisher
+    ) {
         $this->tripRequestService = $tripRequestService;
         $this->safetyAlertService = $safetyAlertService;
+        $this->realtimeEventPublisher = $realtimeEventPublisher;
     }
 
 
@@ -42,6 +48,8 @@ class SafetyAlertController extends Controller
         if (!$safetyAlert) {
             $this->safetyAlertService->create(data: $request->all());
             $data = $this->safetyAlertService->findOneBy(criteria: ['trip_request_id' => $request->trip_request_id], relations: ['trip'], whereHasRelations: $whereHasRelations);
+            
+            // Send Firebase topic notification
             sendTopicNotification(
                 topic: 'admin_safety_alert_notification',
                 title: translate('new_safety_alert'),
@@ -51,6 +59,10 @@ class SafetyAlertController extends Controller
                 tripReferenceId: $data?->trip?->ref_id,
                 route: $this->safetyAlertService->safetyAlertLatestUserRoute()
             );
+            
+            // Publish socket event for real-time alert
+            $this->realtimeEventPublisher->publishSafetyAlertCreated($data, 'customer');
+            
             $safetyAlertData = new SafetyAlertResource($data);
             return response()->json(responseFormatter(SAFETY_ALERT_STORE_200, $safetyAlertData));
         }
@@ -71,6 +83,8 @@ class SafetyAlertController extends Controller
         }
         $safetyAlert->increment('number_of_alert');
         $safetyAlertData = new SafetyAlertResource($safetyAlert);
+        
+        // Send Firebase topic notification
         sendTopicNotification(
             topic: 'admin_safety_alert_notification',
             title: translate('new_safety_alert'),
@@ -80,6 +94,9 @@ class SafetyAlertController extends Controller
             tripReferenceId: $safetyAlert?->trip?->ref_id,
             route: $this->safetyAlertService->safetyAlertLatestUserRoute()
         );
+        
+        // Publish socket event for real-time alert
+        $this->realtimeEventPublisher->publishSafetyAlertCreated($safetyAlert, 'customer');
 
         return response()->json(responseFormatter(SAFETY_ALERT_RESEND_200, $safetyAlertData));
     }
