@@ -8,6 +8,7 @@ use App\Events\DriverTripAcceptedEvent;
 use App\Events\DriverTripCancelledEvent;
 use App\Events\DriverTripCompletedEvent;
 use App\Events\DriverTripStartedEvent;
+use App\Helpers\CoordinateHelper;
 use App\Jobs\SendPushNotificationJob;
 use App\Jobs\ProcessTripAcceptNotificationsJob;
 use Carbon\Carbon;
@@ -570,7 +571,7 @@ class TripRequestController extends Controller
                     }
                 }
             }
-            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->latitude, $trip->driver->lastLocations->longitude);
+            $attributes['coordinate']['drop_coordinates'] = CoordinateHelper::createPointFromLocation($trip->driver->lastLocations);
 
             //set driver availability_status as on_trip
             $driverDetails = $this->driverDetails->getBy(column: 'user_id', value: $user?->id);

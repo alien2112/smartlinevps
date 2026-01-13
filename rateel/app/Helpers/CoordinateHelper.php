@@ -49,6 +49,18 @@ class CoordinateHelper
     }
 
     /**
+     * Create a Point from a [lat, lng] array (common API input format)
+     *
+     * @param array $coordinates Array where index 0 is latitude, index 1 is longitude
+     * @param int|null $srid     Spatial Reference ID
+     * @return Point
+     */
+    public static function createPointFromArray(array $coordinates, ?int $srid = 4326): Point
+    {
+        return new Point($coordinates[0], $coordinates[1], $srid);
+    }
+
+    /**
      * Get a raw SQL expression for ST_GeomFromText
      * Use this when Eloquent Spatial's automatic conversion fails
      *
@@ -130,7 +142,9 @@ class CoordinateHelper
 
     /**
      * Extract latitude and longitude from a Point object
-     * Note: Due to database storage quirks, the values might be swapped
+     *
+     * IMPORTANT: This expects Points created with correct (lat, lng) order using
+     * CoordinateHelper::createPoint() or CoordinateHelper::createPointFromArray()
      *
      * @param Point|null $point
      * @return array{lat: float|null, lng: float|null}
@@ -141,12 +155,9 @@ class CoordinateHelper
             return ['lat' => null, 'lng' => null];
         }
 
-        // The database stores coordinates swapped internally
-        // $point->longitude actually contains latitude
-        // $point->latitude actually contains longitude
         return [
-            'lat' => $point->longitude,
-            'lng' => $point->latitude,
+            'lat' => $point->latitude,
+            'lng' => $point->longitude,
         ];
     }
 

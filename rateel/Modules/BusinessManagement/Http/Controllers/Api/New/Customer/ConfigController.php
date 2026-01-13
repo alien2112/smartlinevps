@@ -2,8 +2,8 @@
 
 namespace Modules\BusinessManagement\Http\Controllers\Api\New\Customer;
 
+use App\Helpers\CoordinateHelper;
 use DateTimeZone;
-use MatanYadaev\EloquentSpatial\Objects\Point;
 use Illuminate\Contracts\Support\Renderable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -696,7 +696,7 @@ class ConfigController extends Controller
                 // Zone filtering: Skip results outside the zone
                 if ($zone && $lat && $lng && !$skipZoneFiltering) {
                     try {
-                        $point = new Point($lat, $lng, 4326);
+                        $point = CoordinateHelper::createPoint($lat, $lng);
                         $isInZone = $this->zoneService->getByPoints($point)
                             ->where('id', $zoneId)
                             ->where('is_active', 1)
@@ -1347,7 +1347,7 @@ class ConfigController extends Controller
         // Cache zone lookup for 10 minutes based on rounded coordinates
         $cacheKey = 'zone_' . round($request->lat, 3) . '_' . round($request->lng, 3);
         $zone = \Illuminate\Support\Facades\Cache::remember($cacheKey, 600, function () use ($request) {
-            $point = new Point($request->lat, $request->lng, 4326);
+            $point = CoordinateHelper::createPoint($request->lat, $request->lng);
             return $this->zoneService->getByPoints($point)->where('is_active', 1)->first();
         });
 

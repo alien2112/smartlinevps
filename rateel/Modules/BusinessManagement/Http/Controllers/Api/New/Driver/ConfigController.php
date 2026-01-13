@@ -2,6 +2,7 @@
 
 namespace Modules\BusinessManagement\Http\Controllers\Api\New\Driver;
 
+use App\Helpers\CoordinateHelper;
 use DateTimeZone;
 use Illuminate\Contracts\Support\Renderable;
 use Illuminate\Http\JsonResponse;
@@ -9,7 +10,6 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
-use MatanYadaev\EloquentSpatial\Objects\Point;
 use Modules\BusinessManagement\Service\Interface\BusinessSettingServiceInterface;
 use Modules\BusinessManagement\Service\Interface\CancellationReasonServiceInterface;
 use Modules\BusinessManagement\Service\Interface\ParcelCancellationReasonServiceInterface;
@@ -490,7 +490,7 @@ class ConfigController extends Controller
             return response()->json(responseFormatter(DEFAULT_400, null, null, null, errorProcessor($validator)), 400);
         }
 
-        $point = new Point($request->lat, $request->lng, 4326);
+        $point = CoordinateHelper::createPoint($request->lat, $request->lng);
         $zone = $this->zoneService->getByPoints($point)->where('is_active', 1)->first();
 
         if ($zone) {
@@ -802,7 +802,7 @@ class ConfigController extends Controller
                     // Zone filtering: Skip results outside the zone
                     if ($zone && $lat && $lng && !$skipZoneFiltering) {
                         try {
-                            $point = new Point($lat, $lng, 4326);
+                            $point = CoordinateHelper::createPoint($lat, $lng);
                             $isInZone = $this->zoneService->getByPoints($point)
                                 ->where('id', (string) $zoneId)
                                 ->where('is_active', 1)

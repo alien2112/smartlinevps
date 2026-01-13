@@ -8,6 +8,7 @@ use App\Events\CustomerCouponRemovedEvent;
 use App\Events\CustomerTripCancelledAfterOngoingEvent;
 use App\Events\CustomerTripCancelledEvent;
 use App\Events\CustomerTripRequestEvent;
+use App\Helpers\CoordinateHelper;
 use App\Jobs\SendPushNotificationJob;
 use Carbon\Carbon;
 use Exception;
@@ -149,8 +150,8 @@ class TripRequestController extends Controller
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['field' => 'destination_coordinates', 'message' => 'Invalid destination coordinates format. Expected [lat, lng] array.']]), 403);
         }
 
-        $pickup_point = new Point($pickup_coordinates[1], $pickup_coordinates[0], 4326);
-        $destination_point = new Point($destination_coordinates[1], $destination_coordinates[0], 4326);
+        $pickup_point = CoordinateHelper::createPointFromArray($pickup_coordinates);
+        $destination_point = CoordinateHelper::createPointFromArray($destination_coordinates);
 
 
         $intermediate_coordinates = [];
@@ -560,8 +561,8 @@ class TripRequestController extends Controller
                 return response()->json(responseFormatter(constant: DEFAULT_400, errors: [['field' => 'destination_coordinates', 'message' => 'Invalid destination coordinates format. Expected [lat, lng] array.']]), 403);
             }
 
-            $pickup_point = new Point($pickup_coordinates[1], $pickup_coordinates[0], 4326);
-            $destination_point = new Point($destination_coordinates[1], $destination_coordinates[0], 4326);
+            $pickup_point = CoordinateHelper::createPointFromArray($pickup_coordinates);
+            $destination_point = CoordinateHelper::createPointFromArray($destination_coordinates);
         }
 
         $zone = $this->zoneService->getByPoints($pickup_point)->where('is_active', 1)->first();
@@ -617,7 +618,7 @@ class TripRequestController extends Controller
             $save_trip->save();
         } else {
             $customer_coordinates = json_decode($request['customer_coordinates'], true);
-            $customer_point = new Point($customer_coordinates[1], $customer_coordinates[0], 4326);
+            $customer_point = CoordinateHelper::createPointFromArray($customer_coordinates);
             $request->merge([
                 'customer_id' => auth('api')->id(),
                 'zone_id' => $zone->id,
@@ -1153,7 +1154,7 @@ class TripRequestController extends Controller
             if ($request->status == 'cancelled') {
                 $attributes['fee']['cancelled_by'] = 'customer';
             }
-            $attributes['coordinate']['drop_coordinates'] = new Point($trip->driver->lastLocations->latitude, $trip->driver->lastLocations->longitude);
+            $attributes['coordinate']['drop_coordinates'] = CoordinateHelper::createPointFromLocation($trip->driver->lastLocations);
 
             // Update driver availability (sync - quick)
             $driverDetails = $this->driverDetails->getBy(column: 'user_id', value: $trip->driver_id);

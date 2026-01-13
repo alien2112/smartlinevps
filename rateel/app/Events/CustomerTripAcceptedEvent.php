@@ -9,17 +9,20 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
+use Modules\TripManagement\Entities\TripRequest;
 
-class CustomerTripAcceptedEvent
+class CustomerTripAcceptedEvent implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
+
+    public $tripRequest;
 
     /**
      * Create a new event instance.
      */
-    public function __construct()
+    public function __construct(TripRequest $tripRequest)
     {
-        //
+        $this->tripRequest = $tripRequest;
     }
 
     /**
@@ -30,7 +33,20 @@ class CustomerTripAcceptedEvent
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('channel-name'),
+            new PrivateChannel("customer-trip-accepted.{$this->tripRequest->id}"),
+        ];
+    }
+
+    public function broadcastAs()
+    {
+        return "customer-trip-accepted.{$this->tripRequest->id}";
+    }
+
+    public function broadcastWith()
+    {
+        return [
+            'id' => $this->tripRequest->id,
+            'type' => $this->tripRequest->type,
         ];
     }
 }

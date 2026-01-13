@@ -2,7 +2,7 @@
 
 namespace Modules\UserManagement\Http\Controllers\Api\Customer;
 
-use MatanYadaev\EloquentSpatial\Objects\Point;
+use App\Helpers\CoordinateHelper;
 use Illuminate\Contracts\Support\Renderable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -60,7 +60,7 @@ class AddressController extends Controller
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 400);
         }
 
-        $point = new Point($request->latitude,$request->longitude, 4326);
+        $point = CoordinateHelper::createPoint($request->latitude, $request->longitude);
         $zone = $this->zone->getByPoints($point)->get(['id']);
         if($zone->count() == 0) {
 
@@ -114,7 +114,7 @@ class AddressController extends Controller
             return response()->json(responseFormatter(constant: DEFAULT_400, errors: errorProcessor($validator)), 400);
         }
 
-        $point = new Point($request->latitude,$request->longitude, 4326);
+        $point = CoordinateHelper::createPoint($request->latitude, $request->longitude);
         $id = $request->id;
         $zone = $this->zone->getByPoints($point)->get(['id']);
         if($zone->count() == 0) {

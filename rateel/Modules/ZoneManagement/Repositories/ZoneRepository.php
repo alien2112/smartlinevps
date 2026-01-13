@@ -2,8 +2,8 @@
 
 namespace Modules\ZoneManagement\Repositories;
 
+use App\Helpers\CoordinateHelper;
 use MatanYadaev\EloquentSpatial\Objects\LineString;
-use MatanYadaev\EloquentSpatial\Objects\Point;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -102,9 +102,9 @@ class ZoneRepository implements ZoneInterface
                 $lastcord = explode(',', $single_array);
             }
             $coords = explode(',', $single_array);
-            $polygon[] = new Point($coords[0], $coords[1], 4326);
+            $polygon[] = CoordinateHelper::createPoint((float) $coords[0], (float) $coords[1]);
         }
-        $polygon[] = new Point($lastcord[0], $lastcord[1], 4326);
+        $polygon[] = CoordinateHelper::createPoint((float) $lastcord[0], (float) $lastcord[1]);
 
         $model = $this->zone;
         $model->name = $attributes['zone_name'];
@@ -134,9 +134,9 @@ class ZoneRepository implements ZoneInterface
                     $lastcord = explode(',', $single_array);
                 }
                 $coords = explode(',', $single_array);
-                $polygon[] = new Point($coords[0], $coords[1], 4326);
+                $polygon[] = CoordinateHelper::createPoint((float) $coords[0], (float) $coords[1]);
             }
-            $polygon[] = new Point($lastcord[0], $lastcord[1], 4326);
+            $polygon[] = CoordinateHelper::createPoint((float) $lastcord[0], (float) $lastcord[1]);
 
 
             $model->name = $attributes['zone_name'];
@@ -226,9 +226,9 @@ class ZoneRepository implements ZoneInterface
                 $lastcord = explode(',', $single_array);
             }
             $coords = explode(',', $single_array);
-            $polygon[] = new Point($coords[0], $coords[1], 4326);
+            $polygon[] = CoordinateHelper::createPoint((float) $coords[0], (float) $coords[1]);
         }
-        $polygon[] = new Point($lastcord[0], $lastcord[1], 4326);
+        $polygon[] = CoordinateHelper::createPoint((float) $lastcord[0], (float) $lastcord[1]);
 
         $model = $this->zone;
         $model->name = $attributes['zone_name'];

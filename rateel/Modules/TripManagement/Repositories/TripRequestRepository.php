@@ -2,8 +2,8 @@
 
 namespace Modules\TripManagement\Repositories;
 
+use App\Helpers\CoordinateHelper;
 use Carbon\Carbon;
-use MatanYadaev\EloquentSpatial\Objects\Point;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -144,10 +144,11 @@ class TripRequestRepository implements TripRequestInterfaces
             $int_coordinates = json_decode($attributes['intermediate_coordinates']);
             if (!is_null($int_coordinates)) {
                 foreach ($int_coordinates as $key => $ic) {
+                    $icArray = is_array($ic) ? $ic : (array) $ic;
                     if ($key == 0) {
-                        $coordinates['int_coordinate_1'] = new Point($ic[1], $ic[0]);
+                        $coordinates['int_coordinate_1'] = CoordinateHelper::createPointFromArray($icArray);
                     } elseif ($key == 1) {
-                        $coordinates['int_coordinate_2'] = new Point($ic[1], $ic[0]);
+                        $coordinates['int_coordinate_2'] = CoordinateHelper::createPointFromArray($icArray);
                     }
                 }
 

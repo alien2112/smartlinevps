@@ -2,12 +2,12 @@
 
 namespace Modules\ZoneManagement\Service;
 
+use App\Helpers\CoordinateHelper;
 use App\Service\BaseService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\LengthAwarePaginator;
 use MatanYadaev\EloquentSpatial\Objects\LineString;
-use MatanYadaev\EloquentSpatial\Objects\Point;
 use MatanYadaev\EloquentSpatial\Objects\Polygon;
 use Modules\ZoneManagement\Repository\ZoneRepositoryInterface;
 use Modules\ZoneManagement\Service\Interface\ZoneServiceInterface;
@@ -46,10 +46,10 @@ class ZoneService extends BaseService implements ZoneServiceInterface
                 $lastcord = explode(',', $single_array);
             }
             $coords = explode(',', $single_array);
-            $polygon[] = new Point($coords[0], $coords[1], 4326);
+            $polygon[] = CoordinateHelper::createPoint((float) $coords[0], (float) $coords[1]);
         }
 
-        $polygon[] = new Point($lastcord[0], $lastcord[1], 4326);
+        $polygon[] = CoordinateHelper::createPoint((float) $lastcord[0], (float) $lastcord[1]);
         return new Polygon([new LineString($polygon)], 4326);
     }
 

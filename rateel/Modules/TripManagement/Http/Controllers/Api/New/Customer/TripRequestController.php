@@ -3,8 +3,8 @@
 namespace Modules\TripManagement\Http\Controllers\Api\New\Customer;
 
 use App\Events\RideRequestEvent;
+use App\Helpers\CoordinateHelper;
 use App\Jobs\SendPushNotificationJob;
-use MatanYadaev\EloquentSpatial\Objects\Point;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -122,9 +122,9 @@ class TripRequestController extends Controller
         $customer_coordinates = is_array($request['customer_coordinates'])
             ? $request['customer_coordinates']
             : json_decode($request['customer_coordinates'], true);
-        $pickup_point = new Point($pickupCoordinates[1], $pickupCoordinates[0], 4326);
-        $destination_point = new Point($destinationCoordinates[1], $destinationCoordinates[0], 4326);
-        $customer_point = new Point($customer_coordinates[1], $customer_coordinates[0], 4326);
+        $pickup_point = CoordinateHelper::createPointFromArray($pickupCoordinates);
+        $destination_point = CoordinateHelper::createPointFromArray($destinationCoordinates);
+        $customer_point = CoordinateHelper::createPointFromArray($customer_coordinates);
 
         // Travel mode validations
         if ($isTravel) {
@@ -254,10 +254,10 @@ class TripRequestController extends Controller
             }
         }
 
-        $pickupCoordinatesPoints = new Point($pickupCoordinates[1], $pickupCoordinates[0], 4326);
+        $pickupCoordinatesPoints = CoordinateHelper::createPointFromArray($pickupCoordinates);
         $pickup_location_coverage = $this->zoneService->getByPoints($pickupCoordinatesPoints)->whereId($zoneId)->first();
 
-        $destinationCoordinatesPoints = new Point($destinationCoordinates[1], $destinationCoordinates[0], 4326);
+        $destinationCoordinatesPoints = CoordinateHelper::createPointFromArray($destinationCoordinates);
         $destination_location_coverage = $this->zoneService->getByPoints($destinationCoordinatesPoints)->whereId($zoneId)->first();
 
         if (!$pickup_location_coverage || !$destination_location_coverage) {
@@ -1066,10 +1066,7 @@ class TripRequestController extends Controller
             $attributes['fee']['cancelled_by'] = 'customer';
         }
 
-        $attributes['coordinate']['drop_coordinates'] = new Point(
-            $trip->driver->lastLocations->latitude,
-            $trip->driver->lastLocations->longitude
-        );
+        $attributes['coordinate']['drop_coordinates'] = CoordinateHelper::createPointFromLocation($trip->driver->lastLocations);
 
         // Set driver availability_status back to available
         $driverDetails = $this->driverDetailService->findOneBy(criteria: ['user_id' => $trip->driver_id]);

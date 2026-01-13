@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Broadcasting;
 
 /**
  * Realtime Event Publisher
@@ -320,13 +321,17 @@ class RealtimeEventPublisher
 
     /**
      * Issue #10 FIX: Publish immediately without batching
+     * Implements fallback to Pusher if Redis fails (redundancy)
      */
     protected function publishNow(string $channel, array $data): void
     {
+        $redisSuccess = false;
+
         try {
             Redis::publish($channel, json_encode($data));
+            $redisSuccess = true;
 
-            Log::info('Published realtime event', [
+            Log::info('Published realtime event via Redis', [
                 'channel' => $channel,
                 'trace_id' => $data['trace_id'] ?? null,
                 'ride_id' => $data['ride_id'] ?? $data['trip_id'] ?? null,
@@ -334,13 +339,62 @@ class RealtimeEventPublisher
                 'customer_id' => $data['customer_id'] ?? null,
             ]);
         } catch (\Exception $e) {
-            Log::error('Failed to publish realtime event', [
+            Log::warning('Failed to publish via Redis, attempting Pusher fallback', [
                 'channel' => $channel,
                 'error' => $e->getMessage(),
                 'trace_id' => $data['trace_id'] ?? null,
+            ]);
+
+            // Fallback to Pusher if Redis fails
+            $this->publishViaPusher($channel, $data);
+        }
+    }
+
+    /**
+     * Fallback publisher using Pusher for redundancy
+     * Used when Redis is unavailable
+     */
+    private function publishViaPusher(string $channel, array $data): void
+    {
+        try {
+            // Convert internal channel names to Pusher format
+            $pusherChannel = $this->convertChannelToPusher($channel);
+
+            Broadcasting::channel($pusherChannel)->emit('realtime.event', $data);
+
+            Log::info('Published realtime event via Pusher fallback', [
+                'channel' => $pusherChannel,
+                'trace_id' => $data['trace_id'] ?? null,
                 'ride_id' => $data['ride_id'] ?? $data['trip_id'] ?? null,
             ]);
+        } catch (\Exception $e) {
+            Log::critical('Failed to publish via both Redis and Pusher', [
+                'channel' => $channel,
+                'redis_error' => $data['redis_error'] ?? null,
+                'pusher_error' => $e->getMessage(),
+                'trace_id' => $data['trace_id'] ?? null,
+            ]);
         }
+    }
+
+    /**
+     * Convert internal Redis channel names to Pusher broadcast channels
+     */
+    private function convertChannelToPusher(string $channel): string
+    {
+        // Map internal channels to public broadcast channels
+        $mapping = [
+            'laravel:trip.accepted' => 'public:trip.accepted',
+            'laravel:otp.verified' => 'public:trip.started',
+            'laravel:driver.arrived' => 'public:driver.arrived',
+            'laravel:ride.created' => 'public:ride.created',
+            'laravel:ride.cancelled' => 'public:ride.cancelled',
+            'laravel:ride.completed' => 'public:ride.completed',
+            'laravel:payment.completed' => 'public:payment.completed',
+            'laravel:batch.notification' => 'public:batch.notification',
+        ];
+
+        return $mapping[$channel] ?? $channel;
     }
 
     // ========================================================================

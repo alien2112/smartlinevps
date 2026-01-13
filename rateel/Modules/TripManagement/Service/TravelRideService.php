@@ -3,6 +3,7 @@
 namespace Modules\TripManagement\Service;
 
 use App\Events\RideRequestEvent;
+use App\Helpers\CoordinateHelper;
 use App\Jobs\SendPushNotificationJob;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
@@ -77,11 +78,11 @@ class TravelRideService implements TravelRideServiceInterface
             $trip = TripRequest::create($tripData);
 
             // Create coordinates
-            $pickupPoint = new Point($pickupCoordinates[1], $pickupCoordinates[0], 4326);
+            $pickupPoint = CoordinateHelper::createPointFromArray($pickupCoordinates);
             $destinationCoordinates = is_array($request->destination_coordinates)
                 ? $request->destination_coordinates
                 : json_decode($request->destination_coordinates, true);
-            $destinationPoint = new Point($destinationCoordinates[1], $destinationCoordinates[0], 4326);
+            $destinationPoint = CoordinateHelper::createPointFromArray($destinationCoordinates);
 
             TripRequestCoordinate::create([
                 'trip_request_id' => $trip->id,
