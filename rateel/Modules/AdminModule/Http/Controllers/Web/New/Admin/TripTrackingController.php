@@ -110,11 +110,12 @@ class TripTrackingController extends BaseController
 
         $path = [];
 
-        // Pickup coordinates
+        // Pickup coordinates - use helper methods to get correct values
+        // (fixes Eloquent Spatial WKB parsing bug where lat/lng are swapped)
         if ($coordinate->pickup_coordinates) {
             $path[] = [
-                'lat' => $coordinate->pickup_coordinates->latitude,
-                'lng' => $coordinate->pickup_coordinates->longitude,
+                'lat' => $coordinate->getCorrectLatitude($coordinate->pickup_coordinates),
+                'lng' => $coordinate->getCorrectLongitude($coordinate->pickup_coordinates),
                 'type' => 'pickup'
             ];
         }
@@ -122,15 +123,15 @@ class TripTrackingController extends BaseController
         // Intermediate coordinates
         if ($coordinate->int_coordinate_1) {
             $path[] = [
-                'lat' => $coordinate->int_coordinate_1->latitude,
-                'lng' => $coordinate->int_coordinate_1->longitude,
+                'lat' => $coordinate->getCorrectLatitude($coordinate->int_coordinate_1),
+                'lng' => $coordinate->getCorrectLongitude($coordinate->int_coordinate_1),
                 'type' => 'intermediate'
             ];
         }
         if ($coordinate->int_coordinate_2) {
             $path[] = [
-                'lat' => $coordinate->int_coordinate_2->latitude,
-                'lng' => $coordinate->int_coordinate_2->longitude,
+                'lat' => $coordinate->getCorrectLatitude($coordinate->int_coordinate_2),
+                'lng' => $coordinate->getCorrectLongitude($coordinate->int_coordinate_2),
                 'type' => 'intermediate'
             ];
         }
@@ -138,8 +139,8 @@ class TripTrackingController extends BaseController
         // Destination coordinates
         if ($coordinate->destination_coordinates) {
             $path[] = [
-                'lat' => $coordinate->destination_coordinates->latitude,
-                'lng' => $coordinate->destination_coordinates->longitude,
+                'lat' => $coordinate->getCorrectLatitude($coordinate->destination_coordinates),
+                'lng' => $coordinate->getCorrectLongitude($coordinate->destination_coordinates),
                 'type' => 'destination'
             ];
         }

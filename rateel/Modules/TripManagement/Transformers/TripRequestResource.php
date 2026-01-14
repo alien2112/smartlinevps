@@ -4,6 +4,7 @@ namespace Modules\TripManagement\Transformers;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Helpers\CoordinateHelper;
 use Modules\ParcelManagement\Transformers\InformationResource;
 use Modules\ParcelManagement\Transformers\UserResource;
 use Modules\PromotionManagement\Transformers\CouponResource;
@@ -80,28 +81,17 @@ class TripRequestResource extends JsonResource
 
     /**
      * Convert Point object to Flutter-friendly format with correct lat/lng labels.
-     * Note: Our database stores coordinates with latitude in the 'longitude' field
-     * and longitude in the 'latitude' field (swapped from GeoJSON standard).
-     * This helper outputs them with correct labels for the mobile app.
+     *
+     * The Eloquent Spatial package correctly handles coordinate storage:
+     * - Point($latitude, $longitude) stores as WKT POINT(lng lat) in MySQL
+     * - When reading: $point->latitude returns the actual latitude value
+     * - When reading: $point->longitude returns the actual longitude value
+     *
+     * Uses CoordinateHelper::formatForApi() for consistent coordinate handling.
      */
     private function formatCoordinates($point): ?array
     {
-        if (!$point) {
-            return null;
-        }
-
-        // The Point object's internal latitude/longitude are swapped in our DB
-        // $point->longitude actually contains latitude (e.g., 31.1 for Alexandria)
-        // $point->latitude actually contains longitude (e.g., 29.7 for Alexandria)
-        $actualLat = $point->longitude;  // stored "longitude" is actually latitude
-        $actualLng = $point->latitude;   // stored "latitude" is actually longitude
-
-        return [
-            'type' => 'Point',
-            'coordinates' => [$actualLng, $actualLat], // GeoJSON format: [longitude, latitude]
-            'lat' => $actualLat,
-            'lng' => $actualLng,
-        ];
+        return CoordinateHelper::formatForApi($point);
     }
 
     /**

@@ -120,14 +120,15 @@
             const mapLayer = document.getElementById("map-layer");
             if (!mapLayer) return;
 
-            // Trip coordinates
+            // Trip coordinates - using helper methods to get correct values
+            // (fixes Eloquent Spatial WKB parsing bug where lat/lng are swapped)
             const start = {
-                lat: {{$trip->coordinate->pickup_coordinates->latitude}},
-                lng: {{$trip->coordinate->pickup_coordinates->longitude}}
+                lat: {{$trip->coordinate->getCorrectLatitude($trip->coordinate->pickup_coordinates)}},
+                lng: {{$trip->coordinate->getCorrectLongitude($trip->coordinate->pickup_coordinates)}}
             };
             const end = {
-                lat: {{$trip->coordinate->destination_coordinates->latitude}},
-                lng: {{$trip->coordinate->destination_coordinates->longitude}}
+                lat: {{$trip->coordinate->getCorrectLatitude($trip->coordinate->destination_coordinates)}},
+                lng: {{$trip->coordinate->getCorrectLongitude($trip->coordinate->destination_coordinates)}}
             };
 
             // Map settings from DB or fallback

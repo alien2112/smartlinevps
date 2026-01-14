@@ -549,29 +549,28 @@ trait CommonTrait
         $distance_in_km = 0;
     
         $drivingMode = $trip?->vehicleCategory?->type === 'motor_bike' ? 'TWO_WHEELER' : 'DRIVE';
-        $drop_coordinate = [
-            $trip->coordinate->drop_coordinates->latitude,
-            $trip->coordinate->drop_coordinates->longitude
-        ];
-        $destination_coordinate = [
-            $trip->coordinate->destination_coordinates->latitude,
-            $trip->coordinate->destination_coordinates->longitude
-        ];
-        $pickup_coordinate = [
-            $trip->coordinate->pickup_coordinates->latitude,
-            $trip->coordinate->pickup_coordinates->longitude
-        ];
+        
+        // Get destination coordinates (always required)
+        // Use helper methods that correct for Eloquent Spatial WKB parsing bug
+        $destination_coordinate = $trip->coordinate->getDestinationLatLng();
+        
+        // Get pickup coordinates (always required)
+        $pickup_coordinate = $trip->coordinate->getPickupLatLng();
+        
+        // Get drop coordinates - fallback to destination if not set (e.g., trip ended at destination)
+        $drop_coordinate = $trip->coordinate->getDropLatLng() ?? $destination_coordinate;
+        
         $intermediate_coordinate = [];
         if ($trip->coordinate->is_reached_1) {
             if ($trip->coordinate->is_reached_2) {
                 $intermediate_coordinate[1] = [
-                    $trip->coordinate->int_coordinate_2->latitude,
-                    $trip->coordinate->int_coordinate_2->longitude
+                    $trip->coordinate->getCorrectLatitude($trip->coordinate->int_coordinate_2),
+                    $trip->coordinate->getCorrectLongitude($trip->coordinate->int_coordinate_2)
                 ];
             }
             $intermediate_coordinate[0] = [
-                $trip->coordinate->int_coordinate_1->latitude,
-                $trip->coordinate->int_coordinate_1->longitude
+                $trip->coordinate->getCorrectLatitude($trip->coordinate->int_coordinate_1),
+                $trip->coordinate->getCorrectLongitude($trip->coordinate->int_coordinate_1)
             ];
         }
     

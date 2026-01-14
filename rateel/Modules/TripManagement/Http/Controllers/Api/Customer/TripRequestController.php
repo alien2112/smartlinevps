@@ -258,8 +258,10 @@ class TripRequestController extends Controller
                 'routes' => $get_routes,
             ]), 200);
         }
-        $pickup_point = DB::raw("ST_GeomFromText('POINT({$pickup_coordinates[0]} {$pickup_coordinates[1]})', 4326)");
-        $destination_point = DB::raw("ST_GeomFromText('POINT({$destination_coordinates[0]} {$destination_coordinates[1]})', 4326)");
+        // Use CoordinateHelper for correct coordinate order: POINT(lng, lat) for MySQL
+        // Input format is [lat, lng], CoordinateHelper::pointExpressionWithSrid handles the order correctly
+        $pickup_point = CoordinateHelper::pointExpressionWithSrid($pickup_coordinates[0], $pickup_coordinates[1]);
+        $destination_point = CoordinateHelper::pointExpressionWithSrid($destination_coordinates[0], $destination_coordinates[1]);
 
         //Recent address store
         $this->address->store(attributes: [
@@ -651,9 +653,11 @@ class TripRequestController extends Controller
 
         $search_radius = (double)get_cache('search_radius') ?? 5;
         // Find drivers list based on pickup locations
+        // Use helper methods to get correct coordinates (fixes Eloquent Spatial WKB parsing bug)
+        $pickupLatLng = $final->coordinate->getPickupLatLng();
         $find_drivers = $this->findNearestDriver(
-            latitude: $pickup_coordinates[0] ?? $final->coordinate->pickup_coordinates->latitude,
-            longitude: $pickup_coordinates[1] ?? $final->coordinate->pickup_coordinates->longitude,
+            latitude: $pickup_coordinates[0] ?? $pickupLatLng[0],
+            longitude: $pickup_coordinates[1] ?? $pickupLatLng[1],
             zone_id: $zone->id,
             radius: $search_radius,
             vehicleCategoryId: $request->vehicle_category_id ?? $final->vehicle_category_id,
@@ -896,11 +900,9 @@ class TripRequestController extends Controller
             // External API calls should never hold database locks
             $driver_arrival_time = null;
             if ($trip->type == 'ride_request') {
+                // Use helper methods to get correct coordinates (fixes Eloquent Spatial WKB parsing bug)
                 $driver_arrival_time = getRoutes(
-                    originCoordinates: [
-                        $trip->coordinate->pickup_coordinates->latitude,
-                        $trip->coordinate->pickup_coordinates->longitude
-                    ],
+                    originCoordinates: $trip->coordinate->getPickupLatLng(),
                     destinationCoordinates: [
                         $driver->lastLocations->latitude,
                         $driver->lastLocations->longitude

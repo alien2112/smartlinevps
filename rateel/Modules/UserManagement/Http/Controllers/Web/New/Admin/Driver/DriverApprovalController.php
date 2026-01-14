@@ -405,22 +405,59 @@ class DriverApprovalController extends Controller
             'reason' => 'sometimes|string|max:500',
         ]);
 
-        $driver = User::where('user_type', 'driver')
+        $driver = User::with('userAccount')->where('user_type', 'driver')
             ->where(function($query) {
                 $query->where('onboarding_state', DriverOnboardingState::APPROVED->value)
                       ->orWhere('onboarding_step', 'approved'); // Legacy support
             })
             ->findOrFail($id);
 
+        // Handle negative balance by deducting from withdrawable amount first
+        if ($driver->userAccount) {
+            $account = $driver->userAccount;
+            $walletBalance = (float) $account->wallet_balance;
+            $receivableBalance = (float) $account->receivable_balance;
+            $payableBalance = (float) $account->payable_balance;
+
+            // Calculate withdrawable amount
+            $withdrawableAmount = max(0, $receivableBalance - $payableBalance);
+
+            // If wallet is negative and there's withdrawable amount, deduct it
+            if ($walletBalance < 0 && $withdrawableAmount > 0) {
+                $negativeAmount = abs($walletBalance);
+                $amountToDeduct = min($negativeAmount, $withdrawableAmount);
+
+                // Update receivable balance by deducting the amount
+                $newReceivableBalance = $receivableBalance - $amountToDeduct;
+                $newWalletBalance = $walletBalance + $amountToDeduct;
+
+                DB::transaction(function() use ($account, $newReceivableBalance, $newWalletBalance) {
+                    $account->update([
+                        'receivable_balance' => $newReceivableBalance,
+                        'wallet_balance' => $newWalletBalance,
+                    ]);
+                });
+
+                Log::info('Deducted negative balance from withdrawable amount during deactivation', [
+                    'driver_id' => $id,
+                    'amount_deducted' => $amountToDeduct,
+                    'old_wallet_balance' => $walletBalance,
+                    'new_wallet_balance' => $newWalletBalance,
+                    'old_receivable_balance' => $receivableBalance,
+                    'new_receivable_balance' => $newReceivableBalance,
+                ]);
+            }
+        }
+
         // Update to suspended state
         $currentState = DriverOnboardingState::fromString($driver->onboarding_state ?? $driver->onboarding_step ?? 'approved');
         $newState = DriverOnboardingState::SUSPENDED;
-        
+
         if ($currentState->canTransitionTo($newState)) {
             $driver->onboarding_state = $newState->value;
             $driver->onboarding_state_version = ($driver->onboarding_state_version ?? 0) + 1;
         }
-        
+
         $driver->is_active = false;
         $driver->save();
 

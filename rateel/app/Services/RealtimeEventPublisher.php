@@ -521,6 +521,15 @@ class RealtimeEventPublisher
      */
     public function publishSafetyAlertCreated($safetyAlert, string $alertType = 'customer'): void
     {
+        // Defensive check: ensure safety alert is not null
+        if (!$safetyAlert) {
+            Log::warning('Attempted to publish safety alert event with null safety alert', [
+                'alert_type' => $alertType,
+                'trace_id' => $this->getTraceId(),
+            ]);
+            return;
+        }
+
         $this->publish(self::CHANNEL_SAFETY_ALERT_CREATED, [
             'safety_alert_id' => $safetyAlert->id,
             'trip_request_id' => $safetyAlert->trip_request_id,

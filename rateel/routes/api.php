@@ -20,6 +20,9 @@ use Illuminate\Support\Facades\Route;
 // Auth routes (converted from closures for route caching)
 Route::middleware('auth:sanctum')->get('/user', [AppConfigController::class, 'currentUser']);
 
+// Auth verification endpoint for Socket.IO (using Passport auth)
+Route::middleware('auth:api')->get('/auth/verify', [AppConfigController::class, 'verifyAuth']);
+
 // Version API (converted from closure for route caching)
 Route::get('/version', [AppConfigController::class, 'version']);
 

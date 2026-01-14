@@ -30,6 +30,14 @@ class SafetyAlertController extends Controller
 
     public function storeSafetyAlert(Request $request)
     {
+        // Log incoming request for debugging
+        \Log::info('Safety Alert Store Request', [
+            'user_id' => auth('api')->user()?->id,
+            'user_phone' => auth('api')->user()?->phone,
+            'request_data' => $request->all(),
+            'ip' => $request->ip(),
+        ]);
+
         $validator = Validator::make($request->all(), [
             'trip_request_id' => 'required|uuid',
             'lat' => 'required',
@@ -37,6 +45,10 @@ class SafetyAlertController extends Controller
         ]);
 
         if ($validator->fails()) {
+            \Log::warning('Safety Alert Validation Failed', [
+                'user_id' => auth('api')->user()?->id,
+                'errors' => $validator->errors()->toArray(),
+            ]);
             return response()->json(['error' => $validator->errors()], 403);
         }
         $whereHasRelations = [
@@ -46,8 +58,24 @@ class SafetyAlertController extends Controller
         ];
         $safetyAlert = $this->safetyAlertService->findOneBy(criteria: ['trip_request_id' => $request->trip_request_id], whereHasRelations: $whereHasRelations);
         if (!$safetyAlert) {
-            $this->safetyAlertService->create(data: $request->all());
-            $data = $this->safetyAlertService->findOneBy(criteria: ['trip_request_id' => $request->trip_request_id], relations: ['trip'], whereHasRelations: $whereHasRelations);
+            $createdSafetyAlert = $this->safetyAlertService->create(data: $request->all());
+            
+            // If create failed, try to find it as fallback
+            if (!$createdSafetyAlert) {
+                $data = $this->safetyAlertService->findOneBy(criteria: ['trip_request_id' => $request->trip_request_id], relations: ['trip'], whereHasRelations: $whereHasRelations);
+            } else {
+                // Load the trip relation on the created model
+                $data = $this->safetyAlertService->findOneBy(criteria: ['id' => $createdSafetyAlert->id], relations: ['trip'], whereHasRelations: $whereHasRelations);
+            }
+            
+            // Only proceed if we have valid data
+            if (!$data) {
+                \Log::error('Failed to create or retrieve safety alert', [
+                    'trip_request_id' => $request->trip_request_id,
+                    'user_id' => auth('api')->user()?->id,
+                ]);
+                return response()->json(['error' => 'Failed to create safety alert'], 500);
+            }
             
             // Send Firebase topic notification
             sendTopicNotification(
@@ -60,8 +88,10 @@ class SafetyAlertController extends Controller
                 route: $this->safetyAlertService->safetyAlertLatestUserRoute()
             );
             
-            // Publish socket event for real-time alert
-            $this->realtimeEventPublisher->publishSafetyAlertCreated($data, 'customer');
+            // Publish socket event for real-time alert (only if data is not null)
+            if ($data) {
+                $this->realtimeEventPublisher->publishSafetyAlertCreated($data, 'customer');
+            }
             
             $safetyAlertData = new SafetyAlertResource($data);
             return response()->json(responseFormatter(SAFETY_ALERT_STORE_200, $safetyAlertData));

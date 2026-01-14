@@ -722,6 +722,61 @@ class DriverService extends BaseService implements Interface\DriverServiceInterf
         return $this->userRepository->update(id: $id, data: $data);
     }
 
+    /**
+     * Override statusChange to handle negative balance when deactivating driver
+     */
+    public function statusChange(string|int $id, array $data): ?Model
+    {
+        $newStatus = $data['status'] == 0 ? 0 : 1;
+
+        // If deactivating the driver, handle negative balance
+        if ($newStatus == 0) {
+            $driver = $this->userRepository->findOne(id: $id, relations: ['userAccount']);
+
+            if ($driver && $driver->userAccount) {
+                $account = $driver->userAccount;
+                $walletBalance = (float) $account->wallet_balance;
+                $receivableBalance = (float) $account->receivable_balance;
+                $payableBalance = (float) $account->payable_balance;
+
+                // Calculate withdrawable amount
+                $withdrawableAmount = max(0, $receivableBalance - $payableBalance);
+
+                // If wallet is negative and there's withdrawable amount, deduct it
+                if ($walletBalance < 0 && $withdrawableAmount > 0) {
+                    $negativeAmount = abs($walletBalance);
+                    $amountToDeduct = min($negativeAmount, $withdrawableAmount);
+
+                    // Update receivable balance by deducting the amount
+                    $newReceivableBalance = $receivableBalance - $amountToDeduct;
+                    $newWalletBalance = $walletBalance + $amountToDeduct;
+
+                    DB::transaction(function() use ($account, $newReceivableBalance, $newWalletBalance) {
+                        $account->update([
+                            'receivable_balance' => $newReceivableBalance,
+                            'wallet_balance' => $newWalletBalance,
+                        ]);
+                    });
+
+                    \Log::info('Deducted negative balance from withdrawable amount', [
+                        'driver_id' => $id,
+                        'amount_deducted' => $amountToDeduct,
+                        'old_wallet_balance' => $walletBalance,
+                        'new_wallet_balance' => $newWalletBalance,
+                        'old_receivable_balance' => $receivableBalance,
+                        'new_receivable_balance' => $newReceivableBalance,
+                    ]);
+                }
+            }
+        }
+
+        // Update driver status
+        $data = [
+            'is_active' => $newStatus
+        ];
+        return $this->userRepository->update(id: $id, data: $data);
+    }
+
     public function getChattingDriverList(array $data): Collection
     {
         $channelUsers = $this->channelUserService->getBy(criteria: ['user_id' => auth()->user()?->id]);

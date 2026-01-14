@@ -189,4 +189,30 @@ class AppConfigController extends Controller
 
         return response()->json($response, $healthy ? 200 : 503);
     }
+
+    /**
+     * Verify authentication token for Socket.IO connections
+     * Used by Node.js realtime service to validate Passport tokens
+     */
+    public function verifyAuth(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'response_code' => 'auth_401',
+                'message' => 'Unauthenticated'
+            ], 401);
+        }
+
+        return response()->json([
+            'response_code' => 'default_200',
+            'content' => [
+                'id' => $user->id,
+                'user_type' => $user->user_type,
+                'name' => $user->first_name . ' ' . $user->last_name,
+                'email' => $user->email
+            ]
+        ]);
+    }
 }
