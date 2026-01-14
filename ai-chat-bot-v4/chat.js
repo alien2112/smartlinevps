@@ -2961,8 +2961,8 @@ async function start() {
         // Initialize database
         await initDatabase();
 
-        // Start server
-        const server = app.listen(PORT, '127.0.0.1', () => {
+        // Start server - bind to 0.0.0.0 for external access via Nginx proxy
+        const server = app.listen(PORT, '0.0.0.0', () => {
             console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║                                                            ║
