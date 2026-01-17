@@ -80,10 +80,26 @@ function hashToken(token) {
  */
 async function authenticateSocket(socket, next) {
   try {
-    // Get token from handshake
-    const token = socket.handshake.auth.token || socket.handshake.query.token;
+    // Get token from handshake - check multiple locations
+    // 1. Socket.IO auth object (preferred)
+    // 2. Query parameter
+    // 3. Headers (for Flutter compatibility)
+    let token = socket.handshake.auth?.token || 
+                socket.handshake.query?.token ||
+                socket.handshake.headers?.token ||
+                socket.handshake.headers?.authorization?.replace('Bearer ', '');
+
+    logger.debug('Socket auth attempt', {
+      socketId: socket.id,
+      hasAuthToken: !!socket.handshake.auth?.token,
+      hasQueryToken: !!socket.handshake.query?.token,
+      hasHeaderToken: !!socket.handshake.headers?.token,
+      hasAuthHeader: !!socket.handshake.headers?.authorization,
+      tokenPreview: token ? token.substring(0, 30) + '...' : 'none'
+    });
 
     if (!token) {
+      logger.warn('Socket auth failed: No token provided', { socketId: socket.id });
       return next(new Error('Authentication error: No token provided'));
     }
 
@@ -129,15 +145,7 @@ async function authenticateSocket(socket, next) {
       }
     }
 
-    // Verify JWT token
-    let decoded;
-    try {
-      decoded = jwt.verify(token, JWT_SECRET);
-    } catch (err) {
-      return next(new Error('Authentication error: Invalid token'));
-    }
-
-    // Validate with Laravel API (optional, can be disabled for performance)
+    // Validate with Laravel API if enabled (recommended for Passport tokens)
     if (config.laravel.validateWithLaravel) {
       // Issue #25 FIX: Check session cache first
       const tokenHash = hashToken(token);
@@ -180,7 +188,16 @@ async function authenticateSocket(socket, next) {
         return next(new Error('Authentication error: Validation failed'));
       }
     } else {
-      // Use decoded JWT data directly (faster, but less secure)
+      // Use local JWT verification (faster, but requires shared secret)
+      // Note: This won't work with Laravel Passport tokens (RSA-signed)
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch (err) {
+        logger.error('JWT verification failed', { error: err.message });
+        return next(new Error('Authentication error: Invalid token'));
+      }
+      
       socket.user = {
         id: decoded.sub || decoded.user_id,
         type: decoded.user_type || 'customer',

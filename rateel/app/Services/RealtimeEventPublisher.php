@@ -36,6 +36,9 @@ class RealtimeEventPublisher
     // Issue #10 FIX: Batch channel for multi-driver notifications
     const CHANNEL_BATCH_NOTIFICATION = 'laravel:batch.notification';
 
+    // Safety alert channels
+    const CHANNEL_SAFETY_ALERT_CREATED = 'laravel:safety_alert.created';
+
     /**
      * Issue #10 FIX: Pending events for batching
      * @var array
@@ -507,6 +510,42 @@ class RealtimeEventPublisher
                 'trip_id' => $trip->id,
             ]);
         }
+    }
+
+    /**
+     * Publish safety alert created event
+     * 
+     * @param object $safetyAlert Safety alert model with relations
+     * @param string $alertType 'customer' or 'driver'
+     * @return void
+     */
+    public function publishSafetyAlertCreated($safetyAlert, string $alertType = 'customer'): void
+    {
+        // Defensive check: ensure safety alert is not null
+        if (!$safetyAlert) {
+            Log::warning('Attempted to publish safety alert event with null safety alert', [
+                'alert_type' => $alertType,
+                'trace_id' => $this->getTraceId(),
+            ]);
+            return;
+        }
+
+        $this->publish(self::CHANNEL_SAFETY_ALERT_CREATED, [
+            'safety_alert_id' => $safetyAlert->id,
+            'trip_request_id' => $safetyAlert->trip_request_id,
+            'trip_id' => $safetyAlert->trip_request_id,
+            'sent_by' => $safetyAlert->sent_by,
+            'alert_type' => $alertType,
+            'reason' => $safetyAlert->reason,
+            'comment' => $safetyAlert->comment,
+            'alert_location' => $safetyAlert->alert_location,
+            'number_of_alert' => $safetyAlert->number_of_alert ?? 1,
+            'status' => $safetyAlert->status ?? 'pending',
+            'trip_ref_id' => $safetyAlert->trip?->ref_id ?? null,
+            'customer_id' => $safetyAlert->trip?->customer_id ?? null,
+            'driver_id' => $safetyAlert->trip?->driver_id ?? null,
+            'created_at' => $safetyAlert->created_at?->toIso8601String() ?? now()->toIso8601String(),
+        ]);
     }
 
     /**

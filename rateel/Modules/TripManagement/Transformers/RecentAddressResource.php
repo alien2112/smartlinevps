@@ -2,6 +2,7 @@
 
 namespace Modules\TripManagement\Transformers;
 
+use App\Helpers\CoordinateHelper;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\UserManagement\Transformers\CustomerResource;
 use Modules\ZoneManagement\Transformers\ZoneResource;
@@ -20,8 +21,8 @@ class RecentAddressResource extends JsonResource
             'id' => $this->id,
             'user_id' => CustomerResource::make($this->whenLoaded('customer')),
             'zone_id' => ZoneResource::make($this->whenLoaded('zone')),
-            'pickup_coordinates' => $this->pickup_coordinates,
-            'destination_coordinates' => $this->destination_coordinates,
+            'pickup_coordinates' => CoordinateHelper::formatForApi($this->pickup_coordinates),
+            'destination_coordinates' => CoordinateHelper::formatForApi($this->destination_coordinates),
             'pickup_address' => $this->pickup_address,
             'destination_address' => $this->destination_address,
         ];

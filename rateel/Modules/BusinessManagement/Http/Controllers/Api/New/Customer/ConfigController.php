@@ -1051,7 +1051,7 @@ class ConfigController extends Controller
 
         $intermediateCoordinates = [];
         if ($trip->current_status == ONGOING) {
-            // Use CoordinateHelper to correctly extract coordinates (handles DB swap)
+            // Use CoordinateHelper to correctly extract coordinates from Point objects
             $destCoords = \App\Helpers\CoordinateHelper::extractFromPoint($trip->coordinate->destination_coordinates);
             $destinationCoordinates = [
                 $destCoords['lat'],
@@ -1060,7 +1060,7 @@ class ConfigController extends Controller
             // Fixed: removed double $ sign
             $intermediateCoordinates = $trip->coordinate->intermediate_coordinates ? json_decode($trip->coordinate->intermediate_coordinates, true) : [];
         } else {
-            // Use CoordinateHelper to correctly extract coordinates (handles DB swap)
+            // Use CoordinateHelper to correctly extract coordinates from Point objects
             $pickupCoords = \App\Helpers\CoordinateHelper::extractFromPoint($trip->coordinate->pickup_coordinates);
             $destinationCoordinates = [
                 $pickupCoords['lat'],

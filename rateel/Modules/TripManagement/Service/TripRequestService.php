@@ -1249,11 +1249,9 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
     {
         DB::beginTransaction();
         Cache::put($trip->id, ACCEPTED, now()->addHour());
+        // Use helper methods to get correct coordinates (fixes Eloquent Spatial WKB parsing bug)
         $driverArrivalTime = getRoutes(
-            originCoordinates: [
-                $trip->coordinate->pickup_coordinates->getLat(),
-                $trip->coordinate->pickup_coordinates->getLng()
-            ],
+            originCoordinates: $trip->coordinate->getPickupLatLng(),
             destinationCoordinates: [
                 $user->lastLocations->latitude,
                 $user->lastLocations->longitude

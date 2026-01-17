@@ -109,10 +109,22 @@ class ConfigController extends Controller
             'conversion_status' => (bool)($loyaltyPoints['status'] ?? false),
             'conversion_rate' => (double)($loyaltyPoints['points'] ?? 0),
             'base_url' => url('/') . '/api/',
-            'websocket_url' => $info->firstWhere('key_name', 'websocket_url')?->value ?? null,
-            'websocket_port' => (string)$info->firstWhere('key_name', 'websocket_port')?->value ?? 6001,
-            'websocket_key' => env('PUSHER_APP_KEY'),
-            'websocket_scheme' => env('PUSHER_SCHEME'),
+            // WebSocket - Laravel Reverb Configuration (Legacy - using Pusher env for backward compatibility)
+            'websocket_url' => $info->firstWhere('key_name', 'websocket_url')?->value ?? env('REVERB_HOST', env('PUSHER_HOST', 'smartline-it.com')),
+            'websocket_port' => (string)($info->firstWhere('key_name', 'websocket_port')?->value ?? env('REVERB_PORT', env('PUSHER_PORT', '443'))),
+            'websocket_key' => env('REVERB_APP_KEY', env('PUSHER_APP_KEY')),
+            'websocket_scheme' => env('REVERB_SCHEME', env('PUSHER_SCHEME', 'https')),
+            // Reverb WebSocket Configuration (camelCase for Flutter)
+            'webSocketUrl' => $info->firstWhere('key_name', 'websocket_url')?->value ?? env('REVERB_HOST', env('PUSHER_HOST', 'smartline-it.com')),
+            'webSocketPort' => (string)($info->firstWhere('key_name', 'websocket_port')?->value ?? env('REVERB_PORT', env('PUSHER_PORT', '443'))),
+            'websocketScheme' => env('REVERB_SCHEME', env('PUSHER_SCHEME', 'https')),
+            'webSocketKey' => env('REVERB_APP_KEY', env('PUSHER_APP_KEY')),
+            // Socket.IO Configuration (Node.js real-time service)
+            'socketio_url' => env('SOCKETIO_URL', $info->firstWhere('key_name', 'websocket_url')?->value ?? 'smartline-it.com'),
+            'socketio_path' => env('SOCKETIO_PATH', '/socket.io/'),
+            // Socket.IO Configuration (camelCase for Flutter)
+            'socketIOUrl' => env('SOCKETIO_URL', $info->firstWhere('key_name', 'websocket_url')?->value ?? 'smartline-it.com'),
+            'socketIOPath' => env('SOCKETIO_PATH', '/socket.io/'),
             'review_status' => (bool)$info->firstWhere('key_name', DRIVER_REVIEW)?->value ?? null,
             'level_status' => (bool)$info->firstWhere('key_name', DRIVER_LEVEL)?->value ?? null,
             'image_base_url' => [
@@ -220,11 +232,22 @@ class ConfigController extends Controller
                 'currency_symbol' => $info->firstWhere('key_name', 'currency_symbol')?->value ?? '$',
                 'currency_symbol_position' => $info->firstWhere('key_name', 'currency_symbol_position')?->value ?? null,
                 'currency_decimal_point' => $info->firstWhere('key_name', 'currency_decimal_point')?->value ?? null,
-                // WebSocket
-                'websocket_url' => $info->firstWhere('key_name', 'websocket_url')?->value ?? null,
-                'websocket_port' => (string)$info->firstWhere('key_name', 'websocket_port')?->value ?? 6001,
-                'websocket_key' => env('PUSHER_APP_KEY'),
-                'websocket_scheme' => env('PUSHER_SCHEME'),
+                // WebSocket - Laravel Reverb Configuration
+                'websocket_url' => $info->firstWhere('key_name', 'websocket_url')?->value ?? env('REVERB_HOST', 'smartline-it.com'),
+                'websocket_port' => (string)($info->firstWhere('key_name', 'websocket_port')?->value ?? env('REVERB_PORT', '443')),
+                'websocket_key' => env('REVERB_APP_KEY', env('PUSHER_APP_KEY')),
+                'websocket_scheme' => env('REVERB_SCHEME', env('PUSHER_SCHEME', 'https')),
+                // Reverb WebSocket Configuration (camelCase for Flutter)
+                'webSocketUrl' => $info->firstWhere('key_name', 'websocket_url')?->value ?? env('REVERB_HOST', 'smartline-it.com'),
+                'webSocketPort' => (string)($info->firstWhere('key_name', 'websocket_port')?->value ?? env('REVERB_PORT', '443')),
+                'websocketScheme' => env('REVERB_SCHEME', env('PUSHER_SCHEME', 'https')),
+                'webSocketKey' => env('REVERB_APP_KEY', env('PUSHER_APP_KEY')),
+                // Socket.IO Configuration (Node.js real-time service)
+                'socketio_url' => env('SOCKETIO_URL', $info->firstWhere('key_name', 'websocket_url')?->value ?? 'smartline-it.com'),
+                'socketio_path' => env('SOCKETIO_PATH', '/socket.io/'),
+                // Socket.IO Configuration (camelCase for Flutter)
+                'socketIOUrl' => env('SOCKETIO_URL', $info->firstWhere('key_name', 'websocket_url')?->value ?? 'smartline-it.com'),
+                'socketIOPath' => env('SOCKETIO_PATH', '/socket.io/'),
                 // Image base URLs - using media URL for new storage system
                 'image_base_url' => [
                     'profile_image_customer' => url('media/customer/profile'),
@@ -1159,7 +1182,7 @@ class ConfigController extends Controller
 
         $intermediateCoordinates = [];
         if ($trip->current_status == ONGOING) {
-            // Use CoordinateHelper to correctly extract coordinates (handles DB swap)
+            // Use CoordinateHelper to correctly extract coordinates from Point objects
             $destCoords = \App\Helpers\CoordinateHelper::extractFromPoint($trip->coordinate->destination_coordinates);
             $destinationCoordinates = [
                 $destCoords['lat'],
@@ -1167,7 +1190,7 @@ class ConfigController extends Controller
             ];
             $intermediateCoordinates = $trip->coordinate->intermediate_coordinates ? json_decode($trip->coordinate->intermediate_coordinates, true) : [];
         } else {
-            // Use CoordinateHelper to correctly extract coordinates (handles DB swap)
+            // Use CoordinateHelper to correctly extract coordinates from Point objects
             $pickupCoords = \App\Helpers\CoordinateHelper::extractFromPoint($trip->coordinate->pickup_coordinates);
             $destinationCoordinates = [
                 $pickupCoords['lat'],
@@ -1261,5 +1284,17 @@ class ConfigController extends Controller
             ];
         });
         return response()->json(responseFormatter(constant: DEFAULT_200, content: $responseData));
+    }
+
+    public function pages($page_name)
+    {
+        $validated = in_array($page_name, ['about_us', 'privacy_and_policy', 'terms_and_conditions', 'legal']);
+
+        if (!$validated) {
+            return response()->json(responseFormatter(DEFAULT_400), 400);
+        }
+
+        $data = businessConfig(key: $page_name, settingsType: PAGES_SETTINGS);
+        return response(responseFormatter(DEFAULT_200, [$data]));
     }
 }

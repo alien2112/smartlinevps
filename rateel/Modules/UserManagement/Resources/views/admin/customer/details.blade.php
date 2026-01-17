@@ -30,7 +30,7 @@
                                         'customer/profile/',
                                     ) }}"
                                          class="rounded-circle dark-support fit-object" alt="">
-                                    <h6 class="level text-center">{{ $commonData['customer']?->level->name }}</h6>
+                                    <h6 class="level text-center">{{ $commonData['customer']?->level?->name ?? 'N/A' }}</h6>
                                 </div>
                                 <div class="media-body">
                                     <div class="d-flex flex-column align-items-start gap-1">

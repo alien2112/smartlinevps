@@ -23,7 +23,7 @@ class RecentAddress extends Model
         'created_at',
         'updated_at',
     ];
-    protected $cast = [
+    protected $casts = [
         'pickup_coordinates' => Point::class,
         'destination_coordinates' => Point::class
     ];

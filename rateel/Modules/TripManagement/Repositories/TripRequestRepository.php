@@ -413,10 +413,11 @@ class TripRequestRepository implements TripRequestInterfaces
                                         $radiusMeters = ($pref['radius_km'] ?? 5.0) * 1000;
 
                                         // Use ST_Distance_Sphere for efficient spatial query
+                                        // Use SRID 0 to match stored coordinates
                                         $distanceQuery->orWhereRaw(
                                             "ST_Distance_Sphere(
                                                 destination_coordinates,
-                                                ST_SRID(POINT(?, ?), 4326)
+                                                ST_GeomFromText(CONCAT('POINT(', ?, ' ', ?, ')'), 0)
                                             ) <= ?",
                                             [$prefLng, $prefLat, $radiusMeters]
                                         );

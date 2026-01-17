@@ -51,6 +51,13 @@ class MockRedisClient extends EventEmitter {
     return 'OK';
   }
 
+  // setex(key, seconds, value) - Set key with expiration
+  async setex(key, seconds, value) {
+    this.data.set(key, value);
+    setTimeout(() => this.data.delete(key), seconds * 1000);
+    return 'OK';
+  }
+
   async del(...keys) {
     let count = 0;
     keys.forEach(key => {

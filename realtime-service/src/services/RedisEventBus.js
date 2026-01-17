@@ -33,7 +33,9 @@ class RedisEventBus {
       OTP_VERIFIED: 'laravel:otp.verified',       // OTP verified - trip is now ongoing
       DRIVER_ARRIVED: 'laravel:driver.arrived',   // Driver arrived at pickup
       // Batch notification channel for multi-driver dispatch
-      BATCH_NOTIFICATION: 'laravel:batch.notification'
+      BATCH_NOTIFICATION: 'laravel:batch.notification',
+      // Safety alert channel
+      SAFETY_ALERT_CREATED: 'laravel:safety_alert.created'
     };
   }
 
@@ -146,6 +148,10 @@ class RedisEventBus {
 
         case this.CHANNELS.BATCH_NOTIFICATION:
           await this.handleBatchNotification(data);
+          break;
+
+        case this.CHANNELS.SAFETY_ALERT_CREATED:
+          await this.handleSafetyAlertCreated(data);
           break;
 
         default:
@@ -740,6 +746,85 @@ class RedisEventBus {
       driver: body.driver || data?.driver,
       statusLogs: body.status_logs || data?.status_logs || []
     };
+  }
+
+  /**
+   * Handle safety alert created event
+   * Emits to admin panel and relevant users (driver/customer)
+   */
+  async handleSafetyAlertCreated(data) {
+    const {
+      safety_alert_id,
+      trip_request_id,
+      trip_id,
+      sent_by,
+      alert_type,
+      reason,
+      comment,
+      alert_location,
+      number_of_alert,
+      status,
+      trip_ref_id,
+      customer_id,
+      driver_id,
+      created_at,
+      trace_id
+    } = data;
+
+    logger.info('Handling safety alert created', {
+      safety_alert_id,
+      trip_request_id,
+      alert_type,
+      trace_id
+    });
+
+    // Emit to admin panel (all admins listening to safety alerts)
+    this.io.to('admin:safety_alerts').emit('safety_alert:new', {
+      id: safety_alert_id,
+      trip_request_id,
+      trip_id,
+      sent_by,
+      alert_type,
+      reason,
+      comment,
+      alert_location,
+      number_of_alert,
+      status,
+      trip_ref_id,
+      customer_id,
+      driver_id,
+      created_at,
+      trace_id,
+      timestamp: Date.now()
+    });
+
+    // Also emit to specific user rooms if needed
+    if (customer_id) {
+      this.io.to(`user:${customer_id}`).emit('safety_alert:sent', {
+        safety_alert_id,
+        trip_request_id,
+        status: 'sent',
+        trace_id,
+        timestamp: Date.now()
+      });
+    }
+
+    if (driver_id) {
+      this.io.to(`user:${driver_id}`).emit('safety_alert:received', {
+        safety_alert_id,
+        trip_request_id,
+        alert_type,
+        trace_id,
+        timestamp: Date.now()
+      });
+    }
+
+    logger.info('Emitted safety alert event', {
+      safety_alert_id,
+      trip_request_id,
+      alert_type,
+      trace_id
+    });
   }
 }
 

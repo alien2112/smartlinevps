@@ -755,11 +755,9 @@ class TripRequestController extends Controller
                 dispatch(new SendPushNotificationJob($notification, $data))->onQueue('high');
                 $this->tripRequestservice->delete(id: $trip->id);
             }
+            // Use helper methods to get correct coordinates (fixes Eloquent Spatial WKB parsing bug)
             $driverArrivalTime = getRoutes(
-                originCoordinates: [
-                    $trip->coordinate->pickup_coordinates->getLat(),
-                    $trip->coordinate->pickup_coordinates->getLng()
-                ],
+                originCoordinates: $trip->coordinate->getPickupLatLng(),
                 destinationCoordinates: [
                     $driver->lastLocations->latitude,
                     $driver->lastLocations->longitude

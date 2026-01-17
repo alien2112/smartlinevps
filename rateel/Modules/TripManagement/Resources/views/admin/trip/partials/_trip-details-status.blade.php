@@ -253,11 +253,12 @@
         function initMap() {
             const mapLayer = document.getElementById("map-layer");
             
-            // Trip coordinates
-            const startLat = {{$trip->coordinate->pickup_coordinates->latitude}};
-            const startLng = {{$trip->coordinate->pickup_coordinates->longitude}};
-            const endLat = {{$trip->coordinate->destination_coordinates->latitude}};
-            const endLng = {{$trip->coordinate->destination_coordinates->longitude}};
+            // Trip coordinates - using helper methods to get correct values
+            // (fixes Eloquent Spatial WKB parsing bug where lat/lng are swapped)
+            const startLat = {{$trip->coordinate->getCorrectLatitude($trip->coordinate->pickup_coordinates)}};
+            const startLng = {{$trip->coordinate->getCorrectLongitude($trip->coordinate->pickup_coordinates)}};
+            const endLat = {{$trip->coordinate->getCorrectLatitude($trip->coordinate->destination_coordinates)}};
+            const endLng = {{$trip->coordinate->getCorrectLongitude($trip->coordinate->destination_coordinates)}};
 
             // Initialize Leaflet map
             map = L.map(mapLayer).setView([startLat, startLng], 12);

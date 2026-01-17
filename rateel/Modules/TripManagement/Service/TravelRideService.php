@@ -194,8 +194,11 @@ class TravelRideService implements TravelRideServiceInterface
             return false;
         }
 
-        $pickupLat = $trip->coordinate->pickup_coordinates->latitude;
-        $pickupLng = $trip->coordinate->pickup_coordinates->longitude;
+        // Use helper methods to get correct coordinates (fixes Eloquent Spatial WKB parsing bug)
+        $pickupCoords = $trip->coordinate->getPickupLatLng();
+        $pickupLat = $pickupCoords[0];
+        $pickupLng = $pickupCoords[1];
+        $destCoords = $trip->coordinate->getDestinationLatLng();
 
         // Get nearby VIP drivers
         $vipDrivers = $this->getAvailableVipDrivers(
@@ -226,8 +229,8 @@ class TravelRideService implements TravelRideServiceInterface
             'isTravel' => true,
             'pickupLatitude' => $pickupLat,
             'pickupLongitude' => $pickupLng,
-            'destinationLatitude' => $trip->coordinate->destination_coordinates->latitude,
-            'destinationLongitude' => $trip->coordinate->destination_coordinates->longitude,
+            'destinationLatitude' => $destCoords[0],
+            'destinationLongitude' => $destCoords[1],
             'vehicleCategoryId' => $trip->vehicle_category_id,
             'categoryLevel' => VehicleCategory::LEVEL_VIP,
             'customerId' => $trip->customer_id,
