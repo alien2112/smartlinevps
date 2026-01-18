@@ -128,6 +128,18 @@ class SafetyAlertService extends BaseService implements Interface\SafetyAlertSer
 
         $safetyAlert = $this->baseRepository->findOneBy(criteria: ['status' => PENDING], relations: $firstSafetyAlertRelation, orderBy: ['created_at' => 'desc']);
 
+        return $this->safetyAlertLatestUserRouteFromAlert($safetyAlert);
+    }
+
+    /**
+     * Generate route URL from a safety alert instance without additional DB query
+     * This method is optimized to avoid extra database lookups when alert data is already loaded
+     *
+     * @param Model|null $safetyAlert The safety alert model with 'sentBy' and 'trip' relations loaded
+     * @return string The generated route URL
+     */
+    public function safetyAlertLatestUserRouteFromAlert(?Model $safetyAlert): string
+    {
         $userType = match (true) {
             $safetyAlert?->sentBy?->user_type == 'driver' && ($safetyAlert?->trip?->current_status == 'ongoing' || $safetyAlert?->trip?->current_status == 'accepted') => 'driver-on-trip',
             $safetyAlert?->sentBy?->user_type == 'driver' => 'driver-idle',

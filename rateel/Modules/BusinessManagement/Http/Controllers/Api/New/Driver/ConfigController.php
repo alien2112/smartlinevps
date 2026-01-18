@@ -74,9 +74,39 @@ class ConfigController extends Controller
         });
     }
     
+    /**
+     * Build configuration data
+     * Updated: 2026-01-14 - Optimized to fetch only required settings instead of 999 records
+     */
     private function buildConfiguration()
     {
-        $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
+        // Updated 2026-01-14: Fetch only the settings we need instead of loading 999 records
+        // OLD CODE: $info = $this->businessSettingService->getAll(limit: 999, offset: 1); // Commented 2026-01-14 - loaded too many records
+        $requiredKeys = [
+            'loyalty_points', 'required_pin_to_start_trip', 'add_intermediate_points',
+            'business_name', 'header_logo', 'bid_on_fare', 'driver_completion_radius',
+            'country_code', 'business_address', 'business_contact_phone', 'business_contact_email',
+            'business_support_phone', 'business_support_email', 'websocket_url', 'websocket_port',
+            'currency_code', 'currency_symbol', 'currency_decimal_point', 'trip_request_active_time',
+            'driver_review', 'level', 'verification_otp', 'parcel_verification_otp',
+            'parcel_category', 'parcel_weight', 'otp_resend_time', 'image_upload_type',
+            'trip_accept_push_sound', 'driver_self_registration', 'driver_self_registration_and_approval',
+            'driver_self_delete', 'max_idle_time_before_inactive', 'require_selfie_for_start_trip',
+            'firebase_otp', 'firebase_otp_web_api_key', 'map_api_provider', 'panic_alert_configuration',
+            'safety_protocol_configuration', 'referral_earning_status', 'referrer_earning_type',
+            'referrer_earning', 'referee_earning_type', 'referee_earning', 'chat_status',
+            'normal_trip_bidding_enabled', 'normal_trip_driver_markup_limit', 'cancellation_grace_period',
+            'auto_cancel_timeout_seconds', 'mini_map_cache_seconds', 'mini_map_grid_spacing',
+            'accept_trip_notification_sound', 'chat_notification_sound', 'travel_trip_driver_markup_limit',
+            'travel_trip_recommended_multiplier'
+        ];
+
+        $info = $this->businessSettingService->getByKeys($requiredKeys);
+
+        // Fallback: if getByKeys doesn't exist, use getAll with reasonable limit
+        if ($info->isEmpty()) {
+            $info = $this->businessSettingService->getAll(limit: 100, offset: 1);
+        }
 
         $loyaltyPoints = $info
             ->where('key_name', 'loyalty_points')
@@ -203,78 +233,108 @@ class ConfigController extends Controller
     /**
      * OPTIMIZED: Core configuration - Essential data for app startup (~2KB)
      * Call this first on app launch
+     *
+     * Updated: 2026-01-14 - Fixed per-user cache explosion by separating global vs user-specific config
      */
     public function coreConfig()
     {
-        return Cache::remember('driver_config_core_' . auth('api')->id(), 300, function () {
-            $info = $this->businessSettingService->getAll(limit: 999, offset: 1);
+        // Updated 2026-01-14: Cache global config separately, compute user-specific data per request
+        // OLD CODE: Cache::remember('driver_config_core_' . auth('api')->id(), 300, ...) // Commented 2026-01-14 - per-user cache explosion
 
-            // Get driver's zone_id from their last location
-            $zoneId = null;
-            if (auth('api')->check()) {
+        // Get global config (shared by all users)
+        $globalConfig = Cache::remember('driver_config_core_global', 300, function () {
+            return $this->buildCoreGlobalConfig();
+        });
+
+        // Get user-specific zone_id (not cached - cheap query)
+        $zoneId = null;
+        if (auth('api')->check()) {
+            // Cache user zone for 60 seconds only (frequent updates)
+            $zoneId = Cache::remember('driver_zone_' . auth('api')->id(), 60, function () {
                 $lastLocation = $this->userLastLocationService->findOneBy(
                     criteria: ['user_id' => auth('api')->id()],
                     orderBy: ['created_at' => 'desc']
                 );
-                $zoneId = $lastLocation?->zone_id;
-            }
+                return $lastLocation?->zone_id;
+            });
+        }
 
-            $config = [
-                'is_demo' => (bool)env('APP_MODE') != 'live',
-                'maintenance_mode' => checkMaintenanceMode(),
-                'business_name' => (string)$info->firstWhere('key_name', 'business_name')?->value ?? null,
-                'logo' => $info->firstWhere('key_name', 'header_logo')->value ?? null,
-                'country_code' => (string)$info->firstWhere('key_name', 'country_code')?->value ?? null,
-                'base_url' => url('/') . '/api/',
-                'zone_id' => $zoneId,
-                // Currency
-                'currency_code' => $info->firstWhere('key_name', 'currency_code')?->value ?? null,
-                'currency_symbol' => $info->firstWhere('key_name', 'currency_symbol')?->value ?? '$',
-                'currency_symbol_position' => $info->firstWhere('key_name', 'currency_symbol_position')?->value ?? null,
-                'currency_decimal_point' => $info->firstWhere('key_name', 'currency_decimal_point')?->value ?? null,
-                // WebSocket - Laravel Reverb Configuration
-                'websocket_url' => $info->firstWhere('key_name', 'websocket_url')?->value ?? env('REVERB_HOST', 'smartline-it.com'),
-                'websocket_port' => (string)($info->firstWhere('key_name', 'websocket_port')?->value ?? env('REVERB_PORT', '443')),
-                'websocket_key' => env('REVERB_APP_KEY', env('PUSHER_APP_KEY')),
-                'websocket_scheme' => env('REVERB_SCHEME', env('PUSHER_SCHEME', 'https')),
-                // Reverb WebSocket Configuration (camelCase for Flutter)
-                'webSocketUrl' => $info->firstWhere('key_name', 'websocket_url')?->value ?? env('REVERB_HOST', 'smartline-it.com'),
-                'webSocketPort' => (string)($info->firstWhere('key_name', 'websocket_port')?->value ?? env('REVERB_PORT', '443')),
-                'websocketScheme' => env('REVERB_SCHEME', env('PUSHER_SCHEME', 'https')),
-                'webSocketKey' => env('REVERB_APP_KEY', env('PUSHER_APP_KEY')),
-                // Socket.IO Configuration (Node.js real-time service)
-                'socketio_url' => env('SOCKETIO_URL', $info->firstWhere('key_name', 'websocket_url')?->value ?? 'smartline-it.com'),
-                'socketio_path' => env('SOCKETIO_PATH', '/socket.io/'),
-                // Socket.IO Configuration (camelCase for Flutter)
-                'socketIOUrl' => env('SOCKETIO_URL', $info->firstWhere('key_name', 'websocket_url')?->value ?? 'smartline-it.com'),
-                'socketIOPath' => env('SOCKETIO_PATH', '/socket.io/'),
-                // Image base URLs - using media URL for new storage system
-                'image_base_url' => [
-                    'profile_image_customer' => url('media/customer/profile'),
-                    'profile_image_admin' => url('media/employee/profile'),
-                    'banner' => url('media/promotion/banner'),
-                    'vehicle_category' => url('media/vehicle/category'),
-                    'vehicle_model' => url('media/vehicle/model'),
-                    'vehicle_brand' => url('media/vehicle/brand'),
-                    'profile_image' => url('media/driver/profile'),
-                    'identity_image' => url('media/driver/identity'),
-                    'documents' => url('media/driver/document'),
-                    'pages' => url('media/business/pages'),
-                    'conversation' => url('media/conversation'),
-                    'parcel' => url('media/parcel/category'),
-                ],
-                // App versions
-                'app_minimum_version_for_android' => (double)$this->getAppVersion('driver_app_version_control_for_android'),
-                'app_url_for_android' => $this->getAppUrl('driver_app_version_control_for_android'),
-                'app_minimum_version_for_ios' => (double)$this->getAppVersion('driver_app_version_control_for_ios'),
-                'app_url_for_ios' => $this->getAppUrl('driver_app_version_control_for_ios'),
-                'fuel_types' => array_keys(FUEL_TYPES)
-            ];
+        // Merge global + user-specific
+        $config = array_merge($globalConfig, ['zone_id' => $zoneId]);
 
-            return response()->json($config)
-                ->header('Cache-Control', 'public, max-age=300')
-                ->header('X-Cache-TTL', '300');
-        });
+        return response()->json($config)
+            ->header('Cache-Control', 'public, max-age=300')
+            ->header('X-Cache-TTL', '300');
+    }
+
+    /**
+     * Build global core configuration (shared by all users)
+     * Updated: 2026-01-14 - Extracted to prevent per-user cache explosion
+     */
+    private function buildCoreGlobalConfig(): array
+    {
+        $requiredKeys = [
+            'business_name', 'header_logo', 'country_code', 'currency_code',
+            'currency_symbol', 'currency_symbol_position', 'currency_decimal_point',
+            'websocket_url', 'websocket_port'
+        ];
+        $info = $this->businessSettingService->getByKeys($requiredKeys);
+
+        // Fallback if getByKeys returns empty
+        if ($info->isEmpty()) {
+            $info = $this->businessSettingService->getAll(limit: 50, offset: 1);
+        }
+
+        return [
+            'is_demo' => (bool)env('APP_MODE') != 'live',
+            'maintenance_mode' => checkMaintenanceMode(),
+            'business_name' => (string)$info->firstWhere('key_name', 'business_name')?->value ?? null,
+            'logo' => $info->firstWhere('key_name', 'header_logo')?->value ?? null,
+            'country_code' => (string)$info->firstWhere('key_name', 'country_code')?->value ?? null,
+            'base_url' => url('/') . '/api/',
+            // Currency
+            'currency_code' => $info->firstWhere('key_name', 'currency_code')?->value ?? null,
+            'currency_symbol' => $info->firstWhere('key_name', 'currency_symbol')?->value ?? '$',
+            'currency_symbol_position' => $info->firstWhere('key_name', 'currency_symbol_position')?->value ?? null,
+            'currency_decimal_point' => $info->firstWhere('key_name', 'currency_decimal_point')?->value ?? null,
+            // WebSocket - Laravel Reverb Configuration
+            'websocket_url' => $info->firstWhere('key_name', 'websocket_url')?->value ?? env('REVERB_HOST', 'smartline-it.com'),
+            'websocket_port' => (string)($info->firstWhere('key_name', 'websocket_port')?->value ?? env('REVERB_PORT', '443')),
+            'websocket_key' => env('REVERB_APP_KEY', env('PUSHER_APP_KEY')),
+            'websocket_scheme' => env('REVERB_SCHEME', env('PUSHER_SCHEME', 'https')),
+            // Reverb WebSocket Configuration (camelCase for Flutter)
+            'webSocketUrl' => $info->firstWhere('key_name', 'websocket_url')?->value ?? env('REVERB_HOST', 'smartline-it.com'),
+            'webSocketPort' => (string)($info->firstWhere('key_name', 'websocket_port')?->value ?? env('REVERB_PORT', '443')),
+            'websocketScheme' => env('REVERB_SCHEME', env('PUSHER_SCHEME', 'https')),
+            'webSocketKey' => env('REVERB_APP_KEY', env('PUSHER_APP_KEY')),
+            // Socket.IO Configuration (Node.js real-time service)
+            'socketio_url' => env('SOCKETIO_URL', $info->firstWhere('key_name', 'websocket_url')?->value ?? 'smartline-it.com'),
+            'socketio_path' => env('SOCKETIO_PATH', '/socket.io/'),
+            // Socket.IO Configuration (camelCase for Flutter)
+            'socketIOUrl' => env('SOCKETIO_URL', $info->firstWhere('key_name', 'websocket_url')?->value ?? 'smartline-it.com'),
+            'socketIOPath' => env('SOCKETIO_PATH', '/socket.io/'),
+            // Image base URLs - using media URL for new storage system
+            'image_base_url' => [
+                'profile_image_customer' => url('media/customer/profile'),
+                'profile_image_admin' => url('media/employee/profile'),
+                'banner' => url('media/promotion/banner'),
+                'vehicle_category' => url('media/vehicle/category'),
+                'vehicle_model' => url('media/vehicle/model'),
+                'vehicle_brand' => url('media/vehicle/brand'),
+                'profile_image' => url('media/driver/profile'),
+                'identity_image' => url('media/driver/identity'),
+                'documents' => url('media/driver/document'),
+                'pages' => url('media/business/pages'),
+                'conversation' => url('media/conversation'),
+                'parcel' => url('media/parcel/category'),
+            ],
+            // App versions
+            'app_minimum_version_for_android' => (double)$this->getAppVersion('driver_app_version_control_for_android'),
+            'app_url_for_android' => $this->getAppUrl('driver_app_version_control_for_android'),
+            'app_minimum_version_for_ios' => (double)$this->getAppVersion('driver_app_version_control_for_ios'),
+            'app_url_for_ios' => $this->getAppUrl('driver_app_version_control_for_ios'),
+            'fuel_types' => array_keys(FUEL_TYPES)
+        ];
     }
 
     /**
@@ -611,6 +671,9 @@ class ConfigController extends Controller
         return response()->json(responseFormatter(DEFAULT_200, $transformedData), 200);
     }
 
+    /**
+     * Updated: 2026-01-14 - Added caching to reduce external API calls
+     */
     public function distanceApi(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -625,21 +688,40 @@ class ConfigController extends Controller
             return response()->json(responseFormatter(DEFAULT_400, null, null, null, errorProcessor($validator)), 400);
         }
 
+        // Create cache key based on coordinates (rounded to 4 decimal places for reasonable precision)
+        $cacheKey = 'driver_distance_api_' . md5(
+            round($request['origin_lat'], 4) . '_' .
+            round($request['origin_lng'], 4) . '_' .
+            round($request['destination_lat'], 4) . '_' .
+            round($request['destination_lng'], 4)
+        );
+
+        // Try to get from cache first (5 minutes TTL)
+        // Updated 2026-01-14: Added caching to reduce external API calls
+        $cachedResult = \Cache::get($cacheKey);
+        if ($cachedResult !== null) {
+            return response()->json(responseFormatter(DEFAULT_200, $cachedResult), 200);
+        }
+
         // Allow manual API key override via request parameter
         $mapKey = $request->input('key') ?? businessConfig(GOOGLE_MAP_API)?->value['map_api_key_server'] ?? null;
-        
+
         // GeoLink Directions API
-        $response = Http::get(MAP_API_BASE_URI . '/api/v2/directions', [
+        // OLD CODE (no caching): $response = Http::get(...) // Commented 2026-01-14 - added caching above
+        $response = Http::timeout(10)->get(MAP_API_BASE_URI . '/api/v2/directions', [
             'origin_latitude' => $request['origin_lat'],
             'origin_longitude' => $request['origin_lng'],
             'destination_latitude' => $request['destination_lat'],
             'destination_longitude' => $request['destination_lng'],
             'key' => $mapKey
         ]);
-        
+
         // Transform GeoLink response to match expected distance matrix format
         $geoLinkData = $response->json();
         $transformedData = $this->transformDirectionsToDistanceMatrix($geoLinkData);
+
+        // Cache for 5 minutes (300 seconds)
+        \Cache::put($cacheKey, $transformedData, 300);
 
         return response()->json(responseFormatter(DEFAULT_200, $transformedData), 200);
     }
@@ -688,6 +770,9 @@ class ConfigController extends Controller
         ]), 400);
     }
 
+    /**
+     * Updated: 2026-01-14 - Added caching to reduce external API calls
+     */
     public function geocodeApi(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -698,10 +783,22 @@ class ConfigController extends Controller
         if ($validator->fails()) {
             return response()->json(responseFormatter(DEFAULT_400, null, null, null, errorProcessor($validator)), 400);
         }
-        
+
+        // Create cache key based on coordinates (rounded to 5 decimal places ~1 meter precision)
+        // Updated 2026-01-14: Added caching to reduce external API calls
+        $cacheKey = 'driver_geocode_api_' . md5(
+            round($request->lat, 5) . '_' . round($request->lng, 5)
+        );
+
+        // Try to get from cache first (10 minutes TTL - addresses don't change often)
+        $cachedResult = \Cache::get($cacheKey);
+        if ($cachedResult !== null) {
+            return response()->json(responseFormatter(DEFAULT_200, $cachedResult), 200);
+        }
+
         // Allow manual API key override via request parameter (for testing)
         $mapKey = $request->input('key') ?? businessConfig(GOOGLE_MAP_API)?->value['map_api_key_server'] ?? null;
-        
+
         if (empty($mapKey)) {
             \Log::error('GeoLink API key not configured for reverse geocode');
             return response()->json(responseFormatter(DEFAULT_200, [
@@ -712,9 +809,10 @@ class ConfigController extends Controller
                 ]
             ]), 200);
         }
-        
+
         // GeoLink Reverse Geocode API
-        $response = Http::timeout(30)->get(MAP_API_BASE_URI . '/api/v2/reverse_geocode', [
+        // OLD CODE (no caching): direct API call // Commented 2026-01-14 - added caching above
+        $response = Http::timeout(10)->get(MAP_API_BASE_URI . '/api/v2/reverse_geocode', [
             'latitude' => $request->lat,
             'longitude' => $request->lng,
             'key' => $mapKey
@@ -751,10 +849,14 @@ class ConfigController extends Controller
         }
         
         $transformedData = $this->transformReverseGeocodeResponse($geoLinkData, $request->lat, $request->lng);
-        
+
+        // Cache for 10 minutes (600 seconds) - addresses don't change often
+        // Updated 2026-01-14: Added caching
+        \Cache::put($cacheKey, $transformedData, 600);
+
         return response()->json(responseFormatter(DEFAULT_200, $transformedData), 200);
     }
-    
+
     /**
      * Transform GeoLink text search response to Google Places format
      * @param array $geoLinkData The raw response from GeoLink API

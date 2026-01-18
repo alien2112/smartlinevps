@@ -1,31 +1,100 @@
-<audio id="myAudio">
+<audio id="myAudio" preload="auto">
     <source src="{{asset('public/assets/admin-module/sound/safety-alert.mp3')}}" type="audio/mpeg">
 </audio>
 <script>
     "use strict"
     let audio = document.getElementById("myAudio");
-
     let isPlaying = false;
+    let audioEnabled = false;
+
+    // Set audio volume to maximum
+    audio.volume = 1.0;
+
+    // Enable audio on first user interaction (required by browsers)
+    const enableAudio = function() {
+        if (!audioEnabled) {
+            audio.play().then(() => {
+                audio.pause();
+                audio.currentTime = 0;
+                audioEnabled = true;
+                console.log('Audio enabled for safety alerts');
+            }).catch(e => console.log('Audio enable failed:', e));
+
+            // Remove listeners after first interaction
+            document.removeEventListener('click', enableAudio);
+            document.removeEventListener('keydown', enableAudio);
+        }
+    };
+
+    // Listen for any user interaction to enable audio
+    document.addEventListener('click', enableAudio);
+    document.addEventListener('keydown', enableAudio);
 
     // Add an event listener to replay the audio when it ends
     audio.addEventListener("ended", function () {
         if (isPlaying) {
             audio.currentTime = 0;
-            audio.play();
+            audio.play().catch(function (error) {
+                console.error("Error replaying audio:", error);
+            });
         }
     });
 
     function playAudio() {
         isPlaying = true;
-        audio.play().catch(function (error) {
-            console.error("Error playing audio:", error);
-        });
+
+        // Reset to start if already playing
+        audio.currentTime = 0;
+
+        // Try to play with retry logic
+        const attemptPlay = () => {
+            audio.play()
+                .then(() => {
+                    console.log('Safety alert sound playing');
+                    // Show browser notification as backup
+                    showBrowserNotification('Safety Alert', 'New safety alert received!');
+                })
+                .catch(function (error) {
+                    console.error("Error playing audio:", error);
+
+                    // If autoplay blocked, show notification to user
+                    if (error.name === 'NotAllowedError') {
+                        console.warn('Audio autoplay blocked. User interaction required.');
+                        showBrowserNotification('Safety Alert', 'New safety alert received! Click to enable sound.');
+                    }
+
+                    // Retry once after a short delay
+                    if (!audioEnabled) {
+                        setTimeout(() => {
+                            audio.play().catch(e => console.error('Retry failed:', e));
+                        }, 100);
+                    }
+                });
+        };
+
+        attemptPlay();
     }
 
     function stopAudio() {
         isPlaying = false;
         audio.pause();
         audio.currentTime = 0; // Reset to the start
+    }
+
+    // Show browser notification as backup alert
+    function showBrowserNotification(title, body) {
+        if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+                new Notification(title, {
+                    body: body,
+                    icon: '{{asset("public/assets/admin-module/img/logo.png")}}',
+                    requireInteraction: true,
+                    tag: 'safety-alert'
+                });
+            } catch (e) {
+                console.log('Browser notification failed:', e);
+            }
+        }
     }
 
 

@@ -12,8 +12,17 @@ use Illuminate\Database\Eloquent\Model;
 use Modules\TripManagement\Entities\TripRequest;
 use Modules\TripManagement\Repository\TripRequestRepositoryInterface;
 
+/**
+ * Updated: 2026-01-14 - Added default query limits to prevent memory exhaustion
+ */
 class TripRequestRepository extends BaseRepository implements TripRequestRepositoryInterface
 {
+    /**
+     * Default limit for unbounded queries to prevent memory exhaustion
+     * Updated: 2026-01-14
+     */
+    private const DEFAULT_QUERY_LIMIT = 1000;
+
     public function __construct(TripRequest $model)
     {
         parent::__construct($model);
@@ -184,7 +193,9 @@ class TripRequestRepository extends BaseRepository implements TripRequestReposit
                 break;
         }
 
-        return $query->get();
+        // Updated 2026-01-14: Apply default limit to prevent memory exhaustion
+        // OLD CODE: return $query->get(); // Commented 2026-01-14 - unbounded query risk
+        return $query->limit(self::DEFAULT_QUERY_LIMIT)->get();
     }
 
 
@@ -309,7 +320,10 @@ class TripRequestRepository extends BaseRepository implements TripRequestReposit
         if ($limit) {
             return !empty($criteria) ? $model->paginate($limit)->appends($criteria) : $model->paginate($limit);
         }
-        return $model->get();
+
+        // Updated 2026-01-14: Apply default limit to prevent memory exhaustion
+        // OLD CODE: return $model->get(); // Commented 2026-01-14 - unbounded query risk
+        return $model->limit(self::DEFAULT_QUERY_LIMIT)->get();
     }
 
 
@@ -370,7 +384,10 @@ class TripRequestRepository extends BaseRepository implements TripRequestReposit
         if ($limit) {
             return !empty($appends) ? $model->paginate($limit)->appends($appends) : $model->paginate($limit);
         }
-        return $model->get();
+
+        // Updated 2026-01-14: Apply default limit to prevent memory exhaustion
+        // OLD CODE: return $model->get(); // Commented 2026-01-14 - unbounded query risk
+        return $model->limit(self::DEFAULT_QUERY_LIMIT)->get();
     }
 
     /**
@@ -457,7 +474,10 @@ class TripRequestRepository extends BaseRepository implements TripRequestReposit
         if ($limit) {
             return !empty($appends) ? $model->paginate($limit)->appends($appends) : $model->paginate($limit);
         }
-        return $model->get();
+
+        // Updated 2026-01-14: Apply default limit to prevent memory exhaustion
+        // OLD CODE: return $model->get(); // Commented 2026-01-14 - unbounded query risk
+        return $model->limit(self::DEFAULT_QUERY_LIMIT)->get();
     }
 
     public function getLeaderBoard(string $userType, array $criteria = [], array $searchCriteria = [], array $whereInCriteria = [], array $whereBetweenCriteria = [], array $whereHasRelations = [], array $withAvgRelations = [], array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, bool $onlyTrashed = false, bool $withTrashed = false, array $withCountQuery = [], array $appends = []): Collection|LengthAwarePaginator
@@ -498,7 +518,10 @@ class TripRequestRepository extends BaseRepository implements TripRequestReposit
         if ($limit) {
             return !empty($appends) ? $model->paginate($limit)->appends($appends) : $model->paginate($limit);
         }
-        return $model->get();
+
+        // Updated 2026-01-14: Apply default limit to prevent memory exhaustion
+        // OLD CODE: return $model->get(); // Commented 2026-01-14 - unbounded query risk
+        return $model->limit(self::DEFAULT_QUERY_LIMIT)->get();
     }
 
     public function getPopularTips()
@@ -595,6 +618,9 @@ class TripRequestRepository extends BaseRepository implements TripRequestReposit
         if ($limit) {
             return !empty($appends) ? $model->paginate(perPage: $limit, page: $offset ?? 1)->appends($appends) : $model->paginate(perPage: $limit, page: $offset ?? 1);
         }
-        return $model->get();
+
+        // Updated 2026-01-14: Apply default limit to prevent memory exhaustion
+        // OLD CODE: return $model->get(); // Commented 2026-01-14 - unbounded query risk
+        return $model->limit(self::DEFAULT_QUERY_LIMIT)->get();
     }
 }

@@ -154,7 +154,7 @@
                             </div>
 
                             <div class="d-flex justify-content-end mt-3">
-                                {{ $drivers->links() }}
+                                {{ $drivers->appends(['status' => $status])->links() }}
                             </div>
                         </div>
                     </div>

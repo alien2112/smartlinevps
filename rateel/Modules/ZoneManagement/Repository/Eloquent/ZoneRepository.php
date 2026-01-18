@@ -11,8 +11,17 @@ use MatanYadaev\EloquentSpatial\AxisOrder;
 use Modules\ZoneManagement\Entities\Zone;
 use Modules\ZoneManagement\Repository\ZoneRepositoryInterface;
 
+/**
+ * Updated: 2026-01-14 - Added default query limits to prevent memory exhaustion
+ */
 class ZoneRepository extends BaseRepository implements ZoneRepositoryInterface
 {
+    /**
+     * Default limit for unbounded queries to prevent memory exhaustion
+     * Updated: 2026-01-14
+     */
+    private const DEFAULT_QUERY_LIMIT = 1000;
+
     public function __construct(Zone $model)
     {
         parent::__construct($model);
@@ -100,6 +109,9 @@ class ZoneRepository extends BaseRepository implements ZoneRepositoryInterface
             ->first();
     }
 
+    /**
+     * Updated: 2026-01-14 - Added default limit to prevent memory exhaustion on large datasets
+     */
     public function getAll(array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, bool $onlyTrashed = false, bool $withTrashed = false, array $withCountQuery = [], array $groupBy = []): Collection|LengthAwarePaginator
     {
         $model = $this->prepareModelForRelationAndOrder(relations: $relations, orderBy: $orderBy)
@@ -129,7 +141,10 @@ class ZoneRepository extends BaseRepository implements ZoneRepositoryInterface
         if ($limit) {
             return $model->paginate(perPage: $limit, page: $offset ?? 1);
         }
-        return $model->get();
+
+        // Updated 2026-01-14: Apply default limit to prevent memory exhaustion
+        // OLD CODE: return $model->get(); // Commented 2026-01-14 - unbounded query risk
+        return $model->limit(self::DEFAULT_QUERY_LIMIT)->get();
     }
 
     public function getBy(array $criteria = [], array $searchCriteria = [], array $whereInCriteria = [], array $whereBetweenCriteria = [], array $whereHasRelations = [], array $withAvgRelations = [], array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, bool $onlyTrashed = false, bool $withTrashed = false, array $withCountQuery = [], array $appends = [], array $groupBy = []): Collection|LengthAwarePaginator
@@ -182,7 +197,10 @@ class ZoneRepository extends BaseRepository implements ZoneRepositoryInterface
         if ($limit) {
             return !empty($appends) ? $model->paginate(perPage: $limit, page: $offset ?? 1)->appends($appends) : $model->paginate(perPage: $limit, page: $offset ?? 1);
         }
-        return $model->get();
+
+        // Updated 2026-01-14: Apply default limit to prevent memory exhaustion
+        // OLD CODE: return $model->get(); // Commented 2026-01-14 - unbounded query risk
+        return $model->limit(self::DEFAULT_QUERY_LIMIT)->get();
     }
 
 }

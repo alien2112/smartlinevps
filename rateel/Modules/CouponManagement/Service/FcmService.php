@@ -9,7 +9,14 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Facades\Log;
 use Modules\CouponManagement\Entities\UserDevice;
+use Modules\CouponManagement\Jobs\SendFcmNotificationJob;
 
+/**
+ * FCM Service for sending push notifications
+ *
+ * Updated: 2026-01-14 - Added async queue-based methods to avoid blocking HTTP requests
+ * Retry logic moved to job queue with exponential backoff
+ */
 class FcmService
 {
     private Client $httpClient;
@@ -206,79 +213,82 @@ class FcmService
     }
 
     /**
-     * Send FCM request with retry logic
+     * Send FCM request - single attempt without retry (for queued jobs)
+     *
+     * Updated: 2026-01-14 - Removed blocking usleep retry logic
+     * Retry is now handled by queue job with proper backoff
      */
     private function sendRequest(array $message): array
     {
-        $attempts = 0;
-        $lastError = null;
+        try {
+            $response = $this->httpClient->post($this->getFcmEndpoint(), [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $this->getAccessToken(),
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => $message,
+            ]);
 
-        while ($attempts < self::MAX_RETRIES) {
-            try {
-                $response = $this->httpClient->post($this->getFcmEndpoint(), [
-                    'headers' => [
-                        'Authorization' => 'Bearer ' . $this->getAccessToken(),
-                        'Content-Type' => 'application/json',
-                    ],
-                    'json' => $message,
-                ]);
+            $body = json_decode($response->getBody()->getContents(), true);
 
-                $body = json_decode($response->getBody()->getContents(), true);
+            return [
+                'success' => true,
+                'message_id' => $body['name'] ?? null,
+                'error' => null,
+                'should_deactivate' => false,
+            ];
 
-                return [
-                    'success' => true,
-                    'message_id' => $body['name'] ?? null,
-                    'error' => null,
-                    'should_deactivate' => false,
-                ];
+        } catch (GuzzleException $e) {
+            $statusCode = $e->hasResponse() ? $e->getResponse()->getStatusCode() : 0;
+            $errorBody = $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : '';
 
-            } catch (GuzzleException $e) {
-                $lastError = $e;
-                $statusCode = $e->hasResponse() ? $e->getResponse()->getStatusCode() : 0;
-                $errorBody = $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : '';
-
-                // Check for unregistered/invalid token errors
-                if ($this->isInvalidTokenError($statusCode, $errorBody)) {
-                    return [
-                        'success' => false,
-                        'message_id' => null,
-                        'error' => 'Invalid token',
-                        'should_deactivate' => true,
-                    ];
-                }
-
-                // Retry on server errors or rate limits
-                if (in_array($statusCode, [429, 500, 502, 503, 504])) {
-                    $attempts++;
-                    usleep(self::RETRY_DELAY_MS * 1000 * $attempts); // Exponential backoff
-                    continue;
-                }
-
-                // Don't retry on client errors
-                Log::error('FcmService: Send failed', [
-                    'status_code' => $statusCode,
-                    'error' => $errorBody,
-                ]);
-
+            // Check for unregistered/invalid token errors
+            if ($this->isInvalidTokenError($statusCode, $errorBody)) {
                 return [
                     'success' => false,
                     'message_id' => null,
-                    'error' => $errorBody,
-                    'should_deactivate' => false,
+                    'error' => 'Invalid token',
+                    'should_deactivate' => true,
                 ];
             }
+
+            Log::error('FcmService: Send failed', [
+                'status_code' => $statusCode,
+                'error' => $errorBody,
+            ]);
+
+            return [
+                'success' => false,
+                'message_id' => null,
+                'error' => $errorBody,
+                'should_deactivate' => false,
+                'status_code' => $statusCode,
+            ];
         }
 
-        Log::error('FcmService: Max retries exceeded', [
-            'error' => $lastError?->getMessage(),
-        ]);
-
-        return [
-            'success' => false,
-            'message_id' => null,
-            'error' => 'Max retries exceeded: ' . $lastError?->getMessage(),
-            'should_deactivate' => false,
-        ];
+        /* ============================================================
+         * OLD BLOCKING CODE - Commented 2026-01-14
+         * This retry loop with usleep blocked HTTP requests for 3+ seconds
+         * Retry logic is now handled by SendFcmNotificationJob
+         * ============================================================
+         *
+         * $attempts = 0;
+         * $lastError = null;
+         *
+         * while ($attempts < self::MAX_RETRIES) {
+         *     try {
+         *         // ... send request ...
+         *     } catch (GuzzleException $e) {
+         *         // ...
+         *         // Retry on server errors or rate limits
+         *         if (in_array($statusCode, [429, 500, 502, 503, 504])) {
+         *             $attempts++;
+         *             usleep(self::RETRY_DELAY_MS * 1000 * $attempts); // BLOCKS REQUEST THREAD!
+         *             continue;
+         *         }
+         *     }
+         * }
+         */
     }
 
     /**
@@ -361,5 +371,178 @@ class FcmService
         }
 
         return $this->sendToTokens($tokens, $notification, $data);
+    }
+
+    // ============================================================
+    // ASYNC QUEUE METHODS - Added 2026-01-14
+    // These methods dispatch jobs to handle notifications in background
+    // ============================================================
+
+    /**
+     * Queue notification to a single token (non-blocking)
+     *
+     * @param string $token FCM token
+     * @param array $notification
+     * @param array $data
+     * @return array ['queued' => bool]
+     */
+    public function queueToToken(string $token, array $notification, array $data = []): array
+    {
+        SendFcmNotificationJob::dispatch('token', $token, $notification, $data);
+
+        return ['queued' => true, 'message' => 'Notification queued for delivery'];
+    }
+
+    /**
+     * Queue notification to multiple tokens (non-blocking)
+     */
+    public function queueToTokens(array $tokens, array $notification, array $data = []): array
+    {
+        // Chunk large token arrays into separate jobs
+        $chunks = array_chunk($tokens, self::MAX_TOKENS_PER_REQUEST);
+
+        foreach ($chunks as $chunk) {
+            SendFcmNotificationJob::dispatch('tokens', $chunk, $notification, $data);
+        }
+
+        return [
+            'queued' => true,
+            'message' => 'Notifications queued for delivery',
+            'job_count' => count($chunks),
+        ];
+    }
+
+    /**
+     * Queue notification to a topic (non-blocking)
+     */
+    public function queueToTopic(string $topic, array $notification, array $data = []): array
+    {
+        SendFcmNotificationJob::dispatch('topic', $topic, $notification, $data);
+
+        return ['queued' => true, 'message' => 'Topic notification queued'];
+    }
+
+    /**
+     * Queue notification to user's devices (non-blocking)
+     */
+    public function queueToUser(string $userId, array $notification, array $data = []): array
+    {
+        SendFcmNotificationJob::dispatch('user', $userId, $notification, $data);
+
+        return ['queued' => true, 'message' => 'User notification queued'];
+    }
+
+    // ============================================================
+    // DIRECT METHODS - Added 2026-01-14
+    // For use by SendFcmNotificationJob - single attempt, no retry
+    // ============================================================
+
+    /**
+     * Direct send to token (called by job, no retry logic)
+     */
+    public function sendToTokenDirect(string $token, array $notification, array $data = []): array
+    {
+        $message = [
+            'message' => [
+                'token' => $token,
+                'notification' => [
+                    'title' => $notification['title'],
+                    'body' => $notification['body'],
+                ],
+                'data' => $this->prepareData($data),
+                'android' => [
+                    'priority' => 'high',
+                    'notification' => [
+                        'channel_id' => 'coupons',
+                        'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+                    ],
+                ],
+                'apns' => [
+                    'payload' => [
+                        'aps' => [
+                            'sound' => 'default',
+                            'badge' => 1,
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        if (isset($notification['image'])) {
+            $message['message']['notification']['image'] = $notification['image'];
+        }
+
+        return $this->sendRequest($message);
+    }
+
+    /**
+     * Direct send to multiple tokens (called by job)
+     */
+    public function sendToTokensDirect(array $tokens, array $notification, array $data = []): array
+    {
+        $results = [
+            'success_count' => 0,
+            'failure_count' => 0,
+            'invalid_tokens' => [],
+            'success' => true,
+        ];
+
+        foreach ($tokens as $token) {
+            $result = $this->sendToTokenDirect($token, $notification, $data);
+
+            if ($result['success']) {
+                $results['success_count']++;
+            } else {
+                $results['failure_count']++;
+                if ($result['should_deactivate'] ?? false) {
+                    $results['invalid_tokens'][] = $token;
+                }
+            }
+        }
+
+        // Deactivate invalid tokens
+        if (!empty($results['invalid_tokens'])) {
+            $this->deactivateTokens($results['invalid_tokens']);
+        }
+
+        $results['success'] = $results['failure_count'] === 0;
+
+        return $results;
+    }
+
+    /**
+     * Direct send to topic (called by job)
+     */
+    public function sendToTopicDirect(string $topic, array $notification, array $data = []): array
+    {
+        $message = [
+            'message' => [
+                'topic' => $topic,
+                'notification' => [
+                    'title' => $notification['title'],
+                    'body' => $notification['body'],
+                ],
+                'data' => $this->prepareData($data),
+            ],
+        ];
+
+        return $this->sendRequest($message);
+    }
+
+    /**
+     * Direct send to user (called by job)
+     */
+    public function sendToUserDirect(string $userId, array $notification, array $data = []): array
+    {
+        $tokens = $this->getUserTokens($userId);
+
+        if (empty($tokens)) {
+            return [
+                'success' => true, // Not a failure, just no devices
+                'message' => 'No active devices for user',
+            ];
+        }
+
+        return $this->sendToTokensDirect($tokens, $notification, $data);
     }
 }

@@ -10,9 +10,15 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Routing\Redirector;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Modules\Gateways\Entities\PaymentRequest;
 use Modules\Gateways\Traits\Processor;
+
+/**
+ * Updated: 2026-01-14 - Replaced blocking cURL with Laravel HTTP client with timeouts
+ */
 
 class FlutterwaveV3Controller extends Controller
 {
@@ -78,58 +84,78 @@ class FlutterwaveV3Controller extends Controller
             ]
         ];
 
-        $curl = curl_init();
-        curl_setopt_array($curl, array(
-            CURLOPT_URL => 'https://api.flutterwave.com/v3/payments',
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_ENCODING => '',
-            CURLOPT_MAXREDIRS => 10,
-            CURLOPT_TIMEOUT => 0,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-            CURLOPT_CUSTOMREQUEST => 'POST',
-            CURLOPT_POSTFIELDS => json_encode($request),
-            CURLOPT_HTTPHEADER => array(
-                'Authorization: Bearer ' . $this->config_values->secret_key,
-                'Content-Type: application/json'
-            ),
-        ));
+        // Updated 2026-01-14: Use Laravel HTTP client with timeout instead of blocking cURL
+        try {
+            $response = Http::timeout(15)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $this->config_values->secret_key,
+                    'Content-Type' => 'application/json'
+                ])
+                ->post('https://api.flutterwave.com/v3/payments', $request);
 
-        $response = curl_exec($curl);
+            $res = $response->object();
 
-        curl_close($curl);
-
-        $res = json_decode($response);
-        if ($res->status == 'success') {
-            return redirect()->away($res->data->link);
+            if ($res && $res->status == 'success') {
+                return redirect()->away($res->data->link);
+            }
+        } catch (\Exception $e) {
+            Log::error('Flutterwave payment initiation failed', ['error' => $e->getMessage()]);
         }
 
         return translate('We can not process your payment');
+
+        /* ============================================================
+         * OLD CODE - Commented 2026-01-14
+         * cURL with CURLOPT_TIMEOUT => 0 could block indefinitely
+         * ============================================================
+         *
+         * $curl = curl_init();
+         * curl_setopt_array($curl, array(
+         *     CURLOPT_URL => 'https://api.flutterwave.com/v3/payments',
+         *     CURLOPT_RETURNTRANSFER => true,
+         *     CURLOPT_TIMEOUT => 0,  // NO TIMEOUT - DANGEROUS!
+         *     ...
+         * ));
+         * $response = curl_exec($curl);
+         * curl_close($curl);
+         */
     }
 
     public function callback(Request $request): Application|JsonResponse|Redirector|\Illuminate\Contracts\Foundation\Application|RedirectResponse
     {
         if ($request['status'] == 'successful') {
             $txid = $request['transaction_id'];
-            $curl = curl_init();
-            curl_setopt_array($curl, array(
-                CURLOPT_URL => "https://api.flutterwave.com/v3/transactions/{$txid}/verify",
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_ENCODING => "",
-                CURLOPT_MAXREDIRS => 10,
-                CURLOPT_TIMEOUT => 0,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                CURLOPT_CUSTOMREQUEST => "GET",
-                CURLOPT_HTTPHEADER => array(
-                    "Content-Type: application/json",
-                    "Authorization: Bearer " . $this->config_values->secret_key,
-                ),
-            ));
-            $response = curl_exec($curl);
-            curl_close($curl);
 
-            $res = json_decode($response);
+            // Updated 2026-01-14: Use Laravel HTTP client with timeout instead of blocking cURL
+            try {
+                $response = Http::timeout(15)
+                    ->withHeaders([
+                        'Content-Type' => 'application/json',
+                        'Authorization' => 'Bearer ' . $this->config_values->secret_key,
+                    ])
+                    ->get("https://api.flutterwave.com/v3/transactions/{$txid}/verify");
+
+                $res = $response->object();
+            } catch (\Exception $e) {
+                Log::error('Flutterwave verification failed', ['error' => $e->getMessage(), 'txid' => $txid]);
+                $res = null;
+            }
+
+            /* ============================================================
+             * OLD CODE - Commented 2026-01-14
+             * cURL with CURLOPT_TIMEOUT => 0 could block indefinitely
+             * ============================================================
+             *
+             * $curl = curl_init();
+             * curl_setopt_array($curl, array(
+             *     CURLOPT_URL => "https://api.flutterwave.com/v3/transactions/{$txid}/verify",
+             *     CURLOPT_TIMEOUT => 0,
+             *     ...
+             * ));
+             * $response = curl_exec($curl);
+             * curl_close($curl);
+             * $res = json_decode($response);
+             */
             if ($res->status) {
                 $amountPaid = $res->data->charged_amount;
                 $amountToPay = $res->data->meta->price;

@@ -5,7 +5,9 @@ namespace Modules\TripManagement\Http\Controllers\Api\New\Customer;
 use App\Http\Controllers\Controller;
 use App\Services\RealtimeEventPublisher;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Validator;
+use Modules\TripManagement\Jobs\SendSafetyAlertNotificationJob;
 use Modules\TripManagement\Service\Interface\SafetyAlertServiceInterface;
 use Modules\TripManagement\Service\Interface\TripRequestServiceInterface;
 use Modules\TripManagement\Transformers\SafetyAlertResource;
@@ -77,17 +79,36 @@ class SafetyAlertController extends Controller
                 return response()->json(['error' => 'Failed to create safety alert'], 500);
             }
             
-            // Send Firebase topic notification
-            sendTopicNotification(
+            // Prepare notification data and dispatch job asynchronously
+            $systemLanguages = businessConfig('system_language')?->value ?? [];
+            $defaultLanguage = collect($systemLanguages)->firstWhere('default', 1)['code'] ?? 'en';
+            App::setLocale($defaultLanguage);
+
+            // Load additional relations for route generation
+            $data = $this->safetyAlertService->findOneBy(
+                criteria: ['id' => $data->id],
+                relations: ['trip', 'sentBy', 'trip.customer', 'trip.driver']
+            );
+
+            // Generate route before dispatching to avoid extra DB query in job
+            $route = $this->safetyAlertService->safetyAlertLatestUserRouteFromAlert($data);
+
+            // Translate strings before dispatching
+            $title = __('lang.new_safety_alert');
+            $description = __('lang.you_have_new_safety_alert');
+
+            // Dispatch notification job to run asynchronously
+            SendSafetyAlertNotificationJob::dispatch(
                 topic: 'admin_safety_alert_notification',
-                title: translate('new_safety_alert'),
-                description: translate('you_have_new_safety_alert'),
+                title: $title,
+                description: $description,
                 type: 'customer',
                 sentBy: auth('api')->user()?->id,
                 tripReferenceId: $data?->trip?->ref_id,
-                route: $this->safetyAlertService->safetyAlertLatestUserRoute()
+                route: $route,
+                defaultLanguage: $defaultLanguage
             );
-            
+
             // Publish socket event for real-time alert (only if data is not null)
             if ($data) {
                 $this->realtimeEventPublisher->publishSafetyAlertCreated($data, 'customer');
@@ -107,24 +128,37 @@ class SafetyAlertController extends Controller
             ]
         ];
 
-        $safetyAlert = $this->safetyAlertService->findOneBy(criteria: ['trip_request_id' => $tripRequestId, 'status' => PENDING], relations: ['trip'], whereHasRelations: $whereHasRelations);
+        $safetyAlert = $this->safetyAlertService->findOneBy(criteria: ['trip_request_id' => $tripRequestId, 'status' => PENDING], relations: ['trip', 'sentBy', 'trip.customer', 'trip.driver'], whereHasRelations: $whereHasRelations);
         if (!$safetyAlert) {
             return response()->json(responseFormatter(SAFETY_ALERT_NOT_FOUND_404), 403);
         }
         $safetyAlert->increment('number_of_alert');
         $safetyAlertData = new SafetyAlertResource($safetyAlert);
-        
-        // Send Firebase topic notification
-        sendTopicNotification(
+
+        // Prepare notification data and dispatch job asynchronously
+        $systemLanguages = businessConfig('system_language')?->value ?? [];
+        $defaultLanguage = collect($systemLanguages)->firstWhere('default', 1)['code'] ?? 'en';
+        App::setLocale($defaultLanguage);
+
+        // Generate route before dispatching to avoid extra DB query in job
+        $route = $this->safetyAlertService->safetyAlertLatestUserRouteFromAlert($safetyAlert);
+
+        // Translate strings before dispatching
+        $title = __('lang.new_safety_alert');
+        $description = __('lang.you_have_new_safety_alert');
+
+        // Dispatch notification job to run asynchronously
+        SendSafetyAlertNotificationJob::dispatch(
             topic: 'admin_safety_alert_notification',
-            title: translate('new_safety_alert'),
-            description: translate('you_have_new_safety_alert'),
+            title: $title,
+            description: $description,
             type: 'customer',
             sentBy: auth('api')->user()?->id,
             tripReferenceId: $safetyAlert?->trip?->ref_id,
-            route: $this->safetyAlertService->safetyAlertLatestUserRoute()
+            route: $route,
+            defaultLanguage: $defaultLanguage
         );
-        
+
         // Publish socket event for real-time alert
         $this->realtimeEventPublisher->publishSafetyAlertCreated($safetyAlert, 'customer');
 

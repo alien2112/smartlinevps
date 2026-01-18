@@ -44,14 +44,26 @@ class VehicleBrandService extends BaseService implements VehicleBrandServiceInte
         return $this->vehicleBrandRepository->update($id, $updateData);
     }
 
+    /**
+     * Export vehicle brands
+     * Updated: 2026-01-14 - Fixed N+1 query by using withCount instead of loading relation
+     */
     public function export(array $criteria = [], array $relations = [], array $orderBy = [], int $limit = null, int $offset = null, array $withCountQuery = []): Collection|LengthAwarePaginator|\Illuminate\Support\Collection
     {
-        return $this->index(criteria: $criteria, relations: $relations, orderBy: $orderBy)->map(function ($item) {
+        // Updated 2026-01-14: Use withCount to prevent N+1 queries
+        return $this->index(
+            criteria: $criteria,
+            relations: $relations,
+            orderBy: $orderBy,
+            withCountQuery: ['vehicles'] // Add vehicle count to query
+        )->map(function ($item) {
             return [
                 'Id' => $item['id'],
                 'Brand Name' => $item['name'],
                 'Description' => $item['description'],
-                'Total Vehicles' => $item->vehicles->count(),
+                // Updated 2026-01-14: Use pre-loaded count instead of lazy loading relation
+                // OLD CODE: 'Total Vehicles' => $item->vehicles->count(), // Commented 2026-01-14 - N+1 query
+                'Total Vehicles' => $item->vehicles_count ?? 0,
                 'Status' => $item['is_active'] ? 'Active' : 'Inactive',
             ];
         });

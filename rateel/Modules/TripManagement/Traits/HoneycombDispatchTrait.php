@@ -88,8 +88,10 @@ trait HoneycombDispatchTrait
 
     /**
      * Get drivers by ID list with distance calculation
-     * 
+     *
      * Used after honeycomb filtering to fetch and sort the candidate drivers.
+     *
+     * Updated: 2026-01-14 - Optimized N+1 query pattern by combining whereHas conditions
      */
     private function getDriversByIds(
         array $driverIds,
@@ -101,36 +103,43 @@ trait HoneycombDispatchTrait
         if (empty($driverIds)) {
             return collect([]);
         }
-        
+
         $drivers = $this->userLastLocation
-            ->selectRaw("*, 
-                (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * 
-                cos(radians(longitude) - radians(?)) + sin(radians(?)) * 
+            ->selectRaw("*,
+                (6371 * acos(cos(radians(?)) * cos(radians(latitude)) *
+                cos(radians(longitude) - radians(?)) + sin(radians(?)) *
                 sin(radians(latitude)))) AS distance",
                 [$latitude, $longitude, $latitude]
             )
             ->whereIn('user_id', $driverIds)
             ->where('type', 'driver')
             ->with(['user.vehicle.category', 'driverDetails', 'user'])
-            ->whereHas('user', fn($query) => $query->where('is_active', true))
+            // Updated 2026-01-14: Combined whereHas conditions to reduce subqueries
+            // OLD CODE (multiple whereHas - N+1 pattern):
+            // ->whereHas('user', fn($query) => $query->where('is_active', true))
+            // ->whereHas('driverDetails', fn($query) => $query->where('is_online', true)...)
+            // ->whereHas('user.vehicle', fn($query) => $query->where('is_active', true))
+            ->whereHas('user', function($query) use ($vehicleCategoryId) {
+                $query->where('is_active', true)
+                    ->whereHas('vehicle', function($vq) use ($vehicleCategoryId) {
+                        $vq->where('is_active', true);
+                        if ($vehicleCategoryId) {
+                            $vq->ofStatus(1)->where('category_id', $vehicleCategoryId);
+                        }
+                    });
+            })
             ->whereHas('driverDetails', fn($query) => $query
                 ->where('is_online', true)
                 ->whereNotIn('availability_status', ['unavailable', 'on_trip'])
-                ->where('honeycomb_enabled', true) // Only include drivers who opted into honeycomb
+                ->where('honeycomb_enabled', true)
             )
-            ->when($vehicleCategoryId, function ($query) use ($vehicleCategoryId) {
-                $query->whereHas('user.vehicle', fn($q) => 
-                    $q->ofStatus(1)->where('category_id', $vehicleCategoryId)
-                );
-            })
-            ->whereHas('user.vehicle', fn($query) => $query->where('is_active', true))
             ->orderBy('distance')
             ->get();
-        
+
         if ($femaleOnly) {
             $drivers = $drivers->filter(fn($driver) => $driver->gender === 'female');
         }
-        
+
         return $drivers;
     }
 

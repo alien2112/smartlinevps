@@ -31,6 +31,25 @@ class BusinessSettingService extends BaseService implements BusinessSettingServi
         $this->externalConfigurationRepository = $externalConfigurationRepository;
     }
 
+    /**
+     * Get settings by multiple key names efficiently
+     * Updated: 2026-01-14 - Added to support optimized config loading
+     *
+     * @param array $keys Array of key_name values to fetch
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public function getByKeys(array $keys)
+    {
+        // Cache the results for 5 minutes to reduce repeated queries
+        $cacheKey = 'business_settings_' . md5(implode(',', $keys));
+
+        return Cache::remember($cacheKey, 300, function () use ($keys) {
+            return $this->businessSettingRepository->getModel()
+                ->whereIn('key_name', $keys)
+                ->get();
+        });
+    }
+
     public function storeBusinessInfo(array $data)
     {
         $code = 'USD';

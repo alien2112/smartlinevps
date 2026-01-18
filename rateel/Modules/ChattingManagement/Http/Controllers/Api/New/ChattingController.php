@@ -11,6 +11,7 @@ use Illuminate\Contracts\Support\Renderable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
 use Modules\AdminModule\Entities\AdminNotification;
 use Modules\AdminModule\Service\Interface\AdminNotificationServiceInterface;
@@ -153,12 +154,34 @@ class ChattingController extends Controller
         $this->channelConversationService->updatedBy(criteria: ['user_id' => $user_id, 'channel_id' => $request['channel_id']], data: ['is_read' => 1]);
         DB::commit();
 
+        // Set proper locale for notification translation
+        $systemLanguages = businessConfig('system_language')?->value ?? [];
+        $defaultLanguage = collect($systemLanguages)->firstWhere('default', 1)['code'] ?? 'en';
+        App::setLocale($defaultLanguage);
+
         $push = getNotification('new_message');
+
+        // Translate title
+        $translatedTitle = __('lang.' . $push['title']);
+
+        // Get the description template and convert it to a translatable key
+        // "You got a new message from {userName}" -> "you_got_a_new_message_from_username"
+        $descriptionKey = strtolower(str_replace([' ', '{', '}'], ['_', '', ''], $push['description']));
+        $translatedDescription = __('lang.' . $descriptionKey);
+
+        // If translation not found, try to translate the base sentence and then format
+        if ($translatedDescription === 'lang.' . $descriptionKey) {
+            // Fallback: just format with the original template
+            $translatedDescription = textVariableDataFormat(value: $push['description'], userName: $user?->full_name ?? $user?->first_name);
+        } else {
+            // Replace the variable in the translated text
+            $translatedDescription = textVariableDataFormat(value: $translatedDescription, userName: $user?->full_name ?? $user?->first_name);
+        }
 
         sendDeviceNotification(
             fcm_token: $to_user->fcm_token,
-            title: translate($push['title']),
-            description: translate(textVariableDataFormat(value: $push['description'], userName: $user?->full_name ?? $user?->first_name)),
+            title: $translatedTitle,
+            description: $translatedDescription,
             status: $push['status'],
             ride_request_id: $trip->id,
             type: $request->channel_id,

@@ -8,9 +8,11 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Async Broadcasting Trait
- * 
+ *
  * Provides methods to broadcast events asynchronously
  * to improve API response times.
+ *
+ * Updated: 2026-01-14 - Removed dispatchSync to prevent blocking at scale
  */
 trait AsyncBroadcasting
 {
@@ -20,17 +22,20 @@ trait AsyncBroadcasting
      * @param string $channel Channel name (e.g., 'private-driver.123')
      * @param string $event Event name
      * @param array $data Event data
-     * @param bool $immediate If true, dispatch synchronously (for critical events)
+     * @param bool $immediate If true, dispatch to high-priority queue (still async but faster)
      * @return void
+     *
+     * Updated: 2026-01-14 - Changed immediate flag to use high-priority queue instead of sync
      */
     protected function broadcastAsync(string $channel, string $event, array $data, bool $immediate = false): void
     {
         try {
             if ($immediate) {
-                // Dispatch synchronously for critical events
-                BroadcastEventJob::dispatchSync($channel, $event, $data);
+                // Updated 2026-01-14: Use high-priority queue instead of sync to prevent blocking
+                // OLD CODE: BroadcastEventJob::dispatchSync($channel, $event, $data); // Commented 2026-01-14 - blocks request thread
+                BroadcastEventJob::dispatch($channel, $event, $data)->onQueue('high');
             } else {
-                // Dispatch to queue for async processing
+                // Dispatch to default queue for async processing
                 BroadcastEventJob::dispatch($channel, $event, $data);
             }
         } catch (\Exception $e) {

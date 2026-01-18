@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reverb WebSocket Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.4.0/dist/web/pusher.min.js"></script>
+</head>
+<body>
+    <h1>Laravel Reverb Connection Test</h1>
+    <div id="status">Connecting...</div>
+    <div id="messages"></div>
+
+    <script>
+        const statusDiv = document.getElementById('status');
+        const messagesDiv = document.getElementById('messages');
+
+        function addMessage(msg) {
+            const p = document.createElement('p');
+            p.textContent = new Date().toLocaleTimeString() + ': ' + msg;
+            messagesDiv.appendChild(p);
+        }
+
+        // Connect to Reverb
+        const pusher = new Pusher('drivemond', {
+            wsHost: 'smartline-it.com',
+            wsPort: 443,
+            wssPort: 443,
+            forceTLS: true,
+            enabledTransports: ['ws', 'wss'],
+            cluster: '',
+        });
+
+        pusher.connection.bind('connected', () => {
+            statusDiv.textContent = '✅ Connected to Reverb!';
+            statusDiv.style.color = 'green';
+            addMessage('Connected to Reverb WebSocket');
+        });
+
+        pusher.connection.bind('error', (err) => {
+            statusDiv.textContent = '❌ Connection Error';
+            statusDiv.style.color = 'red';
+            addMessage('Error: ' + JSON.stringify(err));
+        });
+
+        pusher.connection.bind('disconnected', () => {
+            statusDiv.textContent = '⚠️ Disconnected';
+            addMessage('Disconnected from Reverb');
+        });
+
+        // Subscribe to a test channel
+        const channel = pusher.subscribe('public-test');
+        channel.bind('pusher:subscription_succeeded', () => {
+            addMessage('Subscribed to public-test channel');
+        });
+    </script>
+</body>
+</html>

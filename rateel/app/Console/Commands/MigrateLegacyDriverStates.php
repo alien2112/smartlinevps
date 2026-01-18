@@ -29,6 +29,7 @@ class MigrateLegacyDriverStates extends Command
         'total_processed' => 0,
         'approved' => 0,
         'pending_approval' => 0,
+        // 'kyc_verification' => 0, // KYC verification - kept for future use
         'documents' => 0,
         'vehicle_type' => 0,
         'register_info' => 0,
@@ -131,38 +132,45 @@ class MigrateLegacyDriverStates extends Command
             $data = $this->collectDriverData($driver);
 
             // Determine proper state
-            $newState = $this->determineProperState($data);
+            $stateData = $this->determineProperState($data);
+            $newStep = $stateData['step'];
+            $newState = $stateData['state'];
 
             // Skip if already in correct state
-            if ($driver->onboarding_step === $newState) {
+            if ($driver->onboarding_step === $newStep && $driver->onboarding_state === $newState) {
                 $this->stats['skipped']++;
                 return;
             }
 
-            $oldState = $driver->onboarding_step ?? 'null';
+            $oldStep = $driver->onboarding_step ?? 'null';
+            $oldState = $driver->onboarding_state ?? 'null';
 
             if (!$isDryRun) {
-                // Update the driver
+                // Update the driver with both step and state
                 DB::table('users')
                     ->where('id', $driver->id)
                     ->update([
-                        'onboarding_step' => $newState,
+                        'onboarding_step' => $newStep,
+                        'onboarding_state' => $newState,
+                        'onboarding_state_version' => DB::raw('COALESCE(onboarding_state_version, 0) + 1'),
                         'updated_at' => now(),
                     ]);
 
                 Log::info('Legacy driver state migrated', [
                     'driver_id' => $driver->id,
                     'phone' => $driver->phone,
+                    'old_step' => $oldStep,
+                    'new_step' => $newStep,
                     'old_state' => $oldState,
                     'new_state' => $newState,
                     'reason' => $this->getStateReason($data),
                 ]);
             }
 
-            $this->stats[$newState]++;
+            $this->stats[$newStep]++;
 
             if ($this->option('verbose')) {
-                $this->line("  {$driver->phone}: {$oldState} → {$newState}");
+                $this->line("  {$driver->phone}: {$oldStep}/{$oldState} → {$newStep}/{$newState}");
             }
 
         } catch (\Exception $e) {
@@ -191,21 +199,58 @@ class MigrateLegacyDriverStates extends Command
             ->where('deleted_at', null)
             ->get();
 
-        // Get documents
+        // Get documents from NEW system
         $documents = DB::table('driver_documents')
             ->where('driver_id', $driver->id)
             ->where('deleted_at', null)
             ->get();
 
-        // Calculate document verification status
+        // Calculate document verification status from NEW system
         $totalDocs = $documents->count();
         $verifiedDocs = $documents->where('verified', true)->count();
+
+        // Check for LEGACY documents in users table
+        $legacyDocCount = 0;
+        $legacyDocTypes = [
+            'identification_image',
+            'old_identification_image',
+            'driving_license',
+            'vehicle_license',
+            'car_front_image',
+            'car_back_image',
+            'profile_image',
+            'other_documents',
+        ];
+
+        foreach ($legacyDocTypes as $docType) {
+            $value = $driver->{$docType} ?? null;
+            if (!empty($value) && $value !== '[]' && $value !== 'null') {
+                // Check if it's a JSON array
+                $decoded = json_decode($value, true);
+                if (is_array($decoded) && count($decoded) > 0) {
+                    $legacyDocCount += count($decoded);
+                } elseif (!is_array($decoded)) {
+                    // It's a single file path
+                    $legacyDocCount++;
+                }
+            }
+        }
+
+        // If driver has legacy documents, consider them verified
+        if ($legacyDocCount > 0 && $totalDocs === 0) {
+            $totalDocs = $legacyDocCount;
+            $verifiedDocs = $legacyDocCount;
+        }
+
         $allDocsVerified = $totalDocs > 0 && $totalDocs === $verifiedDocs;
 
         // Check required profile fields
         $hasCompleteProfile = !empty($driver->first_name)
             && !empty($driver->last_name)
             && !empty($driver->phone);
+
+        // Check if driver has password set
+        $hasPassword = !empty($driver->password);
 
         return [
             'driver' => $driver,
@@ -217,49 +262,113 @@ class MigrateLegacyDriverStates extends Command
             'verified_document_count' => $verifiedDocs,
             'all_documents_verified' => $allDocsVerified,
             'has_complete_profile' => $hasCompleteProfile,
+            'has_password' => $hasPassword,
+            'has_legacy_documents' => $legacyDocCount > 0,
+            'legacy_document_count' => $legacyDocCount,
             'is_active' => (bool) $driver->is_active,
+            'is_approved' => (bool) ($driver->is_approved ?? false),
         ];
     }
 
     /**
      * Determine the proper onboarding state based on driver data
+     * Returns both step and state for backward compatibility
      */
-    protected function determineProperState(array $data): string
+    protected function determineProperState(array $data): array
     {
         $driver = $data['driver'];
+        $hasPassword = $data['has_password'];
         $hasVehicle = $data['vehicle_count'] > 0;
         $hasDocs = $data['document_count'] > 0;
         $allDocsVerified = $data['all_documents_verified'];
         $hasCompleteProfile = $data['has_complete_profile'];
         $isActive = $data['is_active'];
+        $isApproved = $data['is_approved'];
 
-        // Priority 1: If driver is active and has vehicle + verified documents → approved
+        // Priority 1: If driver is marked as approved OR (active AND has everything) → approved
+        // Note: Legacy drivers might be is_approved=1 but is_active=0 due to manual updates
+        if ($isApproved && $hasVehicle && $hasDocs && $allDocsVerified && $hasCompleteProfile) {
+            return [
+                'step' => 'approved',
+                'state' => 'approved',
+            ];
+        }
+
+        // Also set to approved if they're active and have everything (even if is_approved flag is missing)
         if ($isActive && $hasVehicle && $hasDocs && $allDocsVerified && $hasCompleteProfile) {
-            return 'approved';
+            return [
+                'step' => 'approved',
+                'state' => 'approved',
+            ];
         }
 
         // Priority 2: If driver has vehicle + documents but not all verified → pending_approval
-        if ($hasVehicle && $hasDocs && !$allDocsVerified && $hasCompleteProfile) {
-            return 'pending_approval';
+        // Note: In future, this could be kyc_verification if you want to enable KYC step
+        if ($hasVehicle && $hasDocs && $hasCompleteProfile) {
+            if (!$allDocsVerified) {
+                return [
+                    'step' => 'pending_approval',
+                    'state' => 'pending_approval',
+                ];
+            }
+
+            // KYC Verification step (currently disabled, but logic kept for future use)
+            // Uncomment this block when you want to enable KYC verification:
+            /*
+            if ($allDocsVerified && !$driver->kyc_verified_at) {
+                return [
+                    'step' => 'kyc_verification',
+                    'state' => 'kyc_verification',
+                ];
+            }
+            */
+
+            // All documents verified, skip KYC for now, go to pending_approval
+            return [
+                'step' => 'pending_approval',
+                'state' => 'pending_approval',
+            ];
         }
 
         // Priority 3: If driver has vehicle but no/incomplete documents → documents
-        if ($hasVehicle && (!$hasDocs || $data['verified_document_count'] < $data['document_count']) && $hasCompleteProfile) {
-            return 'documents';
+        if ($hasVehicle && $hasCompleteProfile) {
+            if (!$hasDocs || $data['verified_document_count'] < $data['document_count']) {
+                return [
+                    'step' => 'documents',
+                    'state' => 'vehicle_selected', // They've selected vehicle, now need docs
+                ];
+            }
         }
 
         // Priority 4: If driver has complete profile but no vehicle → vehicle_type
         if ($hasCompleteProfile && !$hasVehicle) {
-            return 'vehicle_type';
+            return [
+                'step' => 'vehicle_type',
+                'state' => 'profile_complete',
+            ];
         }
 
-        // Priority 5: If driver has incomplete profile → register_info
+        // Priority 5: If driver has password but incomplete profile → register_info
+        if ($hasPassword && !$hasCompleteProfile) {
+            return [
+                'step' => 'register_info',
+                'state' => 'password_set',
+            ];
+        }
+
+        // Priority 6: If driver has no password and incomplete profile → password/register_info
         if (!$hasCompleteProfile) {
-            return 'register_info';
+            return [
+                'step' => 'register_info',
+                'state' => 'otp_verified', // Legacy drivers likely verified OTP already
+            ];
         }
 
-        // Default: Keep at current or set to vehicle_type
-        return 'vehicle_type';
+        // Default: Keep at vehicle_type
+        return [
+            'step' => 'vehicle_type',
+            'state' => 'profile_complete',
+        ];
     }
 
     /**
@@ -281,7 +390,10 @@ class MigrateLegacyDriverStates extends Command
         if ($data['document_count'] > 0 && !$data['all_documents_verified']) {
             $reasons[] = 'documents_not_verified';
         }
-        if ($data['is_active'] && $data['vehicle_count'] > 0 && $data['all_documents_verified']) {
+        if ($data['has_legacy_documents'] ?? false) {
+            $reasons[] = 'has_legacy_docs_' . $data['legacy_document_count'];
+        }
+        if ($data['is_approved'] && $data['is_active'] && $data['vehicle_count'] > 0 && $data['all_documents_verified']) {
             $reasons[] = 'fully_complete';
         }
 
@@ -301,6 +413,7 @@ class MigrateLegacyDriverStates extends Command
                 ['Total Processed', $this->stats['total_processed']],
                 ['Approved', $this->stats['approved']],
                 ['Pending Approval', $this->stats['pending_approval']],
+                // ['KYC Verification', $this->stats['kyc_verification'] ?? 0], // Disabled for now
                 ['Documents', $this->stats['documents']],
                 ['Vehicle Type', $this->stats['vehicle_type']],
                 ['Register Info', $this->stats['register_info']],
@@ -308,5 +421,9 @@ class MigrateLegacyDriverStates extends Command
                 ['Errors', $this->stats['errors']],
             ]
         );
+
+        $this->newLine();
+        $this->comment('Note: KYC verification step is currently disabled. Drivers with verified documents');
+        $this->comment('are moved directly to pending_approval. Uncomment KYC logic in code to enable.');
     }
 }

@@ -2896,4 +2896,5 @@
   'Some items need attention' => 'Some items need attention',
   'commission_deducted' => 'Commission Deducted',
   'commission_deducted_message' => 'Commission of :amount EGP has been deducted. Your wallet balance is now :balance EGP. Please top-up to clear the negative balance.',
+  'you_got_a_new_message_from_username' => 'You got a new message from {userName}',
 );

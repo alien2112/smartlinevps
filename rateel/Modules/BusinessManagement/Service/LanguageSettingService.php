@@ -12,11 +12,15 @@ use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Modules\BusinessManagement\Jobs\UpdateLanguageFileJob;
 use Modules\BusinessManagement\Repository\BusinessSettingRepositoryInterface;
 use Modules\BusinessManagement\Service\Interface\LanguageSettingServiceInterface;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 
+/**
+ * Updated: 2026-01-14 - Added async file operations to prevent blocking requests
+ */
 class LanguageSettingService extends BaseService implements Interface\LanguageSettingServiceInterface
 {
     protected $businessSettingRepository;
@@ -241,23 +245,51 @@ class LanguageSettingService extends BaseService implements Interface\LanguageSe
         return $this->convertArrayToCollection($lang, $fullData, paginationLimit());
     }
 
+    /**
+     * Store translation - now uses async job to prevent blocking
+     * Updated: 2026-01-14 - Changed to async queue job for file I/O
+     */
     public function storeTranslate(array $data, $lang)
     {
-        $translateData = include(base_path('resources/lang/' . $lang . '/lang.php'));
-        $translateData[$data['key']] = $data['value'];
-        $str = "<?php return " . var_export($translateData, true) . ";";
-        file_put_contents(base_path('resources/lang/' . $lang . '/lang.php'), $str);
+        // Updated 2026-01-14: Use async job for file I/O to prevent blocking
+        UpdateLanguageFileJob::dispatch($lang, $data['key'], $data['value']);
+
+        /* ============================================================
+         * OLD CODE - Commented 2026-01-14
+         * Synchronous file I/O blocked request thread
+         * ============================================================
+         *
+         * $translateData = include(base_path('resources/lang/' . $lang . '/lang.php'));
+         * $translateData[$data['key']] = $data['value'];
+         * $str = "<?php return " . var_export($translateData, true) . ";";
+         * file_put_contents(base_path('resources/lang/' . $lang . '/lang.php'), $str);
+         */
     }
 
+    /**
+     * Auto translate a single key
+     * Updated: 2026-01-14 - File I/O now uses async job
+     */
     public function autoTranslate(array $data, $lang)
     {
         $lang_code = getLanguageCode($lang);
-        $translateData = include(base_path('resources/lang/' . $lang . '/lang.php'));
         $translated = autoTranslator($data['key'], 'en', $lang_code);
-        $translateData[$data['key']] = $translated;
-        $str = "<?php return " . var_export($translateData, true) . ";";
-        file_put_contents(base_path('resources/lang/' . $lang . '/lang.php'), $str);
+
+        // Updated 2026-01-14: Use async job for file I/O to prevent blocking
+        UpdateLanguageFileJob::dispatch($lang, $data['key'], $translated, 'auto_translate');
+
         return $translated;
+
+        /* ============================================================
+         * OLD CODE - Commented 2026-01-14
+         * Synchronous file I/O blocked request thread
+         * ============================================================
+         *
+         * $translateData = include(base_path('resources/lang/' . $lang . '/lang.php'));
+         * $translateData[$data['key']] = $translated;
+         * $str = "<?php return " . var_export($translateData, true) . ";";
+         * file_put_contents(base_path('resources/lang/' . $lang . '/lang.php'), $str);
+         */
     }
 
     public function autoTranslateAll(array $data, $lang)

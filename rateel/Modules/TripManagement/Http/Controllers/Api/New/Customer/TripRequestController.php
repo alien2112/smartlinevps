@@ -126,6 +126,26 @@ class TripRequestController extends Controller
         $destination_point = CoordinateHelper::createPointFromArray($destinationCoordinates);
         $customer_point = CoordinateHelper::createPointFromArray($customer_coordinates);
 
+        // Log destination coordinates for debugging
+        \Log::info('Trip Request - Destination Coordinates', [
+            'user_id' => auth('api')->id(),
+            'user_agent' => $request->header('User-Agent'),
+            'app_version' => $request->header('app-version'),
+            'destination_coords_raw' => $request['destination_coordinates'],
+            'destination_coords_parsed' => $destinationCoordinates,
+            'destination_point' => [
+                'lat' => $destination_point->latitude,
+                'lng' => $destination_point->longitude
+            ],
+            'destination_address' => $request['destination_address'] ?? 'not provided',
+            'pickup_coords_parsed' => $pickupCoordinates,
+            'pickup_address' => $request['pickup_address'] ?? 'not provided',
+            'is_same_as_default' => (
+                abs($destination_point->latitude - 31.2032694) < 0.0001 &&
+                abs($destination_point->longitude - 29.8735653) < 0.0001
+            ) ? 'YES - USING DEFAULT RAS EL TIN COORDS!' : 'No',
+        ]);
+
         // Travel mode validations
         if ($isTravel) {
             $validator = Validator::make($request->all(), [

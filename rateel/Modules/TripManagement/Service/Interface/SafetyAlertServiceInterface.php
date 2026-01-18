@@ -16,4 +16,6 @@ interface SafetyAlertServiceInterface extends BaseServiceInterface
     public function export(array $criteria = [], array $relations = [], array $whereHasRelations = [], array $orderBy = [], int $limit = null, int $offset = null, array $withCountQuery = []): \Illuminate\Support\Collection;
 
     public function safetyAlertLatestUserRoute(): string;
+
+    public function safetyAlertLatestUserRouteFromAlert(?Model $safetyAlert): string;
 }

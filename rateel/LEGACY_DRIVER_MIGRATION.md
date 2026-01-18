@@ -39,32 +39,42 @@ php artisan drivers:migrate-legacy-states --dry-run --batch-size=50 -v
 
 ## State Determination Logic
 
-The script analyzes each driver's data and assigns them to the appropriate onboarding state:
+The script analyzes each driver's data and assigns them to the appropriate onboarding state. It now updates BOTH `onboarding_step` and `onboarding_state` fields:
 
-### 1. **approved**
+### 1. **approved** (step + state)
+- ✅ Approved flag (`is_approved = 1`)
 - ✅ Active account (`is_active = 1`)
 - ✅ Complete profile (first_name, last_name, phone)
 - ✅ Has at least one vehicle
 - ✅ Has documents uploaded
 - ✅ All documents verified
 
-### 2. **pending_approval**
+### 2. **pending_approval** (step + state)
 - ✅ Complete profile
 - ✅ Has vehicle
 - ✅ Has documents uploaded
 - ❌ Not all documents verified yet
+- **Note:** KYC verification step is currently disabled (see below)
 
-### 3. **documents**
+### 3. **documents** (step) / **vehicle_selected** (state)
 - ✅ Complete profile
 - ✅ Has vehicle
 - ❌ No documents uploaded OR some documents not verified
 
-### 4. **vehicle_type**
+### 4. **vehicle_type** (step) / **profile_complete** (state)
 - ✅ Complete profile
 - ❌ No vehicle registered
 
-### 5. **register_info**
+### 5. **register_info** (step) / **password_set** or **otp_verified** (state)
 - ❌ Incomplete profile (missing name or phone)
+- State depends on whether driver has password set
+
+## KYC Verification (Currently Disabled)
+
+The KYC verification step is **disabled by default** but the logic is preserved in the code:
+- Drivers with all verified documents go directly to `pending_approval`
+- To enable KYC, uncomment the KYC block in `determineProperState()` method (lines 270-279)
+- When enabled, drivers will be assigned `kyc_verification` state after document verification
 
 ## Example Scenarios
 

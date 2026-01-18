@@ -3229,4 +3229,5 @@
   'By Turning OFF Level Feature' => 'By Turning OFF Level Feature',
   'commission_deducted' => 'تم خصم العمولة',
   'commission_deducted_message' => 'تم خصم عمولة بقيمة :amount جنيه. رصيد محفظتك الآن :balance جنيه. يرجى شحن محفظتك لتغطية الرصيد السالب.',
+  'you_got_a_new_message_from_username' => 'لديك رسالة جديدة من {userName}',
 );

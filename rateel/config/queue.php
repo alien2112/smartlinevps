@@ -11,9 +11,13 @@ return [
     | API, giving you convenient access to each back-end using the same
     | syntax for every one. Here you may define a default connection.
     |
+    | Updated: 2026-01-14 - Changed default from 'sync' to 'redis' to prevent
+    | blocking HTTP requests if QUEUE_CONNECTION is not set in .env
+    |
     */
 
-    'default' => env('QUEUE_CONNECTION', 'sync'),
+    // OLD: 'default' => env('QUEUE_CONNECTION', 'sync'), // Commented 2026-01-14 - sync blocks HTTP requests
+    'default' => env('QUEUE_CONNECTION', 'redis'),
 
     /*
     |--------------------------------------------------------------------------

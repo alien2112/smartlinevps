@@ -90,6 +90,24 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
         $this->settingRepository = $settingRepository;
     }
 
+    /**
+     * Get appropriate cache TTL based on date range
+     * Updated: 2026-01-14 - Added for smart caching of dashboard aggregations
+     *
+     * @param string $dateRange Date range constant (TODAY, THIS_WEEK, etc.)
+     * @return int Cache TTL in seconds
+     */
+    private function getCacheTTLForDateRange(string $dateRange): int
+    {
+        return match ($dateRange) {
+            TODAY, PREVIOUS_DAY => 120,      // 2 minutes for current/previous day (frequently changes)
+            THIS_WEEK, LAST_7_DAYS => 300,   // 5 minutes for week data
+            THIS_MONTH, LAST_MONTH => 600,   // 10 minutes for month data
+            THIS_YEAR => 900,                // 15 minutes for year data
+            default => 1800,                 // 30 minutes for all-time data
+        };
+    }
+
     public function index(array $criteria = [], array $relations = [], array $whereHasRelations = [], array $orderBy = [], int $limit = null, int $offset = null, array $withCountQuery = [], array $appends = [], array $groupBy = []): Collection|LengthAwarePaginator
     {
         $data = [];
@@ -407,7 +425,33 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
         ];
     }
 
+    /**
+     * Get admin zone-wise earning statistics
+     * Updated: 2026-01-14 - Added caching to prevent repeated heavy aggregation queries
+     */
     public function getAdminZoneWiseEarning(array $data)
+    {
+        // Updated 2026-01-14: Add caching to reduce database load on dashboard
+        $cacheKey = 'admin_zone_earning_' . md5(json_encode($data));
+        $cacheTTL = $this->getCacheTTLForDateRange($data['date'] ?? ALL_TIME);
+
+        return Cache::remember($cacheKey, $cacheTTL, function () use ($data) {
+            return $this->calculateAdminZoneWiseEarning($data);
+        });
+
+        /* ============================================================
+         * OLD CODE - Commented 2026-01-14
+         * Original code without caching - caused repeated heavy queries
+         * Now moved to calculateAdminZoneWiseEarning() method below
+         * ============================================================
+         */
+    }
+
+    /**
+     * Calculate admin zone-wise earning (extracted for caching)
+     * Updated: 2026-01-14 - Extracted from getAdminZoneWiseEarning for caching
+     */
+    private function calculateAdminZoneWiseEarning(array $data): array
     {
         $criteria = [];
         if (array_key_exists('zone', $data) && $data['zone'] != 'all') {
@@ -604,45 +648,91 @@ class TripRequestService extends BaseService implements TripRequestServiceInterf
         ];
     }
 
+    /**
+     * Get date zone-wise earning statistics
+     * Updated: 2026-01-14 - Added caching to prevent repeated heavy aggregation queries
+     */
     public function getDateZoneWiseEarningStatistics(array $data)
     {
-        $zones = $this->zoneRepository->getBy(withTrashed: true);
+        // Updated 2026-01-14: Add caching to reduce database load
+        $cacheKey = 'date_zone_earning_stats_' . md5(json_encode($data));
+        $cacheTTL = $this->getCacheTTLForDateRange($data['date'] ?? ALL_TIME);
 
-        $totalTripRequest = [];
-        $totalAdminCommission = [];
-        $totalTax = [];
-        $points = (int)getSession('currency_decimal_point') ?? 0;
-        $date = getDateRange($data['date'] ?? ALL_TIME);
-        $whereBetweenCriteria = [
-            'created_at' => [$date['start'], $date['end']],
-        ];
-        foreach ($zones as $zone) {
-            $criteria = [
-                'zone_id' => $zone->id
-            ];
-            $criteriaForStatistics = [
-                'zone_id' => $zone->id,
-                'payment_status' => PAID
-            ];
-            $whereHasRelations = [];
+        return Cache::remember($cacheKey, $cacheTTL, function () use ($data) {
+            $zones = $this->zoneRepository->getBy(withTrashed: true);
 
-            // Add criteria for the `fee` relationship to filter by `cancelled_by` being either `null` or `CUSTOMER`
-            $whereHasRelations['fee'] = function ($query) {
-                $query->whereNull('cancelled_by')
-                    ->orWhere('cancelled_by', '=', 'CUSTOMER'); // Handle `null` or `CUSTOMER`
-            };
-            $totalTripRequest[$zone->name] = $this->tripRequestRepository->getBy(criteria: $criteria, whereBetweenCriteria: $whereBetweenCriteria, whereHasRelations: $whereHasRelations)->count();
-            $adminCommission = $this->tripRequestRepository->getBy(criteria: $criteriaForStatistics, whereBetweenCriteria: $whereBetweenCriteria, whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.admin_commission');
-            $vatTax = $this->tripRequestRepository->getBy(criteria: $criteriaForStatistics, whereBetweenCriteria: $whereBetweenCriteria, whereHasRelations: $whereHasRelations, relations: ['fee'])->sum('fee.vat_tax');
-            $totalAdminCommission[$zone->name] = number_format($adminCommission - $vatTax, $points, '.', '');
-            $totalTax[$zone->name] = number_format($vatTax, $points, '.', '');
-        }
-        return [
-            'label' => $zones->pluck('name')->toArray(),
-            'totalTripRequest' => $totalTripRequest,
-            'totalAdminCommission' => $totalAdminCommission,
-            'totalVatTax' => $totalTax
-        ];
+            $totalTripRequest = [];
+            $totalAdminCommission = [];
+            $totalTax = [];
+            $points = (int)getSession('currency_decimal_point') ?? 0;
+            $date = getDateRange($data['date'] ?? ALL_TIME);
+            $whereBetweenCriteria = [
+                'created_at' => [$date['start'], $date['end']],
+            ];
+
+            // Updated 2026-01-14: Pre-fetch aggregated data to reduce N+1 queries
+            $zoneIds = $zones->pluck('id')->toArray();
+            $aggregatedData = $this->getAggregatedZoneEarningData($zoneIds, $whereBetweenCriteria);
+
+            foreach ($zones as $zone) {
+                $zoneData = $aggregatedData->get($zone->id);
+                $totalTripRequest[$zone->name] = $zoneData->trip_count ?? 0;
+                $adminCommission = $zoneData->admin_commission ?? 0;
+                $vatTax = $zoneData->vat_tax ?? 0;
+                $totalAdminCommission[$zone->name] = number_format($adminCommission - $vatTax, $points, '.', '');
+                $totalTax[$zone->name] = number_format($vatTax, $points, '.', '');
+            }
+
+            return [
+                'label' => $zones->pluck('name')->toArray(),
+                'totalTripRequest' => $totalTripRequest,
+                'totalAdminCommission' => $totalAdminCommission,
+                'totalVatTax' => $totalTax
+            ];
+        });
+
+        /* ============================================================
+         * OLD CODE - Commented 2026-01-14
+         * Original code had N+1 queries - 3 queries per zone
+         * With 50 zones = 150 queries per dashboard load
+         * ============================================================
+         *
+         * foreach ($zones as $zone) {
+         *     $criteria = ['zone_id' => $zone->id];
+         *     $criteriaForStatistics = ['zone_id' => $zone->id, 'payment_status' => PAID];
+         *     $whereHasRelations['fee'] = function ($query) {...};
+         *     $totalTripRequest[$zone->name] = $this->tripRequestRepository->getBy(...)->count();
+         *     $adminCommission = $this->tripRequestRepository->getBy(...)->sum('fee.admin_commission');
+         *     $vatTax = $this->tripRequestRepository->getBy(...)->sum('fee.vat_tax');
+         * }
+         */
+    }
+
+    /**
+     * Get aggregated zone earning data in a single query
+     * Updated: 2026-01-14 - Added to replace N+1 queries in getDateZoneWiseEarningStatistics
+     */
+    private function getAggregatedZoneEarningData(array $zoneIds, array $whereBetweenCriteria)
+    {
+        return DB::table('trip_requests')
+            ->leftJoin('trip_request_fees', 'trip_requests.id', '=', 'trip_request_fees.trip_request_id')
+            ->whereIn('trip_requests.zone_id', $zoneIds)
+            ->when(!empty($whereBetweenCriteria['created_at']), function ($query) use ($whereBetweenCriteria) {
+                $query->whereBetween('trip_requests.created_at', $whereBetweenCriteria['created_at']);
+            })
+            ->where(function ($query) {
+                $query->whereNull('trip_request_fees.cancelled_by')
+                    ->orWhere('trip_request_fees.cancelled_by', '=', 'CUSTOMER');
+            })
+            ->selectRaw('
+                trip_requests.zone_id,
+                COUNT(*) as trip_count,
+                SUM(CASE WHEN trip_requests.payment_status = "paid" THEN trip_request_fees.admin_commission ELSE 0 END) as admin_commission,
+                SUM(CASE WHEN trip_requests.payment_status = "paid" THEN trip_request_fees.vat_tax ELSE 0 END) as vat_tax
+            ')
+            ->groupBy('trip_requests.zone_id')
+            ->get()
+            ->keyBy('zone_id');
     }
 
     public function getDateRideTypeWiseEarningStatistics(array $data)
