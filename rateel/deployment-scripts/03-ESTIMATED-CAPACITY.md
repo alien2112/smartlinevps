@@ -75,104 +75,76 @@
 | Queue Workers | 8 | 8-16 | +100% potential |
 | Concurrent Requests | ~200 | ~400+ | +100% potential |
 
-### VPS 2: Data + Realtime Server (8-12GB RAM, 4 cores)
+### VPS 2: Data + Realtime Server (16GB RAM, 4 cores)
 
-#### Option A: 8GB RAM VPS (Minimum)
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                VPS 2 - 8GB RAM (MINIMUM)                    │
+│                VPS 2 - 16GB RAM (ACTUAL SPEC)               │
 ├─────────────────────────────────────────────────────────────┤
-│ ████████████████████████████████████████████████ ~95-100%  │
+│ ████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░ ~70-75%   │
 │                                                             │
-│ MySQL        [████████████████████]      4 GB     (50%)     │
-│ Redis        [████████████]              2 GB     (25%)     │
-│ Node.js      [████████]                  1 GB     (12.5%)   │
-│ System/OS    [████]                      1 GB     (12.5%)   │
+│ MySQL        [████████████████████████████████]  8 GB (50%) │
+│ Redis        [████████████████]                  3 GB (19%) │
+│ Node.js      [████████]                          1 GB (6%)  │
+│ System/OS    [████]                              1 GB (6%)  │
 │                                                             │
-│ TOTAL USED:  ~8 GB                                          │
-│ FREE:        ~0 GB (TIGHT - not recommended!)               │
+│ TOTAL USED:  ~13 GB                                         │
+│ FREE:        ~3 GB (Good headroom for growth)               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-#### Option B: 12GB RAM VPS (RECOMMENDED)
-```
-┌─────────────────────────────────────────────────────────────┐
-│                VPS 2 - 12GB RAM (RECOMMENDED)               │
-├─────────────────────────────────────────────────────────────┤
-│ ████████████████████████████████░░░░░░░░░░░░░░░░ ~70-75%   │
-│                                                             │
-│ MySQL        [████████████████████████]  5 GB     (42%)     │
-│ Redis        [████████████]              2 GB     (17%)     │
-│ Node.js      [████████]                  1 GB     (8%)      │
-│ System/OS    [████]                      1 GB     (8%)      │
-│                                                             │
-│ TOTAL USED:  ~9 GB                                          │
-│ FREE:        ~3 GB (Good headroom)                          │
-└─────────────────────────────────────────────────────────────┘
-```
+**Configuration (16GB VPS2):**
+- MySQL: `innodb_buffer_pool_size = 8G` (50% of RAM - optimal for InnoDB)
+- Redis: `maxmemory = 3gb` (room for cache + sessions + queue)
+- Node.js: 2 cluster instances @ 500MB each
 
-#### Option C: 16GB RAM VPS (Best Performance)
-```
-┌─────────────────────────────────────────────────────────────┐
-│                VPS 2 - 16GB RAM (BEST)                      │
-├─────────────────────────────────────────────────────────────┤
-│ ████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░ ~55-60%   │
-│                                                             │
-│ MySQL        [████████████████████████████]  6 GB  (38%)    │
-│ Redis        [████████████████]              3 GB  (19%)    │
-│ Node.js      [████████]                      1 GB  (6%)     │
-│ System/OS    [████]                          1 GB  (6%)     │
-│                                                             │
-│ TOTAL USED:  ~11 GB                                         │
-│ FREE:        ~5 GB (Excellent headroom)                     │
-└─────────────────────────────────────────────────────────────┘
-```
+**Benefits of 16GB Configuration:**
+- ✅ **Maximum MySQL Performance** - Full InnoDB buffer pool
+- ✅ **Entire Database Can Be Cached** - 8GB buffer pool can hold entire 2-8GB dataset
+- ✅ **3GB Redis** - Plenty of room for sessions, cache, and queue data
+- ✅ **Handles 3-5x Traffic Growth** - Without needing upgrade
+- ✅ **No Upgrades Needed** - For at least 1-2 years
+- ✅ **Same Specs as VPS1** - Easier management and cost predictability
 
 ---
 
-## 3. VPS 2 Specification Recommendations
+## 3. VPS 2 Actual Specifications
 
-### Minimum Requirements (8GB)
-| Resource | Specification | Configuration |
-|----------|---------------|---------------|
-| RAM | 8GB | `innodb_buffer_pool_size = 3G`, `redis maxmemory = 1.5gb` |
-| CPU | 4 cores | Minimum for MySQL + Redis + Node.js |
-| Storage | 50GB SSD | Database + logs |
-| Network | 1Gbps | Private network required |
-
-**Limitations at 8GB:**
-- ⚠️ No room for growth
-- ⚠️ MySQL cache will be limited
-- ⚠️ May need to upgrade soon
-- ⚠️ Risk of OOM during peak load
-
-### Recommended Requirements (12GB) ✅
-| Resource | Specification | Configuration |
-|----------|---------------|---------------|
-| RAM | 12GB | `innodb_buffer_pool_size = 5G`, `redis maxmemory = 2gb` |
-| CPU | 4 cores | Good for current + growth |
-| Storage | 100GB SSD | Database + logs + backups |
-| Network | 1Gbps | Private network required |
-
-**Benefits at 12GB:**
-- ✅ MySQL can cache more data (faster queries)
-- ✅ Redis has room for growth
-- ✅ 25% headroom for traffic spikes
-- ✅ Good value for money
-
-### Optimal Requirements (16GB)
+### Confirmed VPS2 Specifications ✅
 | Resource | Specification | Configuration |
 |----------|---------------|---------------|
 | RAM | 16GB | `innodb_buffer_pool_size = 8G`, `redis maxmemory = 3gb` |
-| CPU | 4-8 cores | Future-proof |
-| Storage | 200GB SSD | Long-term data growth |
+| CPU | 4 cores | Excellent for MySQL + Redis + Node.js |
+| Storage | 100GB+ SSD | Database + logs + backups |
 | Network | 1Gbps | Private network required |
 
-**Benefits at 16GB:**
-- ✅ Maximum MySQL performance
-- ✅ Full dataset can be cached
-- ✅ Handles 2-3x traffic growth
-- ✅ No upgrades needed for 1-2 years
+### Why 16GB is Excellent for VPS2
+
+**MySQL Optimization:**
+- 8GB InnoDB buffer pool = 50% of RAM (industry best practice)
+- Can cache entire current dataset (2-8GB) in memory
+- Handles 3-5x database growth without performance degradation
+- Fast query execution with full in-memory operations
+
+**Redis Capacity:**
+- 3GB allocation provides ample room for:
+  - Sessions (500MB-1GB expected)
+  - Application cache (1-1.5GB expected)
+  - Queue data (200-500MB expected)
+  - Driver location data (100-200MB expected)
+- 50%+ headroom for growth
+
+**Node.js Performance:**
+- 2 cluster instances for redundancy and load distribution
+- Each instance can handle 200-300 concurrent WebSocket connections
+- Total capacity: 400-600 concurrent connections
+
+**Overall Benefits:**
+- ✅ **Identical to VPS1** - Same specs make management easier
+- ✅ **No Bottlenecks** - Each service has optimal resource allocation
+- ✅ **Future-Proof** - Can handle 3-5x traffic growth
+- ✅ **Cost-Effective** - No need for upgrades for 1-2 years
+- ✅ **High Performance** - Full dataset caching in MySQL
 
 ---
 
@@ -230,22 +202,22 @@ query_cache_size = 0
 | 20,000 | 500 MB | 500 MB | 100 MB | 1.2 GB |
 | 50,000 | 1 GB | 1 GB | 200 MB | 2.4 GB |
 
-**Recommended Redis Configuration:**
-
-| VPS RAM | Redis maxmemory | Eviction Policy |
-|---------|-----------------|-----------------|
-| 8GB | 1.5gb | volatile-ttl |
-| 12GB | 2gb | volatile-ttl |
-| 16GB | 3gb | volatile-ttl |
+**Recommended Redis Configuration (16GB VPS2):**
 
 ```conf
-# For 12GB VPS (recommended)
-maxmemory 2gb
+# For 16GB VPS2 (actual configuration)
+maxmemory 3gb
 maxmemory-policy volatile-ttl
 appendonly yes
 appendfsync everysec
 tcp-keepalive 300
 ```
+
+**Why 3GB?**
+- Current usage: 450MB - 1.2GB
+- Growth to 50K users: 2.4GB
+- Headroom: 600MB (20%)
+- Allows for traffic spikes without evictions
 
 ### Node.js Capacity
 
@@ -257,21 +229,26 @@ tcp-keepalive 300
 | Peak Memory (100 connections) | 250-350 MB |
 | Peak Memory (500 connections) | 600-1,100 MB |
 
-**Recommended PM2 Configuration:**
+**Recommended PM2 Configuration (16GB VPS2):**
 
 ```javascript
-// For 12GB VPS
+// For 16GB VPS2 (actual configuration)
 module.exports = {
   apps: [{
     name: 'smartline-realtime',
     script: './src/server.js',
-    instances: 2,              // 2 cluster instances
+    instances: 2,              // 2 cluster instances for redundancy
     exec_mode: 'cluster',
-    max_memory_restart: '500M', // Restart if exceeds 500MB per instance
-    node_args: '--max-old-space-size=512' // Limit V8 heap
+    max_memory_restart: '600M', // Restart if exceeds 600MB per instance
+    node_args: '--max-old-space-size=600' // Limit V8 heap
   }]
 };
 ```
+
+**Total Node.js Allocation:** 1.2GB (2 instances × 600MB)
+- Handles 400-600 concurrent WebSocket connections
+- Automatic restart if memory leak detected
+- Load balanced across CPU cores
 
 ---
 
@@ -323,7 +300,7 @@ module.exports = {
 | API Requests/min | 2,000 | +50% PHP-FPM | +40% MySQL |
 | WebSocket Connections | 200 | - | +50% Node.js |
 
-**Can Handle with 12GB VPS2:** ✅ Yes
+**Can Handle with 16GB VPS2:** ✅ Yes, easily
 
 #### 5x Growth
 | Metric | Value | VPS1 Impact | VPS2 Impact |
@@ -333,7 +310,10 @@ module.exports = {
 | API Requests/min | 5,000 | +150% PHP-FPM | +150% MySQL |
 | WebSocket Connections | 500 | - | +200% Node.js |
 
-**Can Handle with 12GB VPS2:** ⚠️ Borderline - may need upgrade
+**Can Handle with 16GB VPS2:** ✅ Yes, comfortably
+- MySQL: 8GB buffer pool can handle up to 15-20GB database
+- Redis: 3GB handles up to 50K users
+- Node.js: Can scale to 3-4 instances if needed
 
 #### 10x Growth
 | Metric | Value | Required Changes |
@@ -359,21 +339,27 @@ module.exports = {
 
 | VPS2 Spec | VPS1 | VPS2 | Total | Increase |
 |-----------|------|------|-------|----------|
-| 8GB | $40-60 | $20-30 | $60-90 | +50% |
-| 12GB (Recommended) | $40-60 | $30-45 | $70-105 | +75% |
-| 16GB | $40-60 | $40-60 | $80-120 | +100% |
+| 16GB (Actual) | $40-60 | $40-60 | $80-120 | +100% |
 
 ### Value Analysis
 
-| Metric | Current | With 12GB VPS2 | Improvement |
+| Metric | Current | With 16GB VPS2 | Improvement |
 |--------|---------|----------------|-------------|
 | Available RAM (VPS1) | 1-6 GB | 9-11 GB | +166-450% |
+| Available RAM (VPS2) | - | 3-5 GB | New headroom |
 | Database Isolation | ❌ No | ✅ Yes | Security++ |
 | Scalability | Limited | Independent scaling | Flexibility++ |
 | Backup Isolation | ❌ No | ✅ Yes | Safety++ |
-| Potential Capacity | 1x | 2-3x | Growth ready |
+| Potential Capacity | 1x | 3-5x | Growth ready |
+| MySQL Performance | Limited cache | Full dataset cached | Speed++ |
 
-**ROI:** +75% cost for +200-300% capacity and improved architecture
+**ROI:** +100% cost for +300-500% capacity and significantly improved architecture
+
+**Key Benefits:**
+- Both VPS servers have identical specs (easier management)
+- Can handle 5x traffic growth without infrastructure changes
+- MySQL performance maximized with 8GB buffer pool
+- No need for upgrades for 1-2 years
 
 ---
 
@@ -389,15 +375,15 @@ module.exports = {
 | System/Buffer | 2 GB |
 | **Free for Scaling** | **8+ GB** |
 
-### VPS 2: Data + Realtime Server (12GB Recommended)
+### VPS 2: Data + Realtime Server (16GB Actual)
 | Resource | Allocation |
 |----------|------------|
-| RAM Total | 12 GB |
-| MySQL | 5 GB (innodb_buffer_pool) |
-| Redis | 2 GB (maxmemory) |
-| Node.js | 1 GB (2 instances × 500MB) |
+| RAM Total | 16 GB |
+| MySQL | 8 GB (innodb_buffer_pool) |
+| Redis | 3 GB (maxmemory) |
+| Node.js | 1.2 GB (2 instances × 600MB) |
 | System/Buffer | 1 GB |
-| **Free for Scaling** | **3 GB** |
+| **Free for Scaling** | **~3 GB** |
 
 ---
 
@@ -412,41 +398,43 @@ module.exports = {
 | PHP-FPM Queue | >10 | >50 |
 | Queue Backlog | >1,000 | >5,000 |
 
-### VPS 2 Alert Thresholds
+### VPS 2 Alert Thresholds (16GB VPS)
 | Metric | Warning | Critical |
 |--------|---------|----------|
-| RAM Usage | >75% | >90% |
+| RAM Usage | >80% | >90% |
 | CPU Usage | >70% | >90% |
 | Disk Usage | >70% | >85% |
-| MySQL Connections | >200 | >400 |
+| MySQL Connections | >300 | >450 |
 | MySQL Slow Queries/min | >10 | >50 |
-| Redis Memory | >1.5GB | >1.8GB |
-| WebSocket Connections | >400 | >800 |
+| Redis Memory | >2.4GB | >2.8GB |
+| WebSocket Connections | >500 | >900 |
 
 ---
 
 ## 10. Capacity Planning Checklist
 
 ### Before Migration:
-- [ ] Confirm VPS2 has at least 12GB RAM (recommended)
-- [ ] Verify 4+ CPU cores on VPS2
+- [ ] Confirm VPS2 has 16GB RAM, 4 cores (actual spec)
 - [ ] Ensure 100GB+ SSD storage on VPS2
-- [ ] Confirm private network 1Gbps+ speed
-- [ ] Test latency between VPS1 and VPS2 (<2ms)
+- [ ] Confirm private network configured and 1Gbps+ speed
+- [ ] Test latency between VPS1 and VPS2 (<2ms target)
+- [ ] Verify both VPS servers are in same datacenter/region
 
 ### After Migration:
-- [ ] Verify MySQL buffer pool is using allocated memory
-- [ ] Confirm Redis maxmemory is set correctly
-- [ ] Check Node.js PM2 cluster is running 2 instances
-- [ ] Validate VPS1 freed resources as expected
+- [ ] Verify MySQL buffer pool is 8GB (`innodb_buffer_pool_size = 8G`)
+- [ ] Confirm Redis maxmemory is 3GB (`maxmemory 3gb`)
+- [ ] Check Node.js PM2 running 2 instances with 600MB limit each
+- [ ] Validate VPS1 has 9-11GB free RAM
+- [ ] Validate VPS2 has 3-5GB free RAM
 - [ ] Set up monitoring for all thresholds
 
 ### Growth Triggers (When to Scale):
-- [ ] VPS2 RAM consistently >80% → Upgrade to 16GB
-- [ ] MySQL connections >250 → Add connection pooling
-- [ ] WebSocket connections >500 → Add Node.js instance
-- [ ] API response >200ms → Investigate/optimize
-- [ ] Queue backlog >5,000 → Add more workers
+- [ ] VPS2 RAM consistently >85% → Review and optimize before adding hardware
+- [ ] MySQL connections >300 → Tune connection pooling or add read replica
+- [ ] WebSocket connections >600 → Scale to 3-4 Node.js instances
+- [ ] Database size >15GB → Consider adding dedicated MySQL server
+- [ ] API response >200ms → Investigate/optimize queries
+- [ ] Queue backlog >5,000 → Add more queue workers on VPS1
 
 ---
 

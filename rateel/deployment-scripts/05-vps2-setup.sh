@@ -29,9 +29,9 @@ MYSQL_APP_USER="${MYSQL_APP_USER:-smartline_app}"
 MYSQL_APP_PASSWORD="${MYSQL_APP_PASSWORD:-}"
 MYSQL_DATABASE="${MYSQL_DATABASE:-merged2}"
 
-# Redis Configuration
+# Redis Configuration (optimized for 16GB VPS)
 REDIS_PASSWORD="${REDIS_PASSWORD:-}"
-REDIS_MAX_MEMORY="${REDIS_MAX_MEMORY:-2gb}"
+REDIS_MAX_MEMORY="${REDIS_MAX_MEMORY:-3gb}"
 
 # Node.js Configuration
 NODEJS_VERSION="${NODEJS_VERSION:-20}"
@@ -488,7 +488,7 @@ module.exports = {
     error_file: './logs/err.log',
     out_file: './logs/out.log',
     log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    max_memory_restart: '500M',
+    max_memory_restart: '600M',  // For 16GB VPS
     watch: false,
     autorestart: true,
     restart_delay: 1000,

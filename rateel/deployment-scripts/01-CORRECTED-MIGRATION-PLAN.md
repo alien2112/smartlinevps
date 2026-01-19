@@ -62,7 +62,7 @@
          ▼                               ▼
     +---------+                    +-----------+
     |  VPS 1  |                    |   VPS 2   |
-    | 16GB/4C |                    |  8GB+/4C  |
+    | 16GB/4C |                    |  16GB/4C  |
     +---------+                    +-----------+
          |                               |
     APPLICATION                    DATA + REALTIME
@@ -130,7 +130,7 @@
 
 ---
 
-## VPS 2: Data + Realtime Server (8-12GB RAM, 4 cores)
+## VPS 2: Data + Realtime Server (16GB RAM, 4 cores)
 
 ### Services to Deploy:
 - **MySQL 8.0** - Primary database
@@ -141,11 +141,12 @@
 
 | Service | RAM |
 |---------|-----|
-| MySQL (innodb_buffer_pool_size=4G) | 4-6GB |
-| Redis (maxmemory=2gb) | 2GB |
+| MySQL (innodb_buffer_pool_size=8G) | 6-8GB |
+| Redis (maxmemory=3gb) | 3GB |
 | Node.js (2 cluster instances) | 1GB |
 | System | 1GB |
-| **Total** | **~8-10GB** |
+| **Total** | **~11-13GB** |
+| **Available** | **~3-5GB** (excellent headroom) |
 
 ### Open Ports:
 
