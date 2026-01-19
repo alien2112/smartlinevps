@@ -19,15 +19,17 @@ This directory contains all scripts and documentation needed to migrate SmartLin
 
 ```
 deployment-scripts/
-├── README.md                          # This file
-├── 01-CORRECTED-MIGRATION-PLAN.md    # Updated migration plan with correct paths
-├── 02-RISKS-AND-MITIGATION.md        # Risk assessment and mitigation strategies
-├── 03-ESTIMATED-CAPACITY.md          # Capacity planning and resource estimates
-├── 04-vps1-migration.sh              # VPS1 migration script (run after VPS2 is ready)
-├── 05-vps2-setup.sh                  # VPS2 setup script (run first on new server)
-├── 06-verify-vps1.sh                 # VPS1 verification script
-├── 07-verify-vps2.sh                 # VPS2 verification script
-└── 08-rollback-vps1.sh               # Emergency rollback script for VPS1
+├── README.md                             # This file
+├── 01-CORRECTED-MIGRATION-PLAN.md       # Updated migration plan with correct paths
+├── 02-RISKS-AND-MITIGATION.md           # Risk assessment and mitigation strategies
+├── 03-ESTIMATED-CAPACITY.md             # Capacity planning and resource estimates
+├── 04-vps1-migration.sh                 # VPS1 migration script (run after VPS2 is ready)
+├── 05-vps2-setup.sh                     # VPS2 setup script (run first on new server)
+├── 06-verify-vps1.sh                    # VPS1 verification script
+├── 07-verify-vps2.sh                    # VPS2 verification script
+├── 08-rollback-vps1.sh                  # Emergency rollback script for VPS1
+├── 09-scale-nodejs-to-4-instances.md    # Guide to scale Node.js from 2 to 4 instances
+└── 10-scale-nodejs.sh                   # Automated Node.js scaling script
 ```
 
 ---
@@ -44,8 +46,7 @@ Before starting, read these documents:
 
 ### Step 2: Provision VPS2
 
-- **Minimum:** 8GB RAM, 4 cores, 50GB SSD
-- **Recommended:** 12GB RAM, 4 cores, 100GB SSD
+- **Actual Spec:** 16GB RAM, 4 cores, 100GB+ SSD
 - Must support private networking with VPS1
 
 ### Step 3: Setup VPS2
@@ -293,6 +294,45 @@ php artisan cache:clear
 php artisan config:cache
 php artisan route:cache
 ```
+
+---
+
+## Scaling Node.js Instances
+
+### When to Scale
+
+Scale from 2 to 4 instances when:
+- Consistent >500 concurrent WebSocket connections
+- Planning for 2-3x traffic growth
+- Need better CPU utilization (1 instance per core)
+
+### Quick Scaling (Automated)
+
+```bash
+# On VPS2
+cd /var/www/laravel/smartlinevps/rateel/deployment-scripts
+
+# Scale to 4 instances
+sudo ./10-scale-nodejs.sh 4
+
+# Verify
+pm2 status
+```
+
+### Manual Scaling (Step-by-Step)
+
+See detailed guide: **09-scale-nodejs-to-4-instances.md**
+
+### Instance Capacity
+
+| Instances | Connections | CPU Usage | RAM Usage | Recommended For |
+|-----------|-------------|-----------|-----------|-----------------|
+| 2 | 400-600 | 50% | 1.2GB | **Current baseline** |
+| 3 | 600-900 | 75% | 1.8GB | 2x growth |
+| 4 | 800-1,200 | 100% | 2.4GB | **Optimal (1 per core)** |
+| 5-6 | 1,000-1,800 | 125%+ | 3.0-3.6GB | Peak only (not ideal) |
+
+**Recommendation:** Stick with 2-4 instances max on 16GB VPS2
 
 ---
 
