@@ -136,8 +136,8 @@
 
 **Node.js Performance:**
 - 2 cluster instances for redundancy and load distribution
-- Each instance can handle 200-300 concurrent WebSocket connections
-- Total capacity: 400-600 concurrent connections
+- **Per instance:** 200-300 concurrent WebSocket connections
+- **Total capacity:** 400-600 concurrent connections (combined)
 
 **Overall Benefits:**
 - ✅ **Identical to VPS1** - Same specs make management easier
@@ -246,9 +246,11 @@ module.exports = {
 ```
 
 **Total Node.js Allocation:** 1.2GB (2 instances × 600MB)
-- Handles 400-600 concurrent WebSocket connections
+- **Total capacity:** 400-600 concurrent WebSocket connections
+  - Instance 1: ~200-300 connections
+  - Instance 2: ~200-300 connections
 - Automatic restart if memory leak detected
-- Load balanced across CPU cores
+- Load balanced across CPU cores for redundancy
 
 ---
 
